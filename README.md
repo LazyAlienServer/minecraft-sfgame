@@ -168,7 +168,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 ## 自动构建与发布
 
-推送到 `main` 或向 `main` 提交 Pull Request 时，GitHub Actions 会使用 Java 17 自动执行测试和完整构建，并保存构建产物。创建并推送语义化版本标签会自动创建 GitHub Release、生成发行说明并上传成品 JAR：
+推送到 `main` 或向 `main` 提交 Pull Request 时，GitHub Actions 会使用 Java 17 自动执行测试和完整构建，并保存构建产物。每次向 `main` 推送新提交还会自动创建一个可追溯到提交哈希的预发布版本，例如 `v0.1.0-build.3.486d722`。创建并推送语义化版本标签则会创建或覆盖对应的正式 GitHub Release：
 
 ```powershell
 git tag v0.1.0

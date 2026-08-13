@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -34,19 +36,35 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Validate and extract version
+      - name: Determine release version
         id: version
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
-            exit 1
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            TAG="$GITHUB_REF_NAME"
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+              echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+              exit 1
+            fi
+            if [[ "$VERSION" == *alpha* || "$VERSION" == *beta* || "$VERSION" == *rc* ]]; then
+              PRERELEASE=true
+            else
+              PRERELEASE=false
+            fi
+          else
+            BASE_VERSION="$(sed -n 's/^mod_version=//p' gradle.properties | head -n 1)"
+            SHORT_SHA="${GITHUB_SHA:0:7}"
+            VERSION="${BASE_VERSION}-build.${GITHUB_RUN_NUMBER}.${SHORT_SHA}"
+            TAG="v${VERSION}"
+            PRERELEASE=true
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Test and build release JAR
-        run: ./gradlew test build --no-daemon --stacktrace -Pmod_version=${{ steps.version.outputs.version }}
+        run: ./gradlew test build --no-daemon --stacktrace "-Pmod_version=${{ steps.version.outputs.version }}"
 
       - name: Verify release JAR
         shell: bash
@@ -55,9 +73,11 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: SFGame v${{ steps.version.outputs.version }}
           files: build/libs/sfgame-${{ steps.version.outputs.version }}.jar
           generate_release_notes: true
           fail_on_unmatched_files: true
-          prerelease: ${{ contains(steps.version.outputs.version, 'alpha') || contains(steps.version.outputs.version, 'beta') || contains(steps.version.outputs.version, 'rc') }}
-
+          overwrite_files: true
+          prerelease: ${{ steps.version.outputs.prerelease }}
