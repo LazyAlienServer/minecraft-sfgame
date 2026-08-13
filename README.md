@@ -26,11 +26,11 @@ Windows 构建命令：
 3. 分别站在大厅及需要启用的队伍出生点执行；至少配置两个队伍，黄队和绿队可选：
 
 ```text
-/sfgame set lobby
-/sfgame set spawn red
-/sfgame set spawn blue
-/sfgame set spawn yellow
-/sfgame set spawn green
+/sfgame spawn set lobby
+/sfgame spawn set red
+/sfgame spawn set blue
+/sfgame spawn set yellow
+/sfgame spawn set green
 
 /sfgame spawn list <red|blue|yellow|green>
 /sfgame spawn remove <red|blue|yellow|green> <序号>
@@ -89,7 +89,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 `/sfgame team set` 和 `/sfgame team remove` 使用多玩家实体参数，支持玩家名以及 `@a`、`@p`、`@r` 等原版选择器。例如：`/sfgame team set @a random`。
 
-地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`，每个模式可以拥有多张地图。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame set spawn <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
+地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`，每个模式可以拥有多张地图。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
 
 ## 职业配置
 

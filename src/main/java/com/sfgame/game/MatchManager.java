@@ -451,8 +451,6 @@ public final class MatchManager {
                     if (ticks % 20 == 0) {
                         Component countdown = Component.translatable("sfgame.respawn", ticks / 20);
                         player.sendSystemMessage(countdown, true);
-                        sendTitle(player, Component.literal(Integer.toString(ticks / 20)).withStyle(ChatFormatting.RED),
-                                countdown, 24);
                         playSound(player, SoundEvents.NOTE_BLOCK_HAT.get(), countdownPitch(ticks / 20));
                     }
                 } else {
@@ -545,7 +543,7 @@ public final class MatchManager {
 
     private void announceResult() {
         Component title = result == TeamSide.NONE ? Component.translatable("sfgame.result.draw").withStyle(ChatFormatting.GOLD)
-                : Component.translatable("sfgame.result.team", result.id()).withStyle(result.color());
+                : Component.translatable("sfgame.result." + result.id()).withStyle(result.color());
         server.getPlayerList().broadcastSystemMessage(title, false);
         Component returning = Component.translatable("sfgame.result.returning", data().rules().resultSeconds())
                 .withStyle(ChatFormatting.YELLOW);

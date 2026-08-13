@@ -17,7 +17,14 @@ public final class MatchHudService {
     public void update(MinecraftServer server, MatchManager manager) {
         Scoreboard scoreboard = server.getScoreboard();
         Objective objective = scoreboard.getObjective(OBJECTIVE_NAME);
-        MatchRules rules = SFGameSavedData.get(server).rules();
+        if (manager.phase() == MatchPhase.LOBBY || manager.phase() == MatchPhase.UNCONFIGURED) {
+            if (objective != null && scoreboard.getDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR) == objective) {
+                scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, null);
+            }
+            return;
+        }
+        SFGameSavedData data = SFGameSavedData.get(server);
+        MatchRules rules = data.rules();
         if (objective == null) {
             objective = scoreboard.addObjective(OBJECTIVE_NAME, ObjectiveCriteria.DUMMY,
                     Component.literal("SFGame TDM / " + rules.scoreLimit()), ObjectiveCriteria.RenderType.INTEGER);
@@ -27,7 +34,11 @@ public final class MatchHudService {
         scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, objective);
         for (TeamSide side : TeamSide.PLAYABLE) {
             String line = side.color() + side.id().toUpperCase();
-            scoreboard.getOrCreatePlayerScore(line, objective).setScore(manager.score(side));
+            if (data.enabledTeams().contains(side)) {
+                scoreboard.getOrCreatePlayerScore(line, objective).setScore(manager.score(side));
+            } else {
+                scoreboard.resetPlayerScore(line, objective);
+            }
         }
         int remaining = Math.max(0, rules.timeLimitSeconds() - manager.elapsedTicks() / 20);
         scoreboard.getOrCreatePlayerScore(TIME_LINE, objective).setScore(remaining);
