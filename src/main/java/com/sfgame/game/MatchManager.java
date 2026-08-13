@@ -46,6 +46,8 @@ public final class MatchManager {
     private int elapsedTicks;
     private int redScore;
     private int blueScore;
+    private int yellowScore;
+    private int greenScore;
     private int syncTicker;
     private TeamSide result = TeamSide.NONE;
 
@@ -57,6 +59,17 @@ public final class MatchManager {
     public Collection<PlayerMatchState> playerStates() { return players.values(); }
     public int redScore() { return redScore; }
     public int blueScore() { return blueScore; }
+    public int yellowScore() { return yellowScore; }
+    public int greenScore() { return greenScore; }
+    public int score(TeamSide side) {
+        return switch (side) {
+            case RED -> redScore;
+            case BLUE -> blueScore;
+            case YELLOW -> yellowScore;
+            case GREEN -> greenScore;
+            case NONE -> 0;
+        };
+    }
     public int elapsedTicks() { return elapsedTicks; }
 
     public boolean canChangeArena() {
@@ -115,25 +128,25 @@ public final class MatchManager {
         List<String> errors = new ArrayList<>();
         if (server == null) return List.of("Server is not running");
         SFGameSavedData data = data();
-        if (!data.isArenaConfigured()) errors.add("Lobby and both team spawns must be set");
-        if (!teams.bindingsValid(server, data)) errors.add("Red and blue must bind two existing vanilla teams");
+        if (!data.isArenaConfigured()) errors.add("Lobby and spawn points for at least two teams must be set");
+        if (!teams.bindingsValid(server, data)) errors.add("All four SFGame sides must bind different existing vanilla teams");
         errors.addAll(loadoutService.validate(classRegistry));
 
-        int red = 0;
-        int blue = 0;
+        List<TeamSide> enabledTeams = data.enabledTeams();
+        if (enabledTeams.size() < 2) errors.add("The selected map needs spawn points for at least two teams");
         int total = 0;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             TeamSide side = teams.sideOf(player, data);
-            if (side == TeamSide.NONE) continue;
+            if (!enabledTeams.contains(side)) continue;
             total++;
-            if (side == TeamSide.RED) red++;
-            if (side == TeamSide.BLUE) blue++;
             PlayerMatchState state = state(player);
             ensureDefaultClass(state);
             String selected = selectedClass(state);
             if (!classRegistry.contains(selected)) errors.add(player.getGameProfile().getName() + " has no valid class");
         }
-        if (red == 0 || blue == 0) errors.add("Both teams need at least one player");
+        for (TeamSide side : enabledTeams) {
+            if (countSide(side) == 0) errors.add(side.id() + " team needs at least one player");
+        }
         if (total > data.rules().maxPlayers()) errors.add("Player count exceeds maxPlayers");
         return errors;
     }
@@ -143,6 +156,8 @@ public final class MatchManager {
         if (!validateStart().isEmpty()) return false;
         redScore = 0;
         blueScore = 0;
+        yellowScore = 0;
+        greenScore = 0;
         elapsedTicks = 0;
         result = TeamSide.NONE;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -150,13 +165,14 @@ public final class MatchManager {
             PlayerMatchState state = state(player);
             state.resetRoundStats();
             state.cachedSide(side);
-            if (side != TeamSide.NONE) {
+            if (data().enabledTeams().contains(side)) {
                 state.participating(true);
                 state.queued(false);
                 if (state.currentClass() == null) state.currentClass(state.pendingClass());
                 player.setGameMode(GameType.ADVENTURE);
             } else {
                 state.participating(false);
+                player.setGameMode(GameType.SPECTATOR);
             }
         }
         phase = MatchPhase.COUNTDOWN;
@@ -196,9 +212,9 @@ public final class MatchManager {
             return true;
         }
         TeamSide currentSide = teams.sideOf(player, data());
-        if (currentSide == TeamSide.NONE && countAssignedPlayers() >= data().rules().maxPlayers()) return false;
-        if (currentSide == TeamSide.NONE) teams.assign(player, teams.balancedSide(server, data()), data());
-        if (teams.sideOf(player, data()) == TeamSide.NONE) return false;
+        if (!data().enabledTeams().contains(currentSide) && countAssignedPlayers() >= data().rules().maxPlayers()) return false;
+        if (!data().enabledTeams().contains(currentSide)) teams.assign(player, teams.balancedSide(server, data()), data());
+        if (!data().enabledTeams().contains(teams.sideOf(player, data()))) return false;
         ensureDefaultClass(state);
         state.queued(false);
         state.participating(false);
@@ -207,9 +223,6 @@ public final class MatchManager {
         state.respawnTicks(0);
         state.protectionTicks(0);
         state.cachedSide(teams.sideOf(player, data()));
-        loadoutService.clear(player);
-        player.setGameMode(GameType.ADVENTURE);
-        if (data().lobby() != null) data().lobby().teleport(player);
         player.getFoodData().setFoodLevel(20);
         player.getFoodData().setSaturation(20.0F);
         sync(player);
@@ -222,17 +235,20 @@ public final class MatchManager {
         state.queued(false);
         state.pendingImmediateJoin(false);
         state.respawning(false);
-        loadoutService.clear(player);
         teams.remove(player);
-        player.setGameMode(GameType.SPECTATOR);
-        if (data().lobby() != null) data().lobby().teleport(player);
+        if (phase == MatchPhase.RUNNING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
+            loadoutService.clear(player);
+            player.setGameMode(GameType.SPECTATOR);
+        }
         sync(player);
     }
 
     public boolean joinNow(ServerPlayer player) {
         if (phase != MatchPhase.RUNNING || participatingCount() >= data().rules().maxPlayers()) return false;
         PlayerMatchState state = state(player);
-        if (teams.sideOf(player, data()) == TeamSide.NONE) teams.assign(player, teams.balancedSide(server, data()), data());
+        if (!data().enabledTeams().contains(teams.sideOf(player, data()))) {
+            teams.assign(player, teams.balancedSide(server, data()), data());
+        }
         state.cachedSide(teams.sideOf(player, data()));
         state.queued(false);
         state.pendingImmediateJoin(true);
@@ -296,8 +312,7 @@ public final class MatchManager {
             TeamSide victimSide = teams.sideOf(victim, data());
             if (attackerState.participating() && attackerSide != TeamSide.NONE && attackerSide != victimSide) {
                 attackerState.addKill();
-                if (attackerSide == TeamSide.RED) redScore++;
-                if (attackerSide == TeamSide.BLUE) blueScore++;
+                addScore(attackerSide);
             }
         }
         victimState.respawning(true);
@@ -369,8 +384,9 @@ public final class MatchManager {
                 .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
                         c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo()))
                 .toList();
-        return new MatchSnapshot(phase, side, redScore, blueScore, rules.scoreLimit(), remaining,
-                countSide(TeamSide.RED), countSide(TeamSide.BLUE), state.currentClass(), state.pendingClass(),
+        return new MatchSnapshot(phase, side, redScore, blueScore, yellowScore, greenScore,
+                rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
+                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(), state.pendingClass(),
                 state.participating(), state.queued(), classViews);
     }
 
@@ -406,9 +422,9 @@ public final class MatchManager {
     private void tickRunning() {
         elapsedTicks++;
         MatchRules rules = data().rules();
-        if (redScore >= rules.scoreLimit() || blueScore >= rules.scoreLimit()
+        if (data().enabledTeams().stream().anyMatch(side -> score(side) >= rules.scoreLimit())
                 || elapsedTicks >= rules.timeLimitSeconds() * 20) {
-            result = redScore > blueScore ? TeamSide.RED : blueScore > redScore ? TeamSide.BLUE : TeamSide.NONE;
+            result = determineWinner();
             stop(true, Component.empty());
         }
     }
@@ -456,9 +472,9 @@ public final class MatchManager {
             TeamSide old = state.cachedSide();
             state.cachedSide(actual);
             if (phase == MatchPhase.RUNNING && state.participating()) {
-                if (old != TeamSide.NONE && actual != TeamSide.NONE) {
+                if (data().enabledTeams().contains(actual)) {
                     deploy(player, state, false);
-                } else if (actual == TeamSide.NONE) {
+                } else {
                     state.participating(false);
                     state.queued(true);
                     loadoutService.clear(player);
@@ -474,7 +490,7 @@ public final class MatchManager {
         String classId = selectedClass(state);
         Optional<ClassDefinition> definition = classRegistry.get(classId);
         TeamSide side = teams.sideOf(player, data());
-        ArenaPosition spawn = side == TeamSide.RED ? data().redSpawn() : side == TeamSide.BLUE ? data().blueSpawn() : null;
+        ArenaPosition spawn = side == TeamSide.NONE ? null : data().randomSpawn(side);
         if (definition.isEmpty() || spawn == null) {
             state.participating(false);
             state.queued(true);
@@ -528,9 +544,8 @@ public final class MatchManager {
     }
 
     private void announceResult() {
-        Component title = result == TeamSide.RED ? Component.translatable("sfgame.result.red").withStyle(ChatFormatting.RED)
-                : result == TeamSide.BLUE ? Component.translatable("sfgame.result.blue").withStyle(ChatFormatting.BLUE)
-                : Component.translatable("sfgame.result.draw").withStyle(ChatFormatting.GOLD);
+        Component title = result == TeamSide.NONE ? Component.translatable("sfgame.result.draw").withStyle(ChatFormatting.GOLD)
+                : Component.translatable("sfgame.result.team", result.id()).withStyle(result.color());
         server.getPlayerList().broadcastSystemMessage(title, false);
         Component returning = Component.translatable("sfgame.result.returning", data().rules().resultSeconds())
                 .withStyle(ChatFormatting.YELLOW);
@@ -565,6 +580,8 @@ public final class MatchManager {
         elapsedTicks = 0;
         redScore = 0;
         blueScore = 0;
+        yellowScore = 0;
+        greenScore = 0;
         result = TeamSide.NONE;
     }
 
@@ -582,12 +599,29 @@ public final class MatchManager {
         });
     }
 
+    private void addScore(TeamSide side) {
+        switch (side) {
+            case RED -> redScore++;
+            case BLUE -> blueScore++;
+            case YELLOW -> yellowScore++;
+            case GREEN -> greenScore++;
+            case NONE -> { }
+        }
+    }
+
+    private TeamSide determineWinner() {
+        List<TeamSide> enabled = data().enabledTeams();
+        int highest = enabled.stream().mapToInt(this::score).max().orElse(0);
+        List<TeamSide> leaders = enabled.stream().filter(side -> score(side) == highest).toList();
+        return leaders.size() == 1 ? leaders.get(0) : TeamSide.NONE;
+    }
+
     private int participatingCount() {
         return (int) players.values().stream().filter(PlayerMatchState::participating).count();
     }
 
     private int countAssignedPlayers() {
-        return countSide(TeamSide.RED) + countSide(TeamSide.BLUE);
+        return TeamSide.PLAYABLE.stream().mapToInt(this::countSide).sum();
     }
 
     private int countSide(TeamSide side) {

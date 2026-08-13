@@ -22,13 +22,19 @@ Windows 构建命令：
 ## 首次配置
 
 1. 将 SFGame 与 TACZ 1.1.8-hotfix 放入客户端和服务端的 `mods` 目录。
-2. 进入服务器后，系统会创建并默认绑定 `sfgame_red` 与 `sfgame_blue` 两个原版队伍。
-3. 分别站在大厅、红方出生点和蓝方出生点执行：
+2. 进入服务器后，系统会创建并默认绑定 `sfgame_red`、`sfgame_blue`、`sfgame_yellow`、`sfgame_green` 四个原版队伍。
+3. 分别站在大厅及需要启用的队伍出生点执行；至少配置两个队伍，黄队和绿队可选：
 
 ```text
 /sfgame set lobby
 /sfgame set spawn red
 /sfgame set spawn blue
+/sfgame set spawn yellow
+/sfgame set spawn green
+
+/sfgame spawn list <red|blue|yellow|green>
+/sfgame spawn remove <red|blue|yellow|green> <序号>
+/sfgame spawn clear <red|blue|yellow|green>
 ```
 
 4. 使用 `/team join` 或 `/sfgame team set <玩家> <red|blue|random>` 分配队伍。
@@ -54,8 +60,8 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame joinnow <玩家>
 
 /sfgame team status
-/sfgame team bind <red|blue> <原版队伍>
-/sfgame team set <玩家> <red|blue|random>
+/sfgame team bind <red|blue|yellow|green> <原版队伍>
+/sfgame team set <玩家选择器> <red|blue|yellow|green|random>
 /sfgame team remove <玩家>
 
 /sfgame mode list
@@ -83,7 +89,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 `/sfgame team set` 和 `/sfgame team remove` 使用多玩家实体参数，支持玩家名以及 `@a`、`@p`、`@r` 等原版选择器。例如：`/sfgame team set @a random`。
 
-地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`，每个模式可以拥有多张地图；新建地图后会自动选中，再使用 `/sfgame set lobby`、`/sfgame set spawn red` 和 `/sfgame set spawn blue` 设置该地图坐标。旧版世界中的单地图坐标会自动迁移到 `tdm/default`。比赛进行时禁止切换、创建或删除地图。
+地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`，每个模式可以拥有多张地图。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame set spawn <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
 
 ## 职业配置
 
@@ -99,6 +105,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 ## 已实现的比赛规则
 
 - 原版 `/team` 是队伍唯一事实来源，比赛内换边会无死亡、无得分地满配装重新部署。
+- 未开赛时退出比赛只移除 SFGame 队伍，保持当前位置和当前游戏模式；只有对局开始后退出才进入旁观模式。未开赛时加入队伍不会自动传送大厅。
 - 删除绑定队伍会无结果终止当前比赛；离开绑定队伍会转旁观并排入下一局。
 - 中途玩家默认旁观并进入下一局；管理员可用 `joinnow` 允许当前局参赛。
 - 友军伤害与友军击退被取消；出生保护同时阻止造成和受到伤害，首次使用 TACZ 枪械开火会提前解除。

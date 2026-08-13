@@ -12,8 +12,6 @@ import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 
 public final class MatchHudService {
     private static final String OBJECTIVE_NAME = "sfgame_tdm";
-    private static final String RED_LINE = ChatFormatting.RED + "RED";
-    private static final String BLUE_LINE = ChatFormatting.BLUE + "BLUE";
     private static final String TIME_LINE = ChatFormatting.GOLD + "TIME";
 
     public void update(MinecraftServer server, MatchManager manager) {
@@ -27,8 +25,10 @@ public final class MatchHudService {
             objective.setDisplayName(Component.literal("SFGame TDM / " + rules.scoreLimit()));
         }
         scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, objective);
-        scoreboard.getOrCreatePlayerScore(RED_LINE, objective).setScore(manager.redScore());
-        scoreboard.getOrCreatePlayerScore(BLUE_LINE, objective).setScore(manager.blueScore());
+        for (TeamSide side : TeamSide.PLAYABLE) {
+            String line = side.color() + side.id().toUpperCase();
+            scoreboard.getOrCreatePlayerScore(line, objective).setScore(manager.score(side));
+        }
         int remaining = Math.max(0, rules.timeLimitSeconds() - manager.elapsedTicks() / 20);
         scoreboard.getOrCreatePlayerScore(TIME_LINE, objective).setScore(remaining);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) player.refreshTabListName();

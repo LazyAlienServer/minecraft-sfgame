@@ -1,42 +1,90 @@
 package com.sfgame.data;
 
+import com.sfgame.game.TeamSide;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class ArenaMap {
     private final String id;
     private ArenaPosition lobby;
-    private ArenaPosition redSpawn;
-    private ArenaPosition blueSpawn;
+    private final Map<TeamSide, List<ArenaPosition>> spawns = new EnumMap<>(TeamSide.class);
 
     public ArenaMap(String id) {
         this.id = id;
+        TeamSide.PLAYABLE.forEach(side -> spawns.put(side, new ArrayList<>()));
     }
 
     public String id() { return id; }
     @Nullable public ArenaPosition lobby() { return lobby; }
-    @Nullable public ArenaPosition redSpawn() { return redSpawn; }
-    @Nullable public ArenaPosition blueSpawn() { return blueSpawn; }
     public void lobby(ArenaPosition value) { lobby = value; }
-    public void redSpawn(ArenaPosition value) { redSpawn = value; }
-    public void blueSpawn(ArenaPosition value) { blueSpawn = value; }
-    public boolean configured() { return lobby != null && redSpawn != null && blueSpawn != null; }
+    public List<ArenaPosition> spawns(TeamSide side) { return Collections.unmodifiableList(spawnList(side)); }
+    public void addSpawn(TeamSide side, ArenaPosition value) { spawnList(side).add(value); }
+    public boolean removeSpawn(TeamSide side, int index) {
+        List<ArenaPosition> positions = spawnList(side);
+        if (index < 0 || index >= positions.size()) return false;
+        positions.remove(index);
+        return true;
+    }
+    public void clearSpawns(TeamSide side) { spawnList(side).clear(); }
+    @Nullable public ArenaPosition randomSpawn(TeamSide side) {
+        List<ArenaPosition> positions = spawnList(side);
+        return positions.isEmpty() ? null : positions.get(ThreadLocalRandom.current().nextInt(positions.size()));
+    }
+    public List<TeamSide> enabledTeams() {
+        return TeamSide.PLAYABLE.stream().filter(side -> !spawnList(side).isEmpty()).toList();
+    }
+    public boolean configured() { return lobby != null && enabledTeams().size() >= 2; }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putString("Id", id);
         if (lobby != null) tag.put("Lobby", lobby.save());
-        if (redSpawn != null) tag.put("RedSpawn", redSpawn.save());
-        if (blueSpawn != null) tag.put("BlueSpawn", blueSpawn.save());
+        TeamSide.PLAYABLE.forEach(side -> tag.put(spawnKey(side), savePositions(spawnList(side))));
         return tag;
     }
 
     public static ArenaMap load(CompoundTag tag) {
         ArenaMap map = new ArenaMap(tag.getString("Id"));
         if (tag.contains("Lobby")) map.lobby = ArenaPosition.load(tag.getCompound("Lobby"));
-        if (tag.contains("RedSpawn")) map.redSpawn = ArenaPosition.load(tag.getCompound("RedSpawn"));
-        if (tag.contains("BlueSpawn")) map.blueSpawn = ArenaPosition.load(tag.getCompound("BlueSpawn"));
+        TeamSide.PLAYABLE.forEach(side -> loadPositions(tag, spawnKey(side), map.spawnList(side)));
+        // Data version 2 maps stored one spawn per red/blue side.
+        if (map.spawnList(TeamSide.RED).isEmpty() && tag.contains("RedSpawn")) {
+            map.addSpawn(TeamSide.RED, ArenaPosition.load(tag.getCompound("RedSpawn")));
+        }
+        if (map.spawnList(TeamSide.BLUE).isEmpty() && tag.contains("BlueSpawn")) {
+            map.addSpawn(TeamSide.BLUE, ArenaPosition.load(tag.getCompound("BlueSpawn")));
+        }
         return map;
+    }
+
+    private List<ArenaPosition> spawnList(TeamSide side) {
+        List<ArenaPosition> positions = spawns.get(side);
+        if (positions == null) throw new IllegalArgumentException("Not a playable team: " + side);
+        return positions;
+    }
+
+    private static String spawnKey(TeamSide side) {
+        return Character.toUpperCase(side.id().charAt(0)) + side.id().substring(1) + "Spawns";
+    }
+
+    private static ListTag savePositions(List<ArenaPosition> positions) {
+        ListTag list = new ListTag();
+        positions.forEach(position -> list.add(position.save()));
+        return list;
+    }
+
+    private static void loadPositions(CompoundTag tag, String key, List<ArenaPosition> destination) {
+        if (!tag.contains(key, Tag.TAG_LIST)) return;
+        ListTag list = tag.getList(key, Tag.TAG_COMPOUND);
+        for (int i = 0; i < list.size(); i++) destination.add(ArenaPosition.load(list.getCompound(i)));
     }
 }

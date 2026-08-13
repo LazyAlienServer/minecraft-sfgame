@@ -58,7 +58,29 @@ public final class SFGameCommands {
                         .then(Commands.literal("lobby").executes(c -> setPosition(c, "lobby")))
                         .then(Commands.literal("spawn")
                                 .then(Commands.literal("red").executes(c -> setPosition(c, "red")))
-                                .then(Commands.literal("blue").executes(c -> setPosition(c, "blue")))))
+                                .then(Commands.literal("blue").executes(c -> setPosition(c, "blue")))
+                                .then(Commands.literal("yellow").executes(c -> setPosition(c, "yellow")))
+                                .then(Commands.literal("green").executes(c -> setPosition(c, "green")))))
+                .then(Commands.literal("spawn").requires(s -> s.hasPermission(2))
+                        .then(Commands.literal("list")
+                                .then(Commands.literal("red").executes(c -> spawnList(c, TeamSide.RED)))
+                                .then(Commands.literal("blue").executes(c -> spawnList(c, TeamSide.BLUE)))
+                                .then(Commands.literal("yellow").executes(c -> spawnList(c, TeamSide.YELLOW)))
+                                .then(Commands.literal("green").executes(c -> spawnList(c, TeamSide.GREEN))))
+                        .then(Commands.literal("remove")
+                                .then(Commands.literal("red").then(Commands.argument("index", IntegerArgumentType.integer(1))
+                                        .executes(c -> spawnRemove(c, TeamSide.RED))))
+                                .then(Commands.literal("blue").then(Commands.argument("index", IntegerArgumentType.integer(1))
+                                        .executes(c -> spawnRemove(c, TeamSide.BLUE))))
+                                .then(Commands.literal("yellow").then(Commands.argument("index", IntegerArgumentType.integer(1))
+                                        .executes(c -> spawnRemove(c, TeamSide.YELLOW))))
+                                .then(Commands.literal("green").then(Commands.argument("index", IntegerArgumentType.integer(1))
+                                        .executes(c -> spawnRemove(c, TeamSide.GREEN)))))
+                        .then(Commands.literal("clear")
+                                .then(Commands.literal("red").executes(c -> spawnClear(c, TeamSide.RED)))
+                                .then(Commands.literal("blue").executes(c -> spawnClear(c, TeamSide.BLUE)))
+                                .then(Commands.literal("yellow").executes(c -> spawnClear(c, TeamSide.YELLOW)))
+                                .then(Commands.literal("green").executes(c -> spawnClear(c, TeamSide.GREEN)))))
                 .then(Commands.literal("mode").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("list").executes(SFGameCommands::modeList))
                         .then(Commands.literal("status").executes(SFGameCommands::modeStatus))
@@ -79,10 +101,16 @@ public final class SFGameCommands {
                                 .then(Commands.literal("red").then(Commands.argument("team", StringArgumentType.word())
                                         .suggests(TEAM_SUGGESTIONS).executes(c -> bindTeam(c, TeamSide.RED))))
                                 .then(Commands.literal("blue").then(Commands.argument("team", StringArgumentType.word())
-                                        .suggests(TEAM_SUGGESTIONS).executes(c -> bindTeam(c, TeamSide.BLUE)))))
+                                        .suggests(TEAM_SUGGESTIONS).executes(c -> bindTeam(c, TeamSide.BLUE))))
+                                .then(Commands.literal("yellow").then(Commands.argument("team", StringArgumentType.word())
+                                        .suggests(TEAM_SUGGESTIONS).executes(c -> bindTeam(c, TeamSide.YELLOW))))
+                                .then(Commands.literal("green").then(Commands.argument("team", StringArgumentType.word())
+                                        .suggests(TEAM_SUGGESTIONS).executes(c -> bindTeam(c, TeamSide.GREEN)))))
                         .then(Commands.literal("set").then(Commands.argument("players", EntityArgument.players())
                                 .then(Commands.literal("red").executes(c -> setTeam(c, TeamSide.RED)))
                                 .then(Commands.literal("blue").executes(c -> setTeam(c, TeamSide.BLUE)))
+                                .then(Commands.literal("yellow").executes(c -> setTeam(c, TeamSide.YELLOW)))
+                                .then(Commands.literal("green").executes(c -> setTeam(c, TeamSide.GREEN)))
                                 .then(Commands.literal("random").executes(c -> setTeam(c, TeamSide.NONE)))))
                         .then(Commands.literal("remove").then(Commands.argument("players", EntityArgument.players())
                                 .executes(SFGameCommands::removeTeam))))
@@ -111,7 +139,8 @@ public final class SFGameCommands {
     private static int status(CommandContext<CommandSourceStack> context) {
         MatchManager manager = MatchManager.get();
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        send(context, "Phase=" + manager.phase() + ", score=" + manager.redScore() + ":" + manager.blueScore()
+        send(context, "Phase=" + manager.phase() + ", scores=" + TeamSide.PLAYABLE.stream()
+                .map(side -> side.id() + ":" + manager.score(side)).collect(java.util.stream.Collectors.joining(","))
                 + ", mode=" + data.selectedMode() + ", map=" + data.selectedMap()
                 + ", arenaConfigured=" + data.isArenaConfigured());
         List<String> errors = manager.validateStart();
@@ -149,15 +178,56 @@ public final class SFGameCommands {
     }
 
     private static int setPosition(CommandContext<CommandSourceStack> context, String type) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit map positions during a match");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         ArenaPosition position = ArenaPosition.from(context.getSource().getPlayerOrException());
         switch (type) {
             case "lobby" -> data.lobby(position);
-            case "red" -> data.redSpawn(position);
-            case "blue" -> data.blueSpawn(position);
+            case "red" -> data.addSpawn(TeamSide.RED, position);
+            case "blue" -> data.addSpawn(TeamSide.BLUE, position);
+            case "yellow" -> data.addSpawn(TeamSide.YELLOW, position);
+            case "green" -> data.addSpawn(TeamSide.GREEN, position);
         }
         MatchManager.get().arenaSelectionChanged();
-        return success(context, "Set " + type + " position for " + data.selectedMode() + "/" + data.selectedMap());
+        String detail = switch (type) {
+            case "red" -> "Added red spawn #" + data.spawns(TeamSide.RED).size();
+            case "blue" -> "Added blue spawn #" + data.spawns(TeamSide.BLUE).size();
+            case "yellow" -> "Added yellow spawn #" + data.spawns(TeamSide.YELLOW).size();
+            case "green" -> "Added green spawn #" + data.spawns(TeamSide.GREEN).size();
+            default -> "Set lobby";
+        };
+        return success(context, detail + " for " + data.selectedMode() + "/" + data.selectedMap());
+    }
+
+    private static int spawnList(CommandContext<CommandSourceStack> context, TeamSide side) {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        List<ArenaPosition> positions = data.spawns(side);
+        send(context, side + " spawns for " + data.selectedMode() + "/" + data.selectedMap() + ": " + positions.size());
+        for (int i = 0; i < positions.size(); i++) send(context, (i + 1) + ": " + positionText(positions.get(i)));
+        return positions.size();
+    }
+
+    private static int spawnRemove(CommandContext<CommandSourceStack> context, TeamSide side) {
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit spawns during a match");
+        int displayIndex = IntegerArgumentType.getInteger(context, "index");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        boolean removed = data.removeSpawn(side, displayIndex - 1);
+        if (!removed) return failure(context, "Spawn index does not exist: " + displayIndex);
+        MatchManager.get().arenaSelectionChanged();
+        return success(context, "Removed " + side + " spawn #" + displayIndex);
+    }
+
+    private static int spawnClear(CommandContext<CommandSourceStack> context, TeamSide side) {
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit spawns during a match");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        int removed = data.spawns(side).size();
+        data.clearSpawns(side);
+        MatchManager.get().arenaSelectionChanged();
+        return success(context, "Cleared " + removed + " " + side + " spawn(s)");
+    }
+
+    private static String positionText(ArenaPosition position) {
+        return position.dimension() + " " + String.format(java.util.Locale.ROOT, "%.1f %.1f %.1f", position.x(), position.y(), position.z());
     }
 
     private static int modeList(CommandContext<CommandSourceStack> context) {
@@ -194,8 +264,8 @@ public final class SFGameCommands {
         ArenaMap map = data.activeMap();
         if (map == null) return failure(context, "No active map");
         send(context, "Mode=" + data.selectedMode() + ", map=" + map.id() + ", configured=" + map.configured()
-                + ", lobby=" + (map.lobby() != null) + ", redSpawn=" + (map.redSpawn() != null)
-                + ", blueSpawn=" + (map.blueSpawn() != null));
+                + ", lobby=" + (map.lobby() != null) + ", enabledTeams=" + map.enabledTeams()
+                + ", spawns=" + TeamSide.PLAYABLE.stream().map(side -> side.id() + ":" + map.spawns(side).size()).toList());
         return map.configured() ? 1 : 0;
     }
 
@@ -228,7 +298,8 @@ public final class SFGameCommands {
 
     private static int teamStatus(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        send(context, "RED -> " + data.redTeam() + ", BLUE -> " + data.blueTeam());
+        send(context, TeamSide.PLAYABLE.stream().map(side -> side.id().toUpperCase() + " -> " + data.teamName(side))
+                .collect(java.util.stream.Collectors.joining(", ")));
         return 1;
     }
 
@@ -237,10 +308,10 @@ public final class SFGameCommands {
         PlayerTeam team = context.getSource().getServer().getScoreboard().getPlayerTeam(name);
         if (team == null) return failure(context, "Vanilla team does not exist: " + name);
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        if (side == TeamSide.RED && name.equals(data.blueTeam()) || side == TeamSide.BLUE && name.equals(data.redTeam())) {
-            return failure(context, "Red and blue cannot bind the same team");
+        if (TeamSide.PLAYABLE.stream().filter(other -> other != side).anyMatch(other -> name.equals(data.teamName(other)))) {
+            return failure(context, "Each SFGame side must bind a different vanilla team");
         }
-        if (side == TeamSide.RED) data.redTeam(name); else data.blueTeam(name);
+        data.teamName(side, name);
         return success(context, side + " bound to " + name);
     }
 

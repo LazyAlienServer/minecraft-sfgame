@@ -71,13 +71,16 @@ public final class SFGameScreen extends Screen {
         graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
         MatchSnapshot snapshot = ClientMatchState.snapshot();
         if (snapshot != null) {
-            graphics.drawCenteredString(font,
-                    Component.literal("RED " + snapshot.redScore() + "  :  " + snapshot.blueScore() + " BLUE")
-                            .withStyle(ChatFormatting.BOLD), width / 2, 36, 0xFFFFFF);
-            String side = snapshot.side() == TeamSide.RED ? "RED" : snapshot.side() == TeamSide.BLUE ? "BLUE" : "NONE";
+            String scores = TeamSide.PLAYABLE.stream()
+                    .filter(team -> snapshot.players(team) > 0)
+                    .map(team -> team.id().toUpperCase() + " " + snapshot.score(team)).collect(java.util.stream.Collectors.joining("  ·  "));
+            graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD), width / 2, 36, 0xFFFFFF);
+            String side = snapshot.side().id().toUpperCase();
             String status = snapshot.phase().name() + " · " + side + " · "
                     + String.format("%02d:%02d", snapshot.remainingSeconds() / 60, snapshot.remainingSeconds() % 60)
-                    + " · " + snapshot.redPlayers() + "v" + snapshot.bluePlayers();
+                    + " · " + TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
+                    .map(team -> team.id().substring(0, 1).toUpperCase() + snapshot.players(team))
+                    .collect(java.util.stream.Collectors.joining("/"));
             graphics.drawCenteredString(font, status, width / 2, 51, 0xB8B8B8);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
@@ -88,4 +91,3 @@ public final class SFGameScreen extends Screen {
         return false;
     }
 }
-
