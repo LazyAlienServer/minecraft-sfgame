@@ -27,5 +27,11 @@
   "sfgame.result.returning": "%s 秒后返回大厅",
   "sfgame.error.permission": "权限不足",
   "sfgame.error.invalid_class": "无效职业：%s",
-  "sfgame.error.full": "比赛人数已满"
+  "sfgame.error.full": "比赛人数已满",
+  "sfgame.point.bossbar": "%s · %s",
+  "sfgame.point.neutral": "中立",
+  "sfgame.point.contested": "争夺中",
+  "sfgame.point.captured": "%s 已被%s占领",
+  "sfgame.point.neutralized": "%s 已中立化",
+  "sfgame.point.next": "下一个占领点：%s"
 }

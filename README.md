@@ -1,6 +1,6 @@
 # SFGame
 
-SFGame 是一个服务端权威的 Forge 1.20.1 团队竞技模组，使用 TACZ 提供枪械和弹药。当前版本实现单场红蓝团队竞技、动态规则、原版队伍绑定、职业配装、重生、计分、菜单及 HUD。
+SFGame 是一个服务端权威的 Forge 1.20.1 枪战模式模组，使用 TACZ 提供枪械和弹药。当前版本实现团队竞技与占点模式、动态规则、原版队伍绑定、职业配装、重生、计分、菜单及 HUD。
 
 ## 环境与构建
 
@@ -89,7 +89,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 `/sfgame team set` 和 `/sfgame team remove` 使用多玩家实体参数，支持玩家名以及 `@a`、`@p`、`@r` 等原版选择器。例如：`/sfgame team set @a random`。
 
-地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`，每个模式可以拥有多张地图。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
+地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm` 和 `domination`，每个模式可以拥有多张地图。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
 
 ## 职业配置
 
@@ -114,6 +114,44 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 - 比赛玩家为冒险模式，禁止破坏、放置和丢弃受保护的职业装备。
 - 比赛异常关闭后不恢复半场，下一次启动清理战斗状态并回到大厅。
 - 开场、重生和结算使用原版 Title、Action Bar 与提示音；结算期间 Action Bar 会显示返回大厅倒计时。
+
+## 占点模式
+
+使用 `/sfgame mode select domination` 选择占点模式。每张地图支持 1～16 个互不重叠的点位：
+
+```text
+/sfgame point pos1
+/sfgame point pos2
+/sfgame point add box <点位ID>
+/sfgame point add square <点位ID> <半径>
+/sfgame point set box <点位ID>
+/sfgame point set center <点位ID>
+/sfgame point set radius <点位ID> <半径>
+/sfgame point set height <点位ID> full
+/sfgame point set height <点位ID> <minY> <maxY>
+/sfgame point set order <点位ID> <序号>
+/sfgame point strategy <async|sync>
+/sfgame point list
+/sfgame point status <点位ID>
+/sfgame point remove <点位ID>
+/sfgame point clear
+```
+
+`async` 同时开放所有点；`sync` 按顺序逐个开放，并在一轮完成后结算。长方形使用两个角点，正方形使用管理员脚下中心与半径；未设置高度时覆盖全部高度。
+
+规则按模式独立保存。占点模式额外支持：
+
+```text
+/sfgame rules set captureTimeSeconds <秒>
+/sfgame rules set captureUsePlayerDifference <true|false>
+/sfgame rules set captureDifferenceCoefficient <小数>
+/sfgame rules set captureMaxMultiplier <倍率>
+/sfgame rules set scoreIntervalSeconds <秒>
+/sfgame rules set scorePerPoint <分数>
+/sfgame rules set syncHoldSeconds <秒>
+```
+
+人数差计算开启时，占领速度为基础速度乘以第一名与第二名人数差，再乘以系数 `k`，最终受最大倍率限制。比赛中使用原版 Bossbar 显示点位进度。
 
 ## 验证
 

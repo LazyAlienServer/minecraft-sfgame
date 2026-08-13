@@ -11,7 +11,7 @@ import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 
 public final class MatchHudService {
-    private static final String OBJECTIVE_NAME = "sfgame_tdm";
+    private static final String OBJECTIVE_NAME = "sfgame_match";
     private static final String TIME_LINE = ChatFormatting.GOLD + "TIME";
 
     public void update(MinecraftServer server, MatchManager manager) {
@@ -27,9 +27,9 @@ public final class MatchHudService {
         MatchRules rules = data.rules();
         if (objective == null) {
             objective = scoreboard.addObjective(OBJECTIVE_NAME, ObjectiveCriteria.DUMMY,
-                    Component.literal("SFGame TDM / " + rules.scoreLimit()), ObjectiveCriteria.RenderType.INTEGER);
+                    Component.literal(title(data.selectedMode(), rules.scoreLimit())), ObjectiveCriteria.RenderType.INTEGER);
         } else {
-            objective.setDisplayName(Component.literal("SFGame TDM / " + rules.scoreLimit()));
+            objective.setDisplayName(Component.literal(title(data.selectedMode(), rules.scoreLimit())));
         }
         scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, objective);
         for (TeamSide side : TeamSide.PLAYABLE) {
@@ -44,6 +44,10 @@ public final class MatchHudService {
         scoreboard.getOrCreatePlayerScore(TIME_LINE, objective).setScore(remaining);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) player.refreshTabListName();
 
+    }
+
+    private static String title(String modeId, int scoreLimit) {
+        return "SFGame " + (GameModeRegistry.DOMINATION.equals(modeId) ? "DOMINATION" : "TDM") + " / " + scoreLimit;
     }
 
     public void clear(MinecraftServer server) {

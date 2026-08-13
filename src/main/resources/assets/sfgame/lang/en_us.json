@@ -27,5 +27,11 @@
   "sfgame.result.returning": "Returning to lobby in %s seconds",
   "sfgame.error.permission": "Insufficient permission",
   "sfgame.error.invalid_class": "Invalid class: %s",
-  "sfgame.error.full": "The match is full"
+  "sfgame.error.full": "The match is full",
+  "sfgame.point.bossbar": "%s · %s",
+  "sfgame.point.neutral": "Neutral",
+  "sfgame.point.contested": "Contested",
+  "sfgame.point.captured": "%s captured by %s",
+  "sfgame.point.neutralized": "%s neutralized",
+  "sfgame.point.next": "Next capture point: %s"
 }

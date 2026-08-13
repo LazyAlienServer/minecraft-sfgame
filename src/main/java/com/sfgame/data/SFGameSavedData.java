@@ -25,10 +25,11 @@ public final class SFGameSavedData extends SavedData {
     private String selectedMode = GameModeRegistry.TEAM_DEATHMATCH;
     private String selectedMap = DEFAULT_MAP;
     private final Map<String, LinkedHashMap<String, ArenaMap>> modeMaps = new LinkedHashMap<>();
-    private final MatchRules rules = new MatchRules();
+    private final Map<String, MatchRules> modeRules = new LinkedHashMap<>();
 
     public SFGameSavedData() {
         mapsFor(GameModeRegistry.TEAM_DEATHMATCH).put(DEFAULT_MAP, new ArenaMap(DEFAULT_MAP));
+        GameModeRegistry.all().forEach(mode -> modeRules.put(mode.id(), new MatchRules(mode.id())));
     }
 
     public static SFGameSavedData get(MinecraftServer server) {
@@ -63,7 +64,8 @@ public final class SFGameSavedData extends SavedData {
     }
     public String selectedMode() { return selectedMode; }
     public String selectedMap() { return selectedMap; }
-    public MatchRules rules() { return rules; }
+    public MatchRules rules() { return rules(selectedMode); }
+    public MatchRules rules(String modeId) { return modeRules.computeIfAbsent(modeId, MatchRules::new); }
 
     public boolean selectMode(String modeId) {
         if (GameModeRegistry.get(modeId).isEmpty()) return false;
@@ -115,11 +117,12 @@ public final class SFGameSavedData extends SavedData {
     public void addSpawn(TeamSide side, ArenaPosition value) { activeMapRequired().addSpawn(side, value); setDirty(); }
     public boolean removeSpawn(TeamSide side, int index) { boolean changed = activeMapRequired().removeSpawn(side, index); if (changed) setDirty(); return changed; }
     public void clearSpawns(TeamSide side) { activeMapRequired().clearSpawns(side); setDirty(); }
-    public boolean isArenaConfigured() { return activeMap() != null && activeMap().configured(); }
+    public boolean isArenaConfigured() { return mapConfigured(activeMap(), selectedMode); }
+    public boolean mapConfigured(ArenaMap map) { return mapConfigured(map, selectedMode); }
 
     @Override
     public CompoundTag save(CompoundTag tag) {
-        tag.putInt("DataVersion", 4);
+        tag.putInt("DataVersion", 5);
         tag.putString("RedTeam", redTeam);
         tag.putString("BlueTeam", blueTeam);
         tag.putString("YellowTeam", yellowTeam);
@@ -136,7 +139,11 @@ public final class SFGameSavedData extends SavedData {
             modes.add(modeTag);
         });
         tag.put("Modes", modes);
-        tag.put("Rules", rules.save());
+        ListTag ruleList = new ListTag();
+        modeRules.forEach((modeId, rules) -> {
+            CompoundTag ruleTag = rules.save(); ruleTag.putString("Mode", modeId); ruleList.add(ruleTag);
+        });
+        tag.put("ModeRules", ruleList);
         return tag;
     }
 
@@ -172,7 +179,17 @@ public final class SFGameSavedData extends SavedData {
         LinkedHashMap<String, ArenaMap> selectedMaps = data.mapsFor(data.selectedMode);
         if (selectedMaps.isEmpty()) selectedMaps.put(DEFAULT_MAP, new ArenaMap(DEFAULT_MAP));
         if (!selectedMaps.containsKey(data.selectedMap)) data.selectedMap = selectedMaps.keySet().iterator().next();
-        if (tag.contains("Rules")) data.rules.load(tag.getCompound("Rules"));
+        if (tag.contains("ModeRules", Tag.TAG_LIST)) {
+            ListTag ruleList = tag.getList("ModeRules", Tag.TAG_COMPOUND);
+            for (int i = 0; i < ruleList.size(); i++) {
+                CompoundTag ruleTag = ruleList.getCompound(i);
+                String modeId = ruleTag.getString("Mode");
+                if (GameModeRegistry.get(modeId).isPresent()) data.rules(modeId).load(ruleTag);
+            }
+        } else if (tag.contains("Rules")) {
+            // Version 4 migration: the only rule set belonged to TDM.
+            data.rules(GameModeRegistry.TEAM_DEATHMATCH).load(tag.getCompound("Rules"));
+        }
         return data;
     }
 
@@ -184,6 +201,11 @@ public final class SFGameSavedData extends SavedData {
         ArenaMap map = activeMap();
         if (map == null) throw new IllegalStateException("No active SFGame map");
         return map;
+    }
+
+    private static boolean mapConfigured(ArenaMap map, String modeId) {
+        if (map == null || !map.configured()) return false;
+        return !GameModeRegistry.DOMINATION.equals(modeId) || map.domination().configured();
     }
 
     private static boolean validId(String id) {

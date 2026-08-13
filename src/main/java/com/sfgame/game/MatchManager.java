@@ -39,6 +39,9 @@ public final class MatchManager {
     private final ClassRegistry classRegistry = new ClassRegistry();
     private final LoadoutService loadoutService = new LoadoutService();
     private final VanillaTeamBindingService teams = new VanillaTeamBindingService();
+    private final TeamDeathmatchRuntime teamDeathmatchRuntime = new TeamDeathmatchRuntime();
+    private final DominationRuntime dominationRuntime = new DominationRuntime();
+    private MatchModeRuntime activeRuntime = teamDeathmatchRuntime;
 
     private MatchPhase phase = MatchPhase.UNCONFIGURED;
     private MinecraftServer server;
@@ -94,6 +97,7 @@ public final class MatchManager {
     }
 
     public void serverStopped() {
+        activeRuntime.stop();
         players.clear();
         server = null;
         phase = MatchPhase.UNCONFIGURED;
@@ -131,6 +135,7 @@ public final class MatchManager {
         if (!data.isArenaConfigured()) errors.add("Lobby and spawn points for at least two teams must be set");
         if (!teams.bindingsValid(server, data)) errors.add("All four SFGame sides must bind different existing vanilla teams");
         errors.addAll(loadoutService.validate(classRegistry));
+        if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
 
         List<TeamSide> enabledTeams = data.enabledTeams();
         if (enabledTeams.size() < 2) errors.add("The selected map needs spawn points for at least two teams");
@@ -192,6 +197,7 @@ public final class MatchManager {
 
     public void stop(boolean showResult, Component reason) {
         if (server == null) return;
+        activeRuntime.stop();
         if (showResult) {
             phase = MatchPhase.RESULT;
             phaseTicks = data().rules().resultSeconds() * 20;
@@ -312,7 +318,7 @@ public final class MatchManager {
             TeamSide victimSide = teams.sideOf(victim, data());
             if (attackerState.participating() && attackerSide != TeamSide.NONE && attackerSide != victimSide) {
                 attackerState.addKill();
-                addScore(attackerSide);
+                activeRuntime.onKill(attackerSide, this);
             }
         }
         victimState.respawning(true);
@@ -355,6 +361,11 @@ public final class MatchManager {
 
     public void setRule(String key, int value) {
         MatchRules rules = data().rules();
+        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode())
+                && (key.startsWith("capture") || key.equals("scoreIntervalSeconds")
+                || key.equals("scorePerPoint") || key.equals("syncHoldSeconds"))) {
+            throw new IllegalArgumentException(key + " is only available in domination mode");
+        }
         switch (key) {
             case "maxPlayers" -> rules.maxPlayers(value);
             case "scoreLimit" -> rules.scoreLimit(value);
@@ -363,10 +374,27 @@ public final class MatchManager {
             case "respawnSeconds" -> rules.respawnSeconds(value);
             case "respawnProtectionSeconds" -> rules.respawnProtectionSeconds(value);
             case "resultSeconds" -> rules.resultSeconds(value);
+            case "captureTimeSeconds" -> rules.captureTimeSeconds(value);
+            case "captureMaxMultiplier" -> rules.captureMaxMultiplier(value);
+            case "scoreIntervalSeconds" -> rules.scoreIntervalSeconds(value);
+            case "scorePerPoint" -> rules.scorePerPoint(value);
+            case "syncHoldSeconds" -> rules.syncHoldSeconds(value);
             default -> throw new IllegalArgumentException("Unknown rule " + key);
         }
         data().setDirty();
         syncAll();
+    }
+
+    public void setRule(String key, boolean value) {
+        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode())) throw new IllegalArgumentException(key + " is only available in domination mode");
+        if (!"captureUsePlayerDifference".equals(key)) throw new IllegalArgumentException("Unknown boolean rule " + key);
+        data().rules().captureUsePlayerDifference(value); data().setDirty(); syncAll();
+    }
+
+    public void setRule(String key, double value) {
+        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode())) throw new IllegalArgumentException(key + " is only available in domination mode");
+        if (!"captureDifferenceCoefficient".equals(key)) throw new IllegalArgumentException("Unknown decimal rule " + key);
+        data().rules().captureDifferenceCoefficient(value); data().setDirty(); syncAll();
     }
 
     public void resetRules() {
@@ -384,7 +412,7 @@ public final class MatchManager {
                 .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
                         c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo()))
                 .toList();
-        return new MatchSnapshot(phase, side, redScore, blueScore, yellowScore, greenScore,
+        return new MatchSnapshot(data().selectedMode(), phase, side, redScore, blueScore, yellowScore, greenScore,
                 rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
                 countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(), state.pendingClass(),
                 state.participating(), state.queued(), classViews);
@@ -409,6 +437,8 @@ public final class MatchManager {
     private void beginRunning() {
         phase = MatchPhase.RUNNING;
         elapsedTicks = 0;
+        activeRuntime = modeRuntime();
+        activeRuntime.start(server, this, data().activeMap(), data().rules());
         forParticipants(player -> deploy(player, state(player), false));
         forParticipants(player -> {
             sendTitle(player, Component.translatable("sfgame.match.start").withStyle(ChatFormatting.GREEN),
@@ -422,9 +452,9 @@ public final class MatchManager {
     private void tickRunning() {
         elapsedTicks++;
         MatchRules rules = data().rules();
-        if (data().enabledTeams().stream().anyMatch(side -> score(side) >= rules.scoreLimit())
-                || elapsedTicks >= rules.timeLimitSeconds() * 20) {
-            result = determineWinner();
+        ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
+        if (modeResult.finished() || elapsedTicks >= rules.timeLimitSeconds() * 20) {
+            result = modeResult.finished() ? modeResult.winner() : determineWinner();
             stop(true, Component.empty());
         }
     }
@@ -597,17 +627,18 @@ public final class MatchManager {
         });
     }
 
-    private void addScore(TeamSide side) {
+    void addTeamScore(TeamSide side, int amount) {
+        if (amount <= 0) return;
         switch (side) {
-            case RED -> redScore++;
-            case BLUE -> blueScore++;
-            case YELLOW -> yellowScore++;
-            case GREEN -> greenScore++;
+            case RED -> redScore += amount;
+            case BLUE -> blueScore += amount;
+            case YELLOW -> yellowScore += amount;
+            case GREEN -> greenScore += amount;
             case NONE -> { }
         }
     }
 
-    private TeamSide determineWinner() {
+    TeamSide determineWinner() {
         List<TeamSide> enabled = data().enabledTeams();
         int highest = enabled.stream().mapToInt(this::score).max().orElse(0);
         List<TeamSide> leaders = enabled.stream().filter(side -> score(side) == highest).toList();
@@ -640,6 +671,12 @@ public final class MatchManager {
             if (server == null) throw new IllegalStateException("Server is not running");
         }
         return SFGameSavedData.get(server);
+    }
+
+    SFGameSavedData savedData() { return data(); }
+
+    private MatchModeRuntime modeRuntime() {
+        return GameModeRegistry.DOMINATION.equals(data().selectedMode()) ? dominationRuntime : teamDeathmatchRuntime;
     }
 
     private void sync(ServerPlayer player) {

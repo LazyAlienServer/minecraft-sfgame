@@ -17,6 +17,7 @@ public final class ArenaMap {
     private final String id;
     private ArenaPosition lobby;
     private final Map<TeamSide, List<ArenaPosition>> spawns = new EnumMap<>(TeamSide.class);
+    private DominationMapConfig domination = new DominationMapConfig();
 
     public ArenaMap(String id) {
         this.id = id;
@@ -43,12 +44,14 @@ public final class ArenaMap {
         return TeamSide.PLAYABLE.stream().filter(side -> !spawnList(side).isEmpty()).toList();
     }
     public boolean configured() { return lobby != null && enabledTeams().size() >= 2; }
+    public DominationMapConfig domination() { return domination; }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putString("Id", id);
         if (lobby != null) tag.put("Lobby", lobby.save());
         TeamSide.PLAYABLE.forEach(side -> tag.put(spawnKey(side), savePositions(spawnList(side))));
+        tag.put("Domination", domination.save());
         return tag;
     }
 
@@ -63,6 +66,7 @@ public final class ArenaMap {
         if (map.spawnList(TeamSide.BLUE).isEmpty() && tag.contains("BlueSpawn")) {
             map.addSpawn(TeamSide.BLUE, ArenaPosition.load(tag.getCompound("BlueSpawn")));
         }
+        if (tag.contains("Domination")) map.domination = DominationMapConfig.load(tag.getCompound("Domination"));
         return map;
     }
 

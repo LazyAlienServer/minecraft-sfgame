@@ -7,7 +7,7 @@ import net.minecraft.network.FriendlyByteBuf;
 import java.util.ArrayList;
 import java.util.List;
 
-public record MatchSnapshot(MatchPhase phase, TeamSide side, int redScore, int blueScore, int yellowScore,
+public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int redScore, int blueScore, int yellowScore,
                             int greenScore, int scoreLimit, int remainingSeconds, int redPlayers, int bluePlayers,
                             int yellowPlayers, int greenPlayers, String currentClass, String pendingClass,
                             boolean participating, boolean queued, List<ClassView> classes) {
@@ -33,7 +33,7 @@ public record MatchSnapshot(MatchPhase phase, TeamSide side, int redScore, int b
     }
 
     public void encode(FriendlyByteBuf buffer) {
-        buffer.writeEnum(phase); buffer.writeEnum(side);
+        buffer.writeUtf(modeId); buffer.writeEnum(phase); buffer.writeEnum(side);
         buffer.writeVarInt(redScore); buffer.writeVarInt(blueScore); buffer.writeVarInt(yellowScore); buffer.writeVarInt(greenScore);
         buffer.writeVarInt(scoreLimit); buffer.writeVarInt(remainingSeconds);
         buffer.writeVarInt(redPlayers); buffer.writeVarInt(bluePlayers); buffer.writeVarInt(yellowPlayers); buffer.writeVarInt(greenPlayers);
@@ -44,7 +44,7 @@ public record MatchSnapshot(MatchPhase phase, TeamSide side, int redScore, int b
     }
 
     public static MatchSnapshot decode(FriendlyByteBuf buffer) {
-        MatchPhase phase = buffer.readEnum(MatchPhase.class); TeamSide side = buffer.readEnum(TeamSide.class);
+        String modeId = buffer.readUtf(); MatchPhase phase = buffer.readEnum(MatchPhase.class); TeamSide side = buffer.readEnum(TeamSide.class);
         int redScore = buffer.readVarInt(), blueScore = buffer.readVarInt(), yellowScore = buffer.readVarInt(), greenScore = buffer.readVarInt();
         int scoreLimit = buffer.readVarInt(), remaining = buffer.readVarInt();
         int redPlayers = buffer.readVarInt(), bluePlayers = buffer.readVarInt(), yellowPlayers = buffer.readVarInt(), greenPlayers = buffer.readVarInt();
@@ -53,7 +53,7 @@ public record MatchSnapshot(MatchPhase phase, TeamSide side, int redScore, int b
         boolean participating = buffer.readBoolean(), queued = buffer.readBoolean();
         int size = buffer.readVarInt(); List<ClassView> classes = new ArrayList<>(size);
         for (int i = 0; i < size; i++) classes.add(ClassView.decode(buffer));
-        return new MatchSnapshot(phase, side, redScore, blueScore, yellowScore, greenScore, scoreLimit, remaining,
+        return new MatchSnapshot(modeId, phase, side, redScore, blueScore, yellowScore, greenScore, scoreLimit, remaining,
                 redPlayers, bluePlayers, yellowPlayers, greenPlayers, current, pending, participating, queued, List.copyOf(classes));
     }
 }

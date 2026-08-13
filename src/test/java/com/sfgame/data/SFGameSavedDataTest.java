@@ -110,4 +110,47 @@ final class SFGameSavedDataTest {
         assertEquals(List.of(LOBBY), restored.spawns(com.sfgame.game.TeamSide.YELLOW));
         assertEquals(List.of(BLUE), restored.spawns(com.sfgame.game.TeamSide.GREEN));
     }
+
+    @Test
+    void persistsDominationPointsStrategyAndModeRules() {
+        SFGameSavedData source = new SFGameSavedData();
+        assertTrue(source.selectMode(com.sfgame.game.GameModeRegistry.DOMINATION));
+        source.lobby(LOBBY);
+        source.addSpawn(com.sfgame.game.TeamSide.RED, RED);
+        source.addSpawn(com.sfgame.game.TeamSide.BLUE, BLUE);
+        source.activeMap().domination().strategy(PointActivationStrategy.SYNC);
+        source.activeMap().domination().add(new CapturePointDefinition("a",
+                new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+        source.rules().captureDifferenceCoefficient(1.75);
+
+        SFGameSavedData restored = SFGameSavedData.load(source.save(new CompoundTag()));
+
+        assertEquals(com.sfgame.game.GameModeRegistry.DOMINATION, restored.selectedMode());
+        assertTrue(restored.isArenaConfigured());
+        assertEquals(PointActivationStrategy.SYNC, restored.activeMap().domination().strategy());
+        assertEquals("a", restored.activeMap().domination().points().get(0).id());
+        assertEquals(1.75, restored.rules().captureDifferenceCoefficient());
+        assertEquals(50, restored.rules(com.sfgame.game.GameModeRegistry.TEAM_DEATHMATCH).scoreLimit());
+    }
+
+    @Test
+    void rejectsOverlappingCapturePoints() {
+        DominationMapConfig config = new DominationMapConfig();
+        config.add(new CapturePointDefinition("a", new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> config.add(
+                new CapturePointDefinition("b", new BoxCaptureRegion("minecraft:overworld", 4, 10, 4, 10, null, null), 2)));
+    }
+
+    @Test
+    void migratesLegacyGlobalRulesOnlyIntoTdm() {
+        CompoundTag legacy = new CompoundTag();
+        MatchRules oldRules = new MatchRules();
+        oldRules.scoreLimit(77);
+        legacy.put("Rules", oldRules.save());
+
+        SFGameSavedData restored = SFGameSavedData.load(legacy);
+
+        assertEquals(77, restored.rules(com.sfgame.game.GameModeRegistry.TEAM_DEATHMATCH).scoreLimit());
+        assertEquals(100, restored.rules(com.sfgame.game.GameModeRegistry.DOMINATION).scoreLimit());
+    }
 }

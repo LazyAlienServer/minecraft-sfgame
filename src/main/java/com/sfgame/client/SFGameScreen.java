@@ -76,7 +76,7 @@ public final class SFGameScreen extends Screen {
                     .map(team -> team.id().toUpperCase() + " " + snapshot.score(team)).collect(java.util.stream.Collectors.joining("  ·  "));
             graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD), width / 2, 36, 0xFFFFFF);
             String side = snapshot.side().id().toUpperCase();
-            String status = snapshot.phase().name() + " · " + side + " · "
+            String status = snapshot.modeId().toUpperCase() + " · " + snapshot.phase().name() + " · " + side + " · "
                     + String.format("%02d:%02d", snapshot.remainingSeconds() / 60, snapshot.remainingSeconds() % 60)
                     + " · " + TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
                     .map(team -> team.id().substring(0, 1).toUpperCase() + snapshot.players(team))

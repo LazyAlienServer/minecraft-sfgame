@@ -1,5 +1,6 @@
 package com.sfgame.data;
 
+import com.sfgame.game.GameModeRegistry;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
@@ -61,5 +62,21 @@ final class MatchRulesTest {
         assertEquals(MatchRules.DEFAULT_RESPAWN_SECONDS, rules.respawnSeconds());
         assertEquals(MatchRules.DEFAULT_RESPAWN_PROTECTION_SECONDS, rules.respawnProtectionSeconds());
         assertEquals(MatchRules.DEFAULT_RESULT_SECONDS, rules.resultSeconds());
+    }
+
+    @Test
+    void dominationRulesHaveIndependentDefaultsAndPersistDecimals() {
+        MatchRules rules = new MatchRules(GameModeRegistry.DOMINATION);
+        assertEquals(100, rules.scoreLimit());
+        rules.captureDifferenceCoefficient(2.25);
+        rules.captureUsePlayerDifference(false);
+        rules.syncHoldSeconds(90);
+
+        MatchRules restored = new MatchRules(GameModeRegistry.DOMINATION);
+        restored.load(rules.save());
+
+        assertEquals(2.25, restored.captureDifferenceCoefficient());
+        assertEquals(false, restored.captureUsePlayerDifference());
+        assertEquals(90, restored.syncHoldSeconds());
     }
 }
