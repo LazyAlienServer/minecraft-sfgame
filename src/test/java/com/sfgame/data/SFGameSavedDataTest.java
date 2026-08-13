@@ -142,6 +142,50 @@ final class SFGameSavedDataTest {
     }
 
     @Test
+    void acceptsSingleUppercasePointIdsAndNormalizesLookups() {
+        DominationMapConfig config = new DominationMapConfig();
+        config.add(new CapturePointDefinition("A",
+                new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+
+        assertEquals("a", config.points().get(0).id());
+        assertTrue(config.point("A").isPresent());
+        config.replace("A", config.point("a").orElseThrow().withOrder(2));
+        assertEquals(2, config.point("A").orElseThrow().order());
+        assertTrue(config.remove("A"));
+    }
+
+    @Test
+    void mapLobbyOverridesDefaultLobbyAndClearRestoresFallback() {
+        SFGameSavedData source = new SFGameSavedData();
+        source.defaultLobby(LOBBY);
+        assertEquals(LOBBY, source.lobby());
+
+        source.lobby(RED);
+        assertEquals(RED, source.lobby());
+        source.clearLobby();
+        assertEquals(LOBBY, source.lobby());
+        source.addSpawn(com.sfgame.game.TeamSide.RED, RED);
+        source.addSpawn(com.sfgame.game.TeamSide.BLUE, BLUE);
+        assertTrue(source.isArenaConfigured());
+
+        SFGameSavedData restored = SFGameSavedData.load(source.save(new CompoundTag()));
+        assertEquals(LOBBY, restored.defaultLobby());
+        assertEquals(LOBBY, restored.lobby());
+    }
+
+    @Test
+    void migratesDominationScoringIntervalToOneSecond() {
+        SFGameSavedData source = new SFGameSavedData();
+        source.rules(com.sfgame.game.GameModeRegistry.DOMINATION).scoreIntervalSeconds(5);
+        CompoundTag oldSave = source.save(new CompoundTag());
+        oldSave.putInt("DataVersion", 5);
+
+        SFGameSavedData restored = SFGameSavedData.load(oldSave);
+
+        assertEquals(1, restored.rules(com.sfgame.game.GameModeRegistry.DOMINATION).scoreIntervalSeconds());
+    }
+
+    @Test
     void migratesLegacyGlobalRulesOnlyIntoTdm() {
         CompoundTag legacy = new CompoundTag();
         MatchRules oldRules = new MatchRules();

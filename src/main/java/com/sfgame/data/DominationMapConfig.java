@@ -19,7 +19,10 @@ public final class DominationMapConfig {
     public List<CapturePointDefinition> points() {
         return points.stream().sorted(Comparator.comparingInt(CapturePointDefinition::order).thenComparing(CapturePointDefinition::id)).toList();
     }
-    public Optional<CapturePointDefinition> point(String id) { return points.stream().filter(point -> point.id().equals(id)).findFirst(); }
+    public Optional<CapturePointDefinition> point(String id) {
+        String normalized = CapturePointDefinition.normalizeId(id);
+        return points.stream().filter(point -> point.id().equals(normalized)).findFirst();
+    }
 
     public void add(CapturePointDefinition point) {
         if (points.size() >= MAX_POINTS) throw new IllegalArgumentException("A map can have at most 16 capture points");
@@ -30,11 +33,14 @@ public final class DominationMapConfig {
 
     public void replace(String id, CapturePointDefinition replacement) {
         int index = indexOf(id);
-        validateNoOverlap(replacement, id);
+        validateNoOverlap(replacement, replacement.id());
         points.set(index, replacement);
     }
 
-    public boolean remove(String id) { return points.removeIf(point -> point.id().equals(id)); }
+    public boolean remove(String id) {
+        String normalized = CapturePointDefinition.normalizeId(id);
+        return points.removeIf(point -> point.id().equals(normalized));
+    }
     public void clear() { points.clear(); }
     public boolean configured() { return !points.isEmpty() && points.size() <= MAX_POINTS; }
 
@@ -71,7 +77,8 @@ public final class DominationMapConfig {
     }
 
     private int indexOf(String id) {
-        for (int i = 0; i < points.size(); i++) if (points.get(i).id().equals(id)) return i;
+        String normalized = CapturePointDefinition.normalizeId(id);
+        for (int i = 0; i < points.size(); i++) if (points.get(i).id().equals(normalized)) return i;
         throw new IllegalArgumentException("Unknown capture point: " + id);
     }
 

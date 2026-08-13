@@ -33,5 +33,6 @@
   "sfgame.point.contested": "争夺中",
   "sfgame.point.captured": "%s 已被%s占领",
   "sfgame.point.neutralized": "%s 已中立化",
-  "sfgame.point.next": "下一个占领点：%s"
+  "sfgame.point.next": "下一个占领点：%s",
+  "sfgame.point.active": "当前可占领点：%s"
 }

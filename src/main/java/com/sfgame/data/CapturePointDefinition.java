@@ -4,9 +4,15 @@ import net.minecraft.nbt.CompoundTag;
 
 public record CapturePointDefinition(String id, CaptureRegion region, int order) {
     public CapturePointDefinition {
-        if (id == null || !id.matches("[a-z][a-z0-9_]{0,31}")) throw new IllegalArgumentException("Invalid point id: " + id);
+        id = normalizeId(id);
         if (region == null) throw new IllegalArgumentException("Capture region is required");
         if (order < 1) throw new IllegalArgumentException("Point order must be positive");
+    }
+
+    public static String normalizeId(String id) {
+        String normalized = id == null ? "" : id.toLowerCase(java.util.Locale.ROOT);
+        if (!normalized.matches("[a-z][a-z0-9_]{0,31}")) throw new IllegalArgumentException("Invalid point id: " + id);
+        return normalized;
     }
 
     public CapturePointDefinition withRegion(CaptureRegion value) { return new CapturePointDefinition(id, value, order); }

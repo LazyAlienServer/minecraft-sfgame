@@ -2,6 +2,7 @@ package com.sfgame.data;
 
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.TeamSide;
+import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -24,6 +25,7 @@ public final class SFGameSavedData extends SavedData {
     private String greenTeam = "sfgame_green";
     private String selectedMode = GameModeRegistry.TEAM_DEATHMATCH;
     private String selectedMap = DEFAULT_MAP;
+    private ArenaPosition defaultLobby;
     private final Map<String, LinkedHashMap<String, ArenaMap>> modeMaps = new LinkedHashMap<>();
     private final Map<String, MatchRules> modeRules = new LinkedHashMap<>();
 
@@ -33,7 +35,16 @@ public final class SFGameSavedData extends SavedData {
     }
 
     public static SFGameSavedData get(MinecraftServer server) {
-        return server.overworld().getDataStorage().computeIfAbsent(SFGameSavedData::load, SFGameSavedData::new, DATA_NAME);
+        SFGameSavedData data = server.overworld().getDataStorage()
+                .computeIfAbsent(SFGameSavedData::load, SFGameSavedData::new, DATA_NAME);
+        if (data.defaultLobby == null) {
+            BlockPos spawn = server.overworld().getSharedSpawnPos();
+            data.defaultLobby = new ArenaPosition(server.overworld().dimension().location().toString(),
+                    spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5,
+                    server.overworld().getSharedSpawnAngle(), 0);
+            data.setDirty();
+        }
+        return data;
     }
 
     public String redTeam() { return redTeam; }
@@ -109,11 +120,18 @@ public final class SFGameSavedData extends SavedData {
         return mapsFor(selectedMode).get(selectedMap);
     }
 
-    @Nullable public ArenaPosition lobby() { return activeMap() == null ? null : activeMap().lobby(); }
+    @Nullable public ArenaPosition lobby() {
+        ArenaMap map = activeMap();
+        return map != null && map.lobby() != null ? map.lobby() : defaultLobby;
+    }
+    @Nullable public ArenaPosition defaultLobby() { return defaultLobby; }
+    @Nullable public ArenaPosition localLobby() { return activeMap() == null ? null : activeMap().lobby(); }
     public java.util.List<ArenaPosition> spawns(TeamSide side) { return activeMap() == null ? java.util.List.of() : activeMap().spawns(side); }
     public java.util.List<TeamSide> enabledTeams() { return activeMap() == null ? java.util.List.of() : activeMap().enabledTeams(); }
     @Nullable public ArenaPosition randomSpawn(TeamSide side) { return activeMap() == null ? null : activeMap().randomSpawn(side); }
     public void lobby(ArenaPosition value) { activeMapRequired().lobby(value); setDirty(); }
+    public void defaultLobby(ArenaPosition value) { defaultLobby = value; setDirty(); }
+    public void clearLobby() { activeMapRequired().clearLobby(); setDirty(); }
     public void addSpawn(TeamSide side, ArenaPosition value) { activeMapRequired().addSpawn(side, value); setDirty(); }
     public boolean removeSpawn(TeamSide side, int index) { boolean changed = activeMapRequired().removeSpawn(side, index); if (changed) setDirty(); return changed; }
     public void clearSpawns(TeamSide side) { activeMapRequired().clearSpawns(side); setDirty(); }
@@ -122,13 +140,14 @@ public final class SFGameSavedData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag) {
-        tag.putInt("DataVersion", 5);
+        tag.putInt("DataVersion", 6);
         tag.putString("RedTeam", redTeam);
         tag.putString("BlueTeam", blueTeam);
         tag.putString("YellowTeam", yellowTeam);
         tag.putString("GreenTeam", greenTeam);
         tag.putString("SelectedMode", selectedMode);
         tag.putString("SelectedMap", selectedMap);
+        if (defaultLobby != null) tag.put("DefaultLobby", defaultLobby.save());
         ListTag modes = new ListTag();
         modeMaps.forEach((modeId, maps) -> {
             CompoundTag modeTag = new CompoundTag();
@@ -149,10 +168,12 @@ public final class SFGameSavedData extends SavedData {
 
     static SFGameSavedData load(CompoundTag tag) {
         SFGameSavedData data = new SFGameSavedData();
+        int dataVersion = tag.contains("DataVersion") ? tag.getInt("DataVersion") : 1;
         if (tag.contains("RedTeam")) data.redTeam = tag.getString("RedTeam");
         if (tag.contains("BlueTeam")) data.blueTeam = tag.getString("BlueTeam");
         if (tag.contains("YellowTeam")) data.yellowTeam = tag.getString("YellowTeam");
         if (tag.contains("GreenTeam")) data.greenTeam = tag.getString("GreenTeam");
+        if (tag.contains("DefaultLobby")) data.defaultLobby = ArenaPosition.load(tag.getCompound("DefaultLobby"));
         if (tag.contains("Modes", Tag.TAG_LIST)) {
             data.modeMaps.clear();
             ListTag modes = tag.getList("Modes", Tag.TAG_COMPOUND);
@@ -190,6 +211,7 @@ public final class SFGameSavedData extends SavedData {
             // Version 4 migration: the only rule set belonged to TDM.
             data.rules(GameModeRegistry.TEAM_DEATHMATCH).load(tag.getCompound("Rules"));
         }
+        if (dataVersion < 6) data.rules(GameModeRegistry.DOMINATION).scoreIntervalSeconds(1);
         return data;
     }
 
@@ -203,8 +225,8 @@ public final class SFGameSavedData extends SavedData {
         return map;
     }
 
-    private static boolean mapConfigured(ArenaMap map, String modeId) {
-        if (map == null || !map.configured()) return false;
+    private boolean mapConfigured(ArenaMap map, String modeId) {
+        if (map == null || (map.lobby() == null && defaultLobby == null) || map.enabledTeams().size() < 2) return false;
         return !GameModeRegistry.DOMINATION.equals(modeId) || map.domination().configured();
     }
 

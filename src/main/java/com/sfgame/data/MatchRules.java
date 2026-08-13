@@ -74,7 +74,7 @@ public final class MatchRules {
         captureUsePlayerDifference = true;
         captureDifferenceCoefficient = 1.0;
         captureMaxMultiplier = 4;
-        scoreIntervalSeconds = 5;
+        scoreIntervalSeconds = 1;
         scorePerPoint = 1;
         syncHoldSeconds = 45;
     }

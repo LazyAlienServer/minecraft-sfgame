@@ -68,6 +68,8 @@ final class MatchRulesTest {
     void dominationRulesHaveIndependentDefaultsAndPersistDecimals() {
         MatchRules rules = new MatchRules(GameModeRegistry.DOMINATION);
         assertEquals(100, rules.scoreLimit());
+        assertEquals(1, rules.scoreIntervalSeconds());
+        assertEquals(1, rules.scorePerPoint());
         rules.captureDifferenceCoefficient(2.25);
         rules.captureUsePlayerDifference(false);
         rules.syncHoldSeconds(90);

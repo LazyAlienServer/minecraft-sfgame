@@ -16,9 +16,11 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.BossEvent;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class DominationRuntime implements MatchModeRuntime {
@@ -27,6 +29,7 @@ public final class DominationRuntime implements MatchModeRuntime {
     private int scoreTicks;
     private int syncHoldTicks;
     private int syncIndex;
+    private final List<String> syncPointOrder = new ArrayList<>();
 
     @Override
     public List<String> validate(MinecraftServer server, ArenaMap map) {
@@ -51,7 +54,12 @@ public final class DominationRuntime implements MatchModeRuntime {
     public void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
         stop(); states.clear(); scoreTicks = 0; syncHoldTicks = 0; syncIndex = 0;
         map.domination().points().forEach(point -> states.put(point.id(), new CapturePointState()));
+        if (map.domination().strategy() == PointActivationStrategy.SYNC) {
+            syncPointOrder.addAll(map.domination().points().stream().map(CapturePointDefinition::id).toList());
+            Collections.shuffle(syncPointOrder);
+        }
         refreshBossBars(server, manager, map);
+        if (!syncPointOrder.isEmpty()) announceActivePoint(server, manager, syncPointOrder.get(0));
     }
 
     @Override
@@ -70,12 +78,12 @@ public final class DominationRuntime implements MatchModeRuntime {
             CapturePointState state = states.get(active.get(0).id());
             if (state.owner() != TeamSide.NONE) syncHoldTicks++;
             if (syncHoldTicks >= rules.syncHoldSeconds() * 20) {
-                if (syncIndex + 1 >= map.domination().points().size()) {
+                if (syncIndex + 1 >= syncPointOrder.size()) {
                     return ModeTickResult.finish(manager.determineWinner());
                 }
                 syncIndex++; syncHoldTicks = 0; states.values().forEach(CapturePointState::reset);
-                announce(server, manager, Component.translatable("sfgame.point.next", activePoints(map).get(0).id()));
                 refreshBossBars(server, manager, map);
+                announceActivePoint(server, manager, syncPointOrder.get(syncIndex));
             }
         }
         refreshBossBars(server, manager, map);
@@ -86,7 +94,7 @@ public final class DominationRuntime implements MatchModeRuntime {
     @Override
     public void stop() {
         bossBars.values().forEach(ServerBossEvent::removeAllPlayers);
-        bossBars.clear(); states.clear(); scoreTicks = 0; syncHoldTicks = 0; syncIndex = 0;
+        bossBars.clear(); states.clear(); syncPointOrder.clear(); scoreTicks = 0; syncHoldTicks = 0; syncIndex = 0;
     }
 
     private void tickPoint(MinecraftServer server, MatchManager manager, CapturePointDefinition point, MatchRules rules) {
@@ -128,7 +136,8 @@ public final class DominationRuntime implements MatchModeRuntime {
     private List<CapturePointDefinition> activePoints(ArenaMap map) {
         List<CapturePointDefinition> points = map.domination().points();
         if (map.domination().strategy() == PointActivationStrategy.ASYNC) return points;
-        return points.isEmpty() ? List.of() : List.of(points.get(Math.min(syncIndex, points.size() - 1)));
+        if (syncPointOrder.isEmpty() || syncIndex >= syncPointOrder.size()) return List.of();
+        return map.domination().point(syncPointOrder.get(syncIndex)).map(List::of).orElseGet(List::of);
     }
 
     private void refreshBossBars(MinecraftServer server, MatchManager manager, ArenaMap map) {
@@ -140,7 +149,7 @@ public final class DominationRuntime implements MatchModeRuntime {
         for (CapturePointDefinition point : active) {
             CapturePointState state = states.get(point.id());
             ServerBossEvent bar = bossBars.computeIfAbsent(point.id(), ignored -> new ServerBossEvent(
-                    Component.literal(point.id().toUpperCase()), BossEvent.BossBarColor.WHITE, BossEvent.BossBarOverlay.PROGRESS));
+                    Component.literal(displayPointId(point.id())), BossEvent.BossBarColor.WHITE, BossEvent.BossBarOverlay.PROGRESS));
             TeamSide colorSide = state.owner() != TeamSide.NONE ? state.owner() : state.contender();
             bar.setColor(color(colorSide));
             bar.setProgress((float) Math.max(0.0, Math.min(1.0, state.progress())));
@@ -148,7 +157,7 @@ public final class DominationRuntime implements MatchModeRuntime {
                     : state.owner() != TeamSide.NONE ? Component.translatable("sfgame.team." + state.owner().id())
                     : state.contender() != TeamSide.NONE ? Component.translatable("sfgame.team." + state.contender().id())
                     : Component.translatable("sfgame.point.neutral");
-            bar.setName(Component.translatable("sfgame.point.bossbar", point.id().toUpperCase(), status));
+            bar.setName(Component.translatable("sfgame.point.bossbar", displayPointId(point.id()), status));
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 PlayerMatchState playerState = manager.state(player);
                 if (playerState.participating() || playerState.queued()) bar.addPlayer(player); else bar.removePlayer(player);
@@ -164,6 +173,14 @@ public final class DominationRuntime implements MatchModeRuntime {
             case GREEN -> BossEvent.BossBarColor.GREEN;
             case NONE -> BossEvent.BossBarColor.WHITE;
         };
+    }
+
+    private static void announceActivePoint(MinecraftServer server, MatchManager manager, String pointId) {
+        announce(server, manager, Component.translatable("sfgame.point.active", displayPointId(pointId)));
+    }
+
+    private static String displayPointId(String pointId) {
+        return pointId.toUpperCase(Locale.ROOT);
     }
 
     private static void announce(MinecraftServer server, MatchManager manager, Component message) {

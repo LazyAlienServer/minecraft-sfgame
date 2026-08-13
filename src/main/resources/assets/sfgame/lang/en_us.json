@@ -33,5 +33,6 @@
   "sfgame.point.contested": "Contested",
   "sfgame.point.captured": "%s captured by %s",
   "sfgame.point.neutralized": "%s neutralized",
-  "sfgame.point.next": "Next capture point: %s"
+  "sfgame.point.next": "Next capture point: %s",
+  "sfgame.point.active": "Active capture point: %s"
 }

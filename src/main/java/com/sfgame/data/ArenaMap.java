@@ -27,6 +27,7 @@ public final class ArenaMap {
     public String id() { return id; }
     @Nullable public ArenaPosition lobby() { return lobby; }
     public void lobby(ArenaPosition value) { lobby = value; }
+    public void clearLobby() { lobby = null; }
     public List<ArenaPosition> spawns(TeamSide side) { return Collections.unmodifiableList(spawnList(side)); }
     public void addSpawn(TeamSide side, ArenaPosition value) { spawnList(side).add(value); }
     public boolean removeSpawn(TeamSide side, int index) {

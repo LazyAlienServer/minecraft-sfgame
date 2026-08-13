@@ -77,6 +77,8 @@ public final class SFGameCommands {
                 .then(Commands.literal("joinnow").requires(s -> s.hasPermission(2))
                         .then(Commands.argument("player", EntityArgument.player()).executes(SFGameCommands::joinNow)))
                 .then(Commands.literal("spawn").requires(s -> s.hasPermission(2))
+                        .then(Commands.literal("setdefault")
+                                .then(Commands.literal("lobby").executes(SFGameCommands::setDefaultLobby)))
                         .then(Commands.literal("set")
                                 .then(Commands.literal("lobby").executes(c -> setPosition(c, "lobby")))
                                 .then(Commands.literal("red").executes(c -> setPosition(c, "red")))
@@ -98,6 +100,7 @@ public final class SFGameCommands {
                                 .then(Commands.literal("green").then(Commands.argument("index", IntegerArgumentType.integer(1))
                                         .executes(c -> spawnRemove(c, TeamSide.GREEN)))))
                         .then(Commands.literal("clear")
+                                .then(Commands.literal("lobby").executes(SFGameCommands::clearLobby))
                                 .then(Commands.literal("red").executes(c -> spawnClear(c, TeamSide.RED)))
                                 .then(Commands.literal("blue").executes(c -> spawnClear(c, TeamSide.BLUE)))
                                 .then(Commands.literal("yellow").executes(c -> spawnClear(c, TeamSide.YELLOW)))
@@ -257,6 +260,24 @@ public final class SFGameCommands {
             default -> "Set lobby";
         };
         return success(context, detail + " for " + data.selectedMode() + "/" + data.selectedMap());
+    }
+
+    private static int setDefaultLobby(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit the default lobby during a match");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        ArenaPosition position = ArenaPosition.from(context.getSource().getPlayerOrException());
+        data.defaultLobby(position);
+        MatchManager.get().arenaSelectionChanged();
+        return success(context, "Set default lobby to " + positionText(position));
+    }
+
+    private static int clearLobby(CommandContext<CommandSourceStack> context) {
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit the lobby during a match");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        data.clearLobby();
+        MatchManager.get().arenaSelectionChanged();
+        return success(context, "Cleared map lobby; using default lobby at " + positionText(data.defaultLobby()));
     }
 
     private static int spawnList(CommandContext<CommandSourceStack> context, TeamSide side) {
@@ -503,7 +524,8 @@ public final class SFGameCommands {
         ArenaMap map = data.activeMap();
         if (map == null) return failure(context, "No active map");
         send(context, "Mode=" + data.selectedMode() + ", map=" + map.id() + ", configured=" + data.mapConfigured(map)
-                + ", lobby=" + (map.lobby() != null) + ", enabledTeams=" + map.enabledTeams()
+                + ", mapLobby=" + (map.lobby() != null) + ", defaultLobby=" + (data.defaultLobby() != null)
+                + ", enabledTeams=" + map.enabledTeams()
                 + ", spawns=" + TeamSide.PLAYABLE.stream().map(side -> side.id() + ":" + map.spawns(side).size()).toList());
         if (GameModeRegistry.DOMINATION.equals(data.selectedMode())) {
             send(context, "pointStrategy=" + map.domination().strategy().name().toLowerCase()

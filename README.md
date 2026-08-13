@@ -27,6 +27,7 @@ Windows 构建命令：
 
 ```text
 /sfgame spawn set lobby
+/sfgame spawn setdefault lobby
 /sfgame spawn set red
 /sfgame spawn set blue
 /sfgame spawn set yellow
@@ -35,6 +36,7 @@ Windows 构建命令：
 /sfgame spawn list <red|blue|yellow|green>
 /sfgame spawn remove <red|blue|yellow|green> <序号>
 /sfgame spawn clear <red|blue|yellow|green>
+/sfgame spawn clear lobby
 ```
 
 4. 使用 `/team join` 或 `/sfgame team set <玩家> <red|blue|random>` 分配队伍。
@@ -89,7 +91,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 `/sfgame team set` 和 `/sfgame team remove` 使用多玩家实体参数，支持玩家名以及 `@a`、`@p`、`@r` 等原版选择器。例如：`/sfgame team set @a random`。
 
-地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm` 和 `domination`，每个模式可以拥有多张地图。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
+地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm` 和 `domination`，每个模式可以拥有多张地图。`/sfgame spawn setdefault lobby` 将管理员当前位置保存为全局默认大厅；世界首次加载时若尚未配置，会自动使用主世界原版出生点。`/sfgame spawn set lobby` 为当前地图设置覆盖点，`/sfgame spawn clear lobby` 清除覆盖并恢复使用全局默认大厅。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
 
 ## 职业配置
 
@@ -137,7 +139,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame point clear
 ```
 
-`async` 同时开放所有点；`sync` 按顺序逐个开放，并在一轮完成后结算。长方形使用两个角点，正方形使用管理员脚下中心与半径；未设置高度时覆盖全部高度。
+`async` 同时开放所有点；`sync` 每局随机排列点位，一次只开放并显示一个点，切换时通知玩家，完成本轮全部点位后结算。点位 ID 支持单个字母，输入的大写字母会按同一小写 ID 保存。长方形使用两个角点，正方形使用管理员脚下中心与半径；未设置高度时覆盖全部高度。占点默认每 1 秒为每个已归属活动点增加 1 分。
 
 规则按模式独立保存。占点模式额外支持：
 
