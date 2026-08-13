@@ -178,7 +178,7 @@ public final class SFGameEvents {
                     || resistance.getAmplifier() == RESISTANCE_FIVE_AMPLIFIER && resistance.getDuration() <= 20;
             if (needsProtection) {
                 player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE,
-                        SAFE_PHASE_RESISTANCE_DURATION, RESISTANCE_FIVE_AMPLIFIER, false, false, true));
+                        SAFE_PHASE_RESISTANCE_DURATION, RESISTANCE_FIVE_AMPLIFIER, false, false, false));
                 SAFE_PHASE_PROTECTED_PLAYERS.add(player.getUUID());
             }
         } else if (SAFE_PHASE_PROTECTED_PLAYERS.remove(player.getUUID())) {
