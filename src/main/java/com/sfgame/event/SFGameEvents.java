@@ -8,6 +8,8 @@ import com.sfgame.game.MatchManager;
 import com.sfgame.game.MatchPhase;
 import com.tacz.guns.api.event.common.GunFireEvent;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.scores.PlayerTeam;
@@ -26,9 +28,16 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.LogicalSide;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.HashSet;
+import java.util.Set;
+import java.util.UUID;
+
 @Mod.EventBusSubscriber(modid = SFGame.MOD_ID)
 public final class SFGameEvents {
     private static final MatchHudService HUD = new MatchHudService();
+    private static final Set<UUID> SAFE_PHASE_PROTECTED_PLAYERS = new HashSet<>();
+    private static final int SAFE_PHASE_RESISTANCE_DURATION = 40;
+    private static final int RESISTANCE_FIVE_AMPLIFIER = 4;
     private static int hudTicker;
 
     @SubscribeEvent
@@ -44,6 +53,7 @@ public final class SFGameEvents {
     @SubscribeEvent
     public static void serverStopped(ServerStoppedEvent event) {
         HUD.clear(event.getServer());
+        SAFE_PHASE_PROTECTED_PLAYERS.clear();
         MatchManager.get().serverStopped();
     }
 
@@ -64,6 +74,7 @@ public final class SFGameEvents {
             player.getFoodData().setFoodLevel(20);
             player.getFoodData().setSaturation(20.0F);
         }
+        updateSafePhaseProtection(player);
     }
 
     @SubscribeEvent
@@ -98,6 +109,10 @@ public final class SFGameEvents {
     public static void livingAttack(LivingAttackEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer victim)) return;
         MatchManager manager = MatchManager.get();
+        if (isSafePhase(manager.phase())) {
+            event.setCanceled(true);
+            return;
+        }
         Player sourcePlayer = event.getSource().getEntity() instanceof Player player ? player
                 : event.getSource().getDirectEntity() instanceof Player player ? player : null;
         if (sourcePlayer instanceof ServerPlayer attacker && manager.areFriendly(attacker, victim)) {
@@ -153,6 +168,30 @@ public final class SFGameEvents {
         if (!SFGameConfig.GLOBAL_HUNGER_LOCK.get()) return;
         player.getFoodData().setFoodLevel(20);
         player.getFoodData().setSaturation(20.0F);
+    }
+
+    private static void updateSafePhaseProtection(ServerPlayer player) {
+        MatchPhase phase = MatchManager.get().phase();
+        if (isSafePhase(phase)) {
+            MobEffectInstance resistance = player.getEffect(MobEffects.DAMAGE_RESISTANCE);
+            boolean needsProtection = resistance == null || resistance.getAmplifier() < RESISTANCE_FIVE_AMPLIFIER
+                    || resistance.getAmplifier() == RESISTANCE_FIVE_AMPLIFIER && resistance.getDuration() <= 20;
+            if (needsProtection) {
+                player.addEffect(new MobEffectInstance(MobEffects.DAMAGE_RESISTANCE,
+                        SAFE_PHASE_RESISTANCE_DURATION, RESISTANCE_FIVE_AMPLIFIER, false, false, true));
+                SAFE_PHASE_PROTECTED_PLAYERS.add(player.getUUID());
+            }
+        } else if (SAFE_PHASE_PROTECTED_PLAYERS.remove(player.getUUID())) {
+            MobEffectInstance resistance = player.getEffect(MobEffects.DAMAGE_RESISTANCE);
+            if (resistance != null && resistance.getAmplifier() == RESISTANCE_FIVE_AMPLIFIER
+                    && resistance.getDuration() <= SAFE_PHASE_RESISTANCE_DURATION) {
+                player.removeEffect(MobEffects.DAMAGE_RESISTANCE);
+            }
+        }
+    }
+
+    private static boolean isSafePhase(MatchPhase phase) {
+        return phase == MatchPhase.UNCONFIGURED || phase == MatchPhase.LOBBY || phase == MatchPhase.RESULT;
     }
 
     private SFGameEvents() {}
