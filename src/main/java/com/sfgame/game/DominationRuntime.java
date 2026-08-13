@@ -81,9 +81,10 @@ public final class DominationRuntime implements MatchModeRuntime {
                 if (syncIndex + 1 >= syncPointOrder.size()) {
                     return ModeTickResult.finish(manager.determineWinner());
                 }
+                String completedPoint = active.get(0).id();
                 syncIndex++; syncHoldTicks = 0; states.values().forEach(CapturePointState::reset);
                 refreshBossBars(server, manager, map);
-                announceActivePoint(server, manager, syncPointOrder.get(syncIndex));
+                announcePointTransition(server, manager, completedPoint, syncPointOrder.get(syncIndex));
             }
         }
         refreshBossBars(server, manager, map);
@@ -177,6 +178,12 @@ public final class DominationRuntime implements MatchModeRuntime {
 
     private static void announceActivePoint(MinecraftServer server, MatchManager manager, String pointId) {
         announce(server, manager, Component.translatable("sfgame.point.active", displayPointId(pointId)));
+    }
+
+    private static void announcePointTransition(MinecraftServer server, MatchManager manager,
+                                                String completedPointId, String nextPointId) {
+        announce(server, manager, Component.translatable("sfgame.point.transition",
+                displayPointId(completedPointId), displayPointId(nextPointId)));
     }
 
     private static String displayPointId(String pointId) {

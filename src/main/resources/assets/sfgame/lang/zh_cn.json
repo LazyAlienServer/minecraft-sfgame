@@ -34,5 +34,6 @@
   "sfgame.point.captured": "%s 已被%s占领",
   "sfgame.point.neutralized": "%s 已中立化",
   "sfgame.point.next": "下一个占领点：%s",
-  "sfgame.point.active": "当前可占领点：%s"
+  "sfgame.point.active": "当前可占领点：%s",
+  "sfgame.point.transition": "点位 %s 已沦陷，请前往占领点位 %s！"
 }

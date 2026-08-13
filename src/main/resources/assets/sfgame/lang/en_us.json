@@ -34,5 +34,6 @@
   "sfgame.point.captured": "%s captured by %s",
   "sfgame.point.neutralized": "%s neutralized",
   "sfgame.point.next": "Next capture point: %s",
-  "sfgame.point.active": "Active capture point: %s"
+  "sfgame.point.active": "Active capture point: %s",
+  "sfgame.point.transition": "Point %s has fallen. Proceed to capture point %s!"
 }
