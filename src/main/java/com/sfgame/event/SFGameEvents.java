@@ -1,0 +1,159 @@
+package com.sfgame.event;
+
+import com.sfgame.SFGame;
+import com.sfgame.command.SFGameCommands;
+import com.sfgame.config.SFGameConfig;
+import com.sfgame.game.MatchHudService;
+import com.sfgame.game.MatchManager;
+import com.sfgame.game.MatchPhase;
+import com.tacz.guns.api.event.common.GunFireEvent;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.level.GameType;
+import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingAttackEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
+import net.minecraftforge.eventbus.api.EventPriority;
+import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.LogicalSide;
+import net.minecraftforge.fml.common.Mod;
+
+@Mod.EventBusSubscriber(modid = SFGame.MOD_ID)
+public final class SFGameEvents {
+    private static final MatchHudService HUD = new MatchHudService();
+    private static int hudTicker;
+
+    @SubscribeEvent
+    public static void registerCommands(RegisterCommandsEvent event) {
+        SFGameCommands.register(event.getDispatcher());
+    }
+
+    @SubscribeEvent
+    public static void serverStarted(ServerStartedEvent event) {
+        MatchManager.get().serverStarted(event.getServer());
+    }
+
+    @SubscribeEvent
+    public static void serverStopped(ServerStoppedEvent event) {
+        HUD.clear(event.getServer());
+        MatchManager.get().serverStopped();
+    }
+
+    @SubscribeEvent
+    public static void serverTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) return;
+        MatchManager.get().tick();
+        if (++hudTicker >= 20) {
+            hudTicker = 0;
+            HUD.update(event.getServer(), MatchManager.get());
+        }
+    }
+
+    @SubscribeEvent
+    public static void playerTick(TickEvent.PlayerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END || event.side != LogicalSide.SERVER || !(event.player instanceof ServerPlayer player)) return;
+        if (SFGameConfig.GLOBAL_HUNGER_LOCK.get()) {
+            player.getFoodData().setFoodLevel(20);
+            player.getFoodData().setSaturation(20.0F);
+        }
+    }
+
+    @SubscribeEvent
+    public static void playerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            fillHunger(player);
+            MatchManager.get().playerLoggedIn(player);
+        }
+    }
+
+    @SubscribeEvent
+    public static void playerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) MatchManager.get().playerLoggedOut(player);
+    }
+
+    @SubscribeEvent
+    public static void playerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) fillHunger(player);
+    }
+
+    @SubscribeEvent
+    public static void tabListName(PlayerEvent.TabListNameFormat event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        var state = MatchManager.get().state(player);
+        Component teamFormattedName = PlayerTeam.formatNameForTeam(
+                player.getTeam(), Component.literal(player.getGameProfile().getName()));
+        event.setDisplayName(teamFormattedName.copy()
+                .append(Component.literal("  " + state.kills() + "/" + state.deaths())));
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void livingAttack(LivingAttackEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer victim)) return;
+        MatchManager manager = MatchManager.get();
+        Player sourcePlayer = event.getSource().getEntity() instanceof Player player ? player
+                : event.getSource().getDirectEntity() instanceof Player player ? player : null;
+        if (sourcePlayer instanceof ServerPlayer attacker && manager.areFriendly(attacker, victim)) {
+            event.setCanceled(true);
+            return;
+        }
+        if (manager.isProtected(victim)) {
+            event.setCanceled(true);
+            return;
+        }
+        if (sourcePlayer instanceof ServerPlayer attacker && manager.isProtected(attacker)) event.setCanceled(true);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void livingDeath(LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer victim) || MatchManager.get().phase() != MatchPhase.RUNNING) return;
+        if (!MatchManager.get().state(victim).participating()) return;
+        event.setCanceled(true);
+        MatchManager.get().handleDeath(victim, event.getSource());
+    }
+
+    @SubscribeEvent
+    public static void gunFire(GunFireEvent event) {
+        if (event.getLogicalSide() == LogicalSide.SERVER && event.getShooter() instanceof ServerPlayer player) {
+            MatchManager.get().removeProtection(player);
+        }
+    }
+
+    @SubscribeEvent
+    public static void itemToss(net.minecraftforge.event.entity.item.ItemTossEvent event) {
+        if (event.getPlayer() instanceof ServerPlayer player && !MatchManager.get().mayDrop(player)) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void breakBlock(BlockEvent.BreakEvent event) {
+        if (event.getPlayer() instanceof ServerPlayer player && MatchManager.get().state(player).participating()) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void placeBlock(BlockEvent.EntityPlaceEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()) event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public static void useBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
+                && player.gameMode.getGameModeForPlayer() != GameType.ADVENTURE) {
+            player.setGameMode(GameType.ADVENTURE);
+        }
+    }
+
+    private static void fillHunger(ServerPlayer player) {
+        if (!SFGameConfig.GLOBAL_HUNGER_LOCK.get()) return;
+        player.getFoodData().setFoodLevel(20);
+        player.getFoodData().setSaturation(20.0F);
+    }
+
+    private SFGameEvents() {}
+}

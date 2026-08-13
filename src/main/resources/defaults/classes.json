@@ -1,0 +1,40 @@
+{
+  "classes": [
+    {
+      "id": "assault",
+      "displayName": "突击兵",
+      "description": "使用 HK416A5 的中近距离持续作战职业",
+      "icon": "minecraft:iron_sword",
+      "maxHealth": 20.0,
+      "movementSpeedMultiplier": 1.05,
+      "gunId": "tacz:hk416d",
+      "ammoId": "tacz:556x45",
+      "initialMagazine": 30,
+      "reserveAmmo": 180,
+      "fireMode": "AUTO",
+      "attachments": {},
+      "inventory": [],
+      "armor": {},
+      "effects": [],
+      "allowDrop": false
+    },
+    {
+      "id": "sniper",
+      "displayName": "狙击手",
+      "description": "使用 M107 的远距离高伤害职业",
+      "icon": "minecraft:spyglass",
+      "maxHealth": 20.0,
+      "movementSpeedMultiplier": 0.95,
+      "gunId": "tacz:m107",
+      "ammoId": "tacz:50bmg",
+      "initialMagazine": 10,
+      "reserveAmmo": 30,
+      "fireMode": "SEMI",
+      "attachments": {},
+      "inventory": [],
+      "armor": {},
+      "effects": [],
+      "allowDrop": false
+    }
+  ]
+}

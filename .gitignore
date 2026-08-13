@@ -1,0 +1,44 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# Forge run directories and generated resources
+run/
+run-*/
+src/generated/
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.vscode/
+bin/
+
+# Eclipse/ForgeGradle launch files
+*.launch
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# Logs and crash reports
+*.log
+logs/
+crash-reports/
+
+# Local Java/Gradle overrides and secrets
+.env
+.env.*
+!*.example
+gradle.properties.local
+local.properties
+
