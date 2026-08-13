@@ -1,5 +1,7 @@
 # SFGame
 
+[![Build](https://github.com/LazyAlienServer/minecraft-sfgame/actions/workflows/build.yml/badge.svg)](https://github.com/LazyAlienServer/minecraft-sfgame/actions/workflows/build.yml)
+
 SFGame 是一个服务端权威的 Forge 1.20.1 枪战模式模组，使用 TACZ 提供枪械和弹药。当前版本实现团队竞技与占点模式、动态规则、原版队伍绑定、职业配装、重生、计分、菜单及 HUD。
 
 ## 环境与构建
@@ -163,3 +165,14 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 ```
 
 自动测试覆盖动态规则的边界、重置与 SavedData 序列化。完整的队伍切换、TACZ 射击归属和双客户端流程仍应在实际 Forge 测试服中按验收清单做联机验证。
+
+## 自动构建与发布
+
+推送到 `main` 或向 `main` 提交 Pull Request 时，GitHub Actions 会使用 Java 17 自动执行测试和完整构建，并保存构建产物。创建并推送语义化版本标签会自动创建 GitHub Release、生成发行说明并上传成品 JAR：
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+标签 `v1.0.0` 会构建 `sfgame-1.0.0.jar`；包含 `alpha`、`beta` 或 `rc` 的版本会自动作为预发布版本。
