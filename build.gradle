@@ -56,12 +56,31 @@ repositories {
     }
 }
 
+configurations {
+    taczDevRuntime
+}
+
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
-    implementation fg.deobf("curse.maven:timeless-and-classics-zero-${tacz_project_id}:${tacz_file_id}")
+    // The mapped dependency is used for compilation and copied into run/mods
+    // for IDEA. It must not also appear on the runtime classpath as a duplicate mod.
+    def taczCoordinate = "curse.maven:timeless-and-classics-zero-${tacz_project_id}:${tacz_file_id}"
+    compileOnly fg.deobf(taczCoordinate)
+    taczDevRuntime fg.deobf(taczCoordinate)
     testImplementation platform('org.junit:junit-bom:5.10.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }
+
+def installTaczForRuns = tasks.register('installTaczForRuns', Copy) {
+    group = 'forgegradle runs'
+    description = 'Copies the mapped TACZ development jar into run/mods for IDEA and Gradle runs.'
+    from configurations.taczDevRuntime
+    into layout.projectDirectory.dir('run/mods')
+    rename { "tacz-${tacz_file_id}-dev-mapped.jar" }
+}
+
+tasks.matching { it.name in ['prepareRunClientCompile', 'prepareRunServerCompile', 'prepareRunGameTestServerCompile'] }
+        .configureEach { dependsOn installTaczForRuns }
 
 tasks.named('test', Test).configure {
     useJUnitPlatform()

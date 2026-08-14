@@ -340,6 +340,12 @@ TDM 与占点默认包含：
 
 ## 验证
 
+IDEA 开发客户端通过 `installTaczForRuns` 自动把 ForgeGradle 生成的 TACZ 1.1.8-hotfix 开发映射 JAR 放入 `run/mods/`。不要把官网下载的生产版 TACZ JAR 直接放入该开发目录，否则其 Mixin 字段名无法匹配 Forge 的命名开发环境。IDEA 的 `runClient` 会在启动前执行 `prepareRunClientCompile`，并自动完成安装。生成或修复 IDEA 启动配置可执行：
+
+```powershell
+.\gradlew.bat genIntellijRuns
+```
+
 ```powershell
 .\gradlew.bat test
 .\gradlew.bat build
