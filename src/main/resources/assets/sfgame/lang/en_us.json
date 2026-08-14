@@ -46,6 +46,7 @@
   "sfgame.point.active": "Active capture point: %s",
   "sfgame.point.transition": "Point %s has fallen. Proceed to capture point %s!",
   "sfgame.menu.captain.abstain": "Abstain",
+  "sfgame.menu.captain.vote_title": "Captain vote",
   "sfgame.breakthrough.captain.vote": "Vote for the attacking captain within %s seconds",
   "sfgame.breakthrough.captain.reelect": "The attacking captain is unavailable. A %s-second replacement vote has started",
   "sfgame.breakthrough.captain.selected": "%s is the attacking captain",

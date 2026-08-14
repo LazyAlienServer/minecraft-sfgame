@@ -46,6 +46,7 @@
   "sfgame.point.active": "当前可占领点：%s",
   "sfgame.point.transition": "点位 %s 已沦陷，请前往占领点位 %s！",
   "sfgame.menu.captain.abstain": "弃权",
+  "sfgame.menu.captain.vote_title": "队长投票",
   "sfgame.breakthrough.captain.vote": "请在 %s 秒内投票选出进攻方队长",
   "sfgame.breakthrough.captain.reelect": "进攻方队长已离队，开始 %s 秒补选",
   "sfgame.breakthrough.captain.selected": "%s 已当选进攻方队长",

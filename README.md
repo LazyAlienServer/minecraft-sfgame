@@ -129,6 +129,8 @@ TDM 与占点默认包含：
 
 修改 JSON 后执行 `/sfgame class reload`。SFGame 会通过 TACZ API 校验枪械、弹药和附件资源；发现无效资源时保留上一份有效配置，并阻止比赛在配装无效时开始。重载不会替换存活玩家的装备，新配置在下一次部署时生效。
 
+职业配置中的 `reserveAmmo` 会装入一个 TACZ 钻石级弹药箱，不再发放散装弹药；弹药箱固定放在背包三行区域左上角（物品栏槽位 `9`）。
+
 通用配置文件 `config/sfgame-common.toml` 中的 `globalHungerLock` 默认为 `true`。启用后，SFGame 模式运行期间所有在线玩家的饥饿值和饱和度均固定为 20。
 
 ## 已实现的比赛规则

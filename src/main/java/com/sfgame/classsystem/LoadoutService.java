@@ -4,9 +4,11 @@ import com.sfgame.SFGame;
 import com.sfgame.game.GameModeRegistry;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.attachment.AttachmentType;
-import com.tacz.guns.api.item.builder.AmmoItemBuilder;
 import com.tacz.guns.api.item.builder.GunItemBuilder;
 import com.tacz.guns.api.item.gun.FireMode;
+import com.tacz.guns.api.item.nbt.AmmoBoxItemDataAccessor;
+import com.tacz.guns.init.ModItems;
+import com.tacz.guns.item.AmmoBoxItem;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.TagParser;
 import net.minecraft.resources.ResourceLocation;
@@ -27,6 +29,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class LoadoutService {
+    private static final int AMMO_BOX_INVENTORY_SLOT = 9;
     private static final UUID HEALTH_MODIFIER_ID = UUID.fromString("8a6a21da-baf8-41ce-b3aa-6827a7be1101");
     private static final UUID SPEED_MODIFIER_ID = UUID.fromString("8a6a21da-baf8-41ce-b3aa-6827a7be1102");
 
@@ -92,7 +95,7 @@ public final class LoadoutService {
         ItemStack gun = gunBuilder.build();
         if (gun.isEmpty()) return false;
         player.getInventory().add(gun);
-        giveAmmo(player, ammoId, definition.reserveAmmo());
+        if (!giveAmmoBox(player, ammoId, definition.reserveAmmo())) return false;
 
         for (ItemDefinition item : definition.inventory()) {
             ItemStack stack = buildItem(item);
@@ -137,14 +140,19 @@ public final class LoadoutService {
         }
     }
 
-    private void giveAmmo(ServerPlayer player, ResourceLocation ammoId, int amount) {
-        int remaining = amount;
-        while (remaining > 0) {
-            int count = Math.min(64, remaining);
-            ItemStack ammo = AmmoItemBuilder.create().setId(ammoId).setCount(count).build();
-            player.getInventory().add(ammo);
-            remaining -= count;
+    private boolean giveAmmoBox(ServerPlayer player, ResourceLocation ammoId, int amount) {
+        if (amount <= 0) return true;
+
+        ItemStack ammoBox = new ItemStack(ModItems.AMMO_BOX.get());
+        if (!(ammoBox.getItem() instanceof AmmoBoxItemDataAccessor accessor)) {
+            SFGame.LOGGER.error("TACZ ammo box does not expose AmmoBoxItemDataAccessor");
+            return false;
         }
+        accessor.setAmmoId(ammoBox, ammoId);
+        accessor.setAmmoCount(ammoBox, amount);
+        accessor.setAmmoLevel(ammoBox, AmmoBoxItem.DIAMOND_LEVEL);
+        player.getInventory().setItem(AMMO_BOX_INVENTORY_SLOT, ammoBox);
+        return true;
     }
 
     private void equipArmor(ServerPlayer player, Map<String, ItemDefinition> armor) {

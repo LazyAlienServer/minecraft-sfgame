@@ -9,15 +9,16 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -34,6 +35,9 @@ public final class SFGameScreen extends Screen {
     private int classStripY = -1;
     private int visibleClassCount;
     private int totalClassCount;
+    private final List<ClassCardButton> classCards = new ArrayList<>();
+    private int captainVoteHeadingX;
+    private int captainVoteHeadingY = -1;
     private int respawnHeadingX;
     private int respawnHeadingY = -1;
 
@@ -108,6 +112,9 @@ public final class SFGameScreen extends Screen {
         }
 
         if (snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker()) {
+            captainVoteHeadingX = center - 150;
+            captainVoteHeadingY = y;
+            y += 16;
             for (int i = 0; i < snapshot.captainCandidates().size(); i++) {
                 MatchSnapshot.CaptainCandidate candidate = snapshot.captainCandidates().get(i);
                 int column = i % 2;
@@ -158,8 +165,10 @@ public final class SFGameScreen extends Screen {
             MatchSnapshot.ClassView view = classPool.get(classScrollOffset + visibleIndex);
             boolean selected = view.id().equals(pendingClass);
             int x = classStripLeft + visibleIndex * (CLASS_CARD_SIZE + CLASS_CARD_GAP);
-            addRenderableWidget(new ClassCardButton(x, classStripY, view, selected,
-                    button -> action(classAction, view.id())));
+            ClassCardButton card = new ClassCardButton(x, classStripY, view, selected,
+                    button -> action(classAction, view.id()));
+            classCards.add(card);
+            addRenderableWidget(card);
         }
     }
 
@@ -168,6 +177,8 @@ public final class SFGameScreen extends Screen {
         classStripY = -1;
         visibleClassCount = 0;
         totalClassCount = 0;
+        classCards.clear();
+        captainVoteHeadingY = -1;
         respawnHeadingY = -1;
     }
 
@@ -222,6 +233,10 @@ public final class SFGameScreen extends Screen {
             graphics.drawString(font, Component.translatable("sfgame.respawn.choose"),
                     respawnHeadingX, respawnHeadingY, 0xFFFFFF, true);
         }
+        if (captainVoteHeadingY >= 0) {
+            graphics.drawString(font, Component.translatable("sfgame.menu.captain.vote_title"),
+                    captainVoteHeadingX, captainVoteHeadingY, 0xFFFFFF, true);
+        }
         if (classHeadingY >= 0) {
             graphics.drawString(font, Component.translatable("sfgame.menu.class_select"),
                     classHeadingX, classHeadingY, 0xFFFFFF, true);
@@ -237,6 +252,7 @@ public final class SFGameScreen extends Screen {
             }
         }
         super.render(graphics, mouseX, mouseY, partialTick);
+        renderClassTooltip(graphics, mouseX, mouseY);
     }
 
     @Override
@@ -253,13 +269,22 @@ public final class SFGameScreen extends Screen {
                 .orElseGet(() -> new ItemStack(Items.BARRIER));
     }
 
-    private static Component classTooltip(MatchSnapshot.ClassView view) {
-        Component tooltip = Component.literal(view.name()).withStyle(ChatFormatting.YELLOW)
-                .append("\n" + view.description());
-        if (!view.gunId().isBlank()) {
-            tooltip = tooltip.copy().append(Component.literal("\n" + view.gunId()).withStyle(ChatFormatting.GRAY));
+    private void renderClassTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        for (ClassCardButton card : classCards) {
+            if (!card.isMouseOver(mouseX, mouseY)) continue;
+            List<FormattedCharSequence> lines = new ArrayList<>();
+            for (Component line : card.tooltipLines) lines.addAll(font.split(line, 220));
+            graphics.renderTooltip(font, lines, mouseX, mouseY);
+            return;
         }
-        return tooltip;
+    }
+
+    private static List<Component> classTooltip(MatchSnapshot.ClassView view) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal(view.name()).withStyle(ChatFormatting.YELLOW));
+        if (!view.description().isBlank()) lines.add(Component.literal(view.description()));
+        if (!view.gunId().isBlank()) lines.add(Component.literal(view.gunId()).withStyle(ChatFormatting.GRAY));
+        return List.copyOf(lines);
     }
 
     private static class DarkButton extends Button {
@@ -288,12 +313,13 @@ public final class SFGameScreen extends Screen {
     private static final class ClassCardButton extends DarkButton {
         private final ItemStack icon;
         private final boolean selected;
+        private final List<Component> tooltipLines;
 
         private ClassCardButton(int x, int y, MatchSnapshot.ClassView view, boolean selected, OnPress onPress) {
             super(x, y, CLASS_CARD_SIZE, CLASS_CARD_SIZE, Component.empty(), onPress);
             this.icon = iconStack(view.icon());
             this.selected = selected;
-            setTooltip(Tooltip.create(classTooltip(view)));
+            this.tooltipLines = classTooltip(view);
         }
 
         @Override
