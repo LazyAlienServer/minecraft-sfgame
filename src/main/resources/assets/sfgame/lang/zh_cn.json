@@ -6,6 +6,7 @@
   "sfgame.menu.leave": "退出比赛",
   "sfgame.menu.queued": "已排入下一局",
   "sfgame.menu.spectating": "正在旁观",
+  "sfgame.menu.class_select": "职业选择",
   "sfgame.menu.locked.election": "进攻方队长选拔期间不能加入或退出比赛",
   "sfgame.menu.locked.participating": "你已经在本局比赛中",
   "sfgame.menu.locked.command_leave": "对局期间请使用 /sfgame leave 退出比赛",

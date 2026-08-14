@@ -42,7 +42,7 @@ Windows 构建命令：
 ```
 
 4. 使用 `/team join` 或 `/sfgame team set <玩家> <red|blue|random>` 分配队伍。
-5. 玩家按 `M`（或执行 `/sfgame menu`）选择职业并加入。
+5. 玩家按 `M`（或执行 `/sfgame menu`）选择职业并加入。菜单使用深色按钮；职业以配置文件 `icon` 指定物品的正方形卡片显示，职业过多时将鼠标放在卡片区域并滚动滚轮即可左右浏览。
 6. 执行 `/sfgame status` 检查开赛条件，然后执行 `/sfgame start`。
 
 未手动选择职业的玩家会在加入大厅或开赛校验时自动选择职业 JSON 中的第一个有效职业（默认是 `assault`）。玩家从旁观状态在大厅点击“加入比赛”后，会立即切换为冒险模式并传送回大厅。
@@ -90,7 +90,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame class set <玩家> <职业ID>
 ```
 
-规则名称为 `maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds`。规则及地图坐标保存在世界 SavedData 中，重启后保留。
+规则名称为 `maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds`。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。规则及地图坐标保存在世界 SavedData 中，重启后保留。
 
 `/sfgame team set` 和 `/sfgame team remove` 使用多玩家实体参数，支持玩家名以及 `@a`、`@p`、`@r` 等原版选择器。例如：`/sfgame team set @a random`。
 
@@ -108,7 +108,9 @@ config/sfgame/classes/domination.json
 config/sfgame/classes/breakthrough.json
 ```
 
-第一次迁移会把旧职业复制到三个模式文件，不默认建立继承关系。内置默认文件位于 `src/main/resources/defaults/classes.json`，包含：
+第一次迁移会为三个模式建立独立文件，不默认建立继承关系。TDM 与占点的内置来源位于 `src/main/resources/defaults/classes.json`；突破模式的完整默认来源位于 `src/main/resources/defaults/classes/breakthrough.json`。已有的突破配置会执行一次增量升级：保留管理员已填写的字段，补入缺失的内置职业，并为内置职业补齐为空的 `inventory` 与 `armor`。
+
+TDM 与占点默认包含：
 
 - `assault`：HK416、180 发备用弹药、105% 移速（TACZ 1.1.8-hotfix 资源 ID 为 `tacz:hk416d`）。
 - `sniper`：M107、30 发备用弹药、95% 移速。
@@ -123,7 +125,9 @@ config/sfgame/classes/breakthrough.json
 }
 ```
 
-子配置中相同 ID 会覆盖父配置，缺失父配置和循环继承会被拒绝。`breakthrough.json` 默认额外生成 `heavy_captain`：40 点生命、HK416、90% 移速，仅供突破队长使用。修改 JSON 后执行 `/sfgame class reload`。SFGame 会通过 TACZ API 校验枪械、弹药和附件资源；发现无效资源时保留上一份有效配置，并阻止比赛在配装无效时开始。重载不会替换存活玩家的装备，新配置在下一次部署时生效。
+子配置中相同 ID 会覆盖父配置，缺失父配置和循环继承会被拒绝。突破模式默认普通职业包括 `assault`、`sniper`、`medic`（医疗兵）、`tank`（坦克）和 `smg_assault`（冲锋枪突击手）；队长职业包括 `heavy_captain` 与 `captain_tank`（坦克·队长加强版）。每套突破职业均配置 TACZ 主枪、近战武器、投掷物和差异化护甲，具体物品可以继续通过 `inventory` 与 `armor` 修改。队长旗帜占用头盔栏，因此队长职业的默认重甲只配置胸甲、护腿和靴子。
+
+修改 JSON 后执行 `/sfgame class reload`。SFGame 会通过 TACZ API 校验枪械、弹药和附件资源；发现无效资源时保留上一份有效配置，并阻止比赛在配装无效时开始。重载不会替换存活玩家的装备，新配置在下一次部署时生效。
 
 通用配置文件 `config/sfgame-common.toml` 中的 `globalHungerLock` 默认为 `true`。启用后，SFGame 模式运行期间所有在线玩家的饥饿值和饱和度均固定为 20。
 

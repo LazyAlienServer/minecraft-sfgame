@@ -12,7 +12,7 @@ public final class MatchRules {
     public static final int DEFAULT_RESPAWN_SECONDS = 5;
     public static final int DEFAULT_BREAKTHROUGH_RESPAWN_SECONDS = 10;
     public static final int DEFAULT_RESPAWN_PROTECTION_SECONDS = 3;
-    public static final int DEFAULT_RESULT_SECONDS = 8;
+    public static final int DEFAULT_RESULT_SECONDS = 20;
 
     private final String modeId;
     private int maxPlayers;

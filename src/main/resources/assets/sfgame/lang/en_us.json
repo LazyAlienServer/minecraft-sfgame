@@ -6,6 +6,7 @@
   "sfgame.menu.leave": "Leave Match",
   "sfgame.menu.queued": "Queued for next round",
   "sfgame.menu.spectating": "Spectating",
+  "sfgame.menu.class_select": "Class selection",
   "sfgame.menu.locked.election": "The attacking side cannot join or leave during captain selection",
   "sfgame.menu.locked.participating": "You are already participating in this match",
   "sfgame.menu.locked.command_leave": "Use /sfgame leave to exit during a match",

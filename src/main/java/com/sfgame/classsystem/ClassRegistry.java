@@ -3,6 +3,7 @@ package com.sfgame.classsystem;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
@@ -13,6 +14,7 @@ import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -31,11 +33,7 @@ import java.util.Set;
 
 public final class ClassRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final String DEFAULT_CAPTAIN = """
-            {"id":"heavy_captain","displayName":"重装队长","description":"突破模式进攻队长专属职业","icon":"minecraft:red_banner",
-             "maxHealth":40.0,"movementSpeedMultiplier":0.9,"gunId":"tacz:hk416d","ammoId":"tacz:556x45",
-             "initialMagazine":30,"reserveAmmo":180,"fireMode":"AUTO","attachments":{},"inventory":[],"armor":{},"effects":[],"allowDrop":false}
-            """;
+    private static final int BREAKTHROUGH_CONFIG_VERSION = 2;
 
     private final Path legacyPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes.json");
     private final Path profilesPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes");
@@ -47,6 +45,7 @@ public final class ClassRegistry {
         try {
             createLegacyFileIfMissing();
             createModeProfilesIfMissing();
+            upgradeBreakthroughProfileIfNeeded();
             Map<String, RawProfile> raw = readProfiles(errors);
             Map<String, Profile> resolved = new LinkedHashMap<>();
             for (String id : raw.keySet()) resolve(id, raw, resolved, new LinkedHashSet<>(), errors);
@@ -160,13 +159,66 @@ public final class ClassRegistry {
         for (var mode : GameModeRegistry.all()) {
             Path target = profilesPath.resolve(mode.id() + ".json");
             if (Files.exists(target)) continue;
-            JsonObject object = JsonParser.parseString(legacy).getAsJsonObject();
-            if (GameModeRegistry.BREAKTHROUGH.equals(mode.id())) {
-                JsonArray captains = new JsonArray(); captains.add(JsonParser.parseString(DEFAULT_CAPTAIN));
-                object.add("captainClasses", captains);
-            } else if (!object.has("captainClasses")) object.add("captainClasses", new JsonArray());
+            JsonObject object = bundledProfile(mode.id());
+            if (object == null) object = JsonParser.parseString(legacy).getAsJsonObject();
+            if (!object.has("captainClasses")) object.add("captainClasses", new JsonArray());
             Files.writeString(target, GSON.toJson(object), StandardCharsets.UTF_8);
         }
+    }
+
+    private void upgradeBreakthroughProfileIfNeeded() throws IOException {
+        Path target = profilesPath.resolve(GameModeRegistry.BREAKTHROUGH + ".json");
+        if (!Files.exists(target)) return;
+        JsonObject current = JsonParser.parseString(Files.readString(target, StandardCharsets.UTF_8)).getAsJsonObject();
+        int version = current.has("configVersion") ? current.get("configVersion").getAsInt() : 0;
+        if (version >= BREAKTHROUGH_CONFIG_VERSION) return;
+        JsonObject defaults = bundledProfile(GameModeRegistry.BREAKTHROUGH);
+        if (defaults == null) throw new IOException("Bundled breakthrough class profile is missing");
+        mergeDefaultDefinitions(current, defaults, "classes");
+        mergeDefaultDefinitions(current, defaults, "captainClasses");
+        current.addProperty("configVersion", BREAKTHROUGH_CONFIG_VERSION);
+        Files.writeString(target, GSON.toJson(current), StandardCharsets.UTF_8);
+    }
+
+    private JsonObject bundledProfile(String modeId) throws IOException {
+        String resource = "/defaults/classes/" + modeId + ".json";
+        try (InputStream input = ClassRegistry.class.getResourceAsStream(resource)) {
+            if (input == null) return null;
+            try (Reader reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
+                return JsonParser.parseReader(reader).getAsJsonObject();
+            }
+        }
+    }
+
+    private static void mergeDefaultDefinitions(JsonObject current, JsonObject defaults, String key) {
+        JsonArray target = current.has(key) && current.get(key).isJsonArray()
+                ? current.getAsJsonArray(key) : new JsonArray();
+        if (!current.has(key) || !current.get(key).isJsonArray()) current.add(key, target);
+        Map<String, JsonObject> existing = new LinkedHashMap<>();
+        for (JsonElement element : target) {
+            if (!element.isJsonObject()) continue;
+            JsonObject object = element.getAsJsonObject();
+            if (object.has("id")) existing.put(object.get("id").getAsString().toLowerCase(Locale.ROOT), object);
+        }
+        for (JsonElement element : defaults.getAsJsonArray(key)) {
+            JsonObject fallback = element.getAsJsonObject();
+            String id = fallback.get("id").getAsString().toLowerCase(Locale.ROOT);
+            JsonObject configured = existing.get(id);
+            if (configured == null) {
+                target.add(fallback.deepCopy());
+                continue;
+            }
+            copyIfEmpty(configured, fallback, "inventory");
+            copyIfEmpty(configured, fallback, "armor");
+        }
+    }
+
+    private static void copyIfEmpty(JsonObject target, JsonObject fallback, String key) {
+        if (!fallback.has(key)) return;
+        boolean empty = !target.has(key) || target.get(key).isJsonNull()
+                || target.get(key).isJsonArray() && target.getAsJsonArray(key).size() == 0
+                || target.get(key).isJsonObject() && target.getAsJsonObject(key).size() == 0;
+        if (empty) target.add(key, fallback.get(key).deepCopy());
     }
     private static String profileIdForMode(String modeId) { return modeId == null ? GameModeRegistry.TEAM_DEATHMATCH : modeId; }
     private static boolean validProfileId(String id) { return SFGameId.isValid(id); }
