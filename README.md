@@ -2,14 +2,14 @@
 
 [![Build](https://github.com/LazyAlienServer/minecraft-sfgame/actions/workflows/build.yml/badge.svg)](https://github.com/LazyAlienServer/minecraft-sfgame/actions/workflows/build.yml)
 
-SFGame 是一个服务端权威的 Forge 1.20.1 枪战模式模组，使用 TACZ 提供枪械和弹药。当前版本实现团队竞技与占点模式、动态规则、原版队伍绑定、职业配装、重生、计分、菜单及 HUD。
+SFGame 是一个 Forge 1.20.1 的枪战游戏框架 Mod，依赖 TACZ 提供枪械和弹药。当前版本实现团队竞技、占点和突破攻防模式，以及动态规则、原版队伍绑定、职业配装、重生、计分、菜单及 HUD。
 
 ## 环境与构建
 
 - Minecraft 1.20.1
 - Forge 47.4.20
 - Java 17
-- TACZ 1.1.8-hotfix（客户端和服务端均必需）
+- TACZ 1.1.8-hotfix
 
 Windows 构建命令：
 
@@ -93,16 +93,34 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 `/sfgame team set` 和 `/sfgame team remove` 使用多玩家实体参数，支持玩家名以及 `@a`、`@p`、`@r` 等原版选择器。例如：`/sfgame team set @a random`。
 
-地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm` 和 `domination`，每个模式可以拥有多张地图。`/sfgame spawn setdefault lobby` 将管理员当前位置保存为全局默认大厅；世界首次加载时若尚未配置，会自动使用主世界原版出生点。`/sfgame spawn set lobby` 为当前地图设置覆盖点，`/sfgame spawn clear lobby` 清除覆盖并恢复使用全局默认大厅。每张地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
+地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`、`domination` 和 `breakthrough`，每个模式可以拥有多张地图。`/sfgame spawn setdefault lobby` 将管理员当前位置保存为全局默认大厅；世界首次加载时若尚未配置，会自动使用主世界原版出生点。`/sfgame spawn set lobby` 为当前地图设置覆盖点，`/sfgame spawn clear lobby` 清除覆盖并恢复使用全局默认大厅。团队竞技和占点地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。突破攻防地图改用每个 sector 的攻守角色出生点，配置方法见下文。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
 
 ## 职业配置
 
-首次运行会生成 `config/sfgame/classes.json`。内置默认文件位于 `src/main/resources/defaults/classes.json`，包含：
+首次运行会保留旧的 `config/sfgame/classes.json`，并为每个模式生成独立职业配置：
+
+```text
+config/sfgame/classes/tdm.json
+config/sfgame/classes/domination.json
+config/sfgame/classes/breakthrough.json
+```
+
+第一次迁移会把旧职业复制到三个模式文件，不默认建立继承关系。内置默认文件位于 `src/main/resources/defaults/classes.json`，包含：
 
 - `assault`：HK416、180 发备用弹药、105% 移速（TACZ 1.1.8-hotfix 资源 ID 为 `tacz:hk416d`）。
 - `sniper`：M107、30 发备用弹药、95% 移速。
 
-修改 JSON 后执行 `/sfgame class reload`。SFGame 会通过 TACZ API 校验枪械、弹药和附件资源；发现无效资源时保留上一份有效配置，并阻止比赛在配装无效时开始。重载不会替换存活玩家的装备，新配置在下一次部署时生效。
+每个模式文件支持可选的 `parent`、普通 `classes` 和队长 `captainClasses`：
+
+```json
+{
+  "parent": "tdm",
+  "classes": [],
+  "captainClasses": []
+}
+```
+
+子配置中相同 ID 会覆盖父配置，缺失父配置和循环继承会被拒绝。`breakthrough.json` 默认额外生成 `heavy_captain`：40 点生命、HK416、90% 移速，仅供突破队长使用。修改 JSON 后执行 `/sfgame class reload`。SFGame 会通过 TACZ API 校验枪械、弹药和附件资源；发现无效资源时保留上一份有效配置，并阻止比赛在配装无效时开始。重载不会替换存活玩家的装备，新配置在下一次部署时生效。
 
 通用配置文件 `config/sfgame-common.toml` 中的 `globalHungerLock` 默认为 `true`。启用后，SFGame 模式运行期间所有在线玩家的饥饿值和饱和度均固定为 20。
 
@@ -156,6 +174,149 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 ```
 
 人数差计算开启时，占领速度为基础速度乘以第一名与第二名人数差，再乘以系数 `k`，最终受最大倍率限制。比赛中使用原版 Bossbar 显示点位进度。
+
+占点模式会在每个当前开放点的中心上方显示发光悬浮字母。`async` 显示全部活动点，`sync` 只显示当前随机开放点；切点和比赛结束时会自动清理。
+
+## 突破攻防模式
+
+使用 `/sfgame mode select breakthrough` 选择突破攻防。该模式严格使用两个阵营：管理员指定一个进攻阵营和一个防守阵营。地图由 1～16 个有序 sector 构成，每个 sector 包含 1～16 个同时开放的点位，并分别保存进攻方和防守方出生点。
+
+进攻方必须同时控制当前 sector 的全部点位才能推进。点位初始归防守方，进攻方需要先中立化再占领；在整个 sector 完成前，防守方可以修复和夺回点位。推进后旧 sector 锁定，经过默认 10 秒整备期，全员无死亡记录地部署到下一个 sector。当前开放点会显示 Bossbar 和中心上方的发光悬浮字母。
+
+### 最小建图流程
+
+下面的示例创建一张红队进攻、蓝队防守、包含两个 sector 的普通突破地图：
+
+```text
+/sfgame mode select breakthrough
+/sfgame map create example
+/sfgame spawn set lobby
+
+/sfgame breakthrough variant normal
+/sfgame breakthrough legs 1
+/sfgame breakthrough roles red blue
+
+/sfgame sector add first
+/sfgame point pos1
+/sfgame point pos2
+/sfgame sector point add box first a
+/sfgame sector spawn add first attacker
+/sfgame sector spawn add first defender
+
+/sfgame sector add second
+/sfgame sector point add square second b 6
+/sfgame sector spawn add second attacker
+/sfgame sector spawn add second defender
+
+/sfgame team set <进攻玩家> red
+/sfgame team set <防守玩家> blue
+/sfgame class validate
+/sfgame status
+/sfgame start
+```
+
+每条 `sector spawn add` 都使用管理员当前站立位置，并可重复执行以添加多个随机出生点。方形点使用管理员当前位置作为中心；长方形点先在两个角执行 `point pos1` 和 `point pos2`。未设置高度时点位覆盖该维度全部高度。
+
+### 模式与 sector 指令
+
+```text
+/sfgame breakthrough variant <normal|captain>
+/sfgame breakthrough legs <1|2>
+/sfgame breakthrough roles <进攻阵营> <防守阵营>
+/sfgame breakthrough status
+
+/sfgame sector add <sectorID>
+/sfgame sector set order <sectorID> <1-16>
+/sfgame sector list
+/sfgame sector status <sectorID>
+/sfgame sector remove <sectorID>
+/sfgame sector clear
+```
+
+`roles` 中可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。设置 `legs 2` 后第一赛段结束会自动交换攻守，并重新从第一个 sector 开始。
+
+### Sector 点位指令
+
+```text
+/sfgame point pos1
+/sfgame point pos2
+/sfgame sector point add box <sectorID> <点位ID>
+/sfgame sector point add square <sectorID> <点位ID> <半径>
+/sfgame sector point set box <sectorID> <点位ID>
+/sfgame sector point set radius <sectorID> <点位ID> <半径>
+/sfgame sector point set height <sectorID> <点位ID> full
+/sfgame sector point set height <sectorID> <点位ID> <minY> <maxY>
+/sfgame sector point remove <sectorID> <点位ID>
+```
+
+同一个 sector 内的点位不可重叠；不同 sector 可以复用区域和点位 ID。点位 ID 支持单个字母，显示时会自动转为大写。
+
+### Sector 出生点指令
+
+```text
+/sfgame sector spawn add <sectorID> <attacker|defender>
+/sfgame sector spawn list <sectorID> <attacker|defender>
+/sfgame sector spawn remove <sectorID> <attacker|defender> <序号>
+/sfgame sector spawn clear <sectorID> <attacker|defender>
+```
+
+每个 sector 必须至少有一个进攻出生点和一个防守出生点。双赛段交换的是原版队伍的攻守身份，地图中的 `attacker` 和 `defender` 坐标仍表示当前赛段的角色位置，无需重新配置。
+
+### 票数、时间与胜负
+
+- 每个 sector 默认有 100 张进攻票，任意进攻方有效死亡扣除 1；防守方死亡不扣票。
+- 进入下一 sector 时，进攻票数重新补满。
+- `timeLimitSeconds` 在突破模式中表示每个 sector 的独立时限，推进时重置。
+- 单赛段中，攻陷最后 sector 则进攻方获胜；票数归零或超时则防守方获胜。
+- 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
+- 阶段整备期间全员无敌，不能通过开火提前解除保护。
+
+突破模式规则：
+
+```text
+/sfgame rules set attackerTickets <1-10000>
+/sfgame rules set timeLimitSeconds <秒>
+/sfgame rules set sectorTransitionSeconds <秒>
+/sfgame rules set captureTimeSeconds <秒>
+/sfgame rules set captureUsePlayerDifference <true|false>
+/sfgame rules set captureDifferenceCoefficient <小数>
+/sfgame rules set captureMaxMultiplier <倍率>
+/sfgame rules set captainVoteSeconds <秒>
+/sfgame rules set captainReplacementVoteSeconds <秒>
+/sfgame rules set attackerCaptainCaptureWeight <小数>
+/sfgame rules set defenderCaptureWeight <小数>
+```
+
+比赛中修改 `attackerTickets` 会立即把当前 sector 的剩余票数设置为新值，后续 sector 也按新值补满。降低时限至本 sector 已用时间以下，会在下一 Tick 判定防守成功。
+
+### 队长变体用法
+
+执行 `/sfgame breakthrough variant captain` 启用队长变体。只有当前进攻方选举队长，防守方不选举队长、没有旗帜、也不使用队长职业。
+
+- `/sfgame start` 后先进入默认 15 秒投票阶段，进攻玩家会自动打开投票菜单。
+- 玩家可以投给任意在线进攻队友、自投或弃权；未投票按弃权处理。
+- 队长头顶显示本方颜色旗帜，并使用 `captainClasses` 中的专属职业。
+- 普通进攻玩家占点权重为 1.0，进攻队长默认 2.0；每名防守玩家默认 1.4。
+- 队长死亡后保留身份，重生期间隐藏旗帜；掉线、离队或换队会触发默认 10 秒补选。
+- 补选期间普通进攻玩家仍可占点，但没有队长加成。
+- 双赛段换边时，原队长恢复普通职业，新进攻方重新选举队长。
+
+玩家与管理员接口：
+
+```text
+/sfgame captain vote <玩家>
+/sfgame captain vote abstain
+/sfgame captain status
+/sfgame captain set <进攻阵营> <玩家>
+/sfgame captain reelect <进攻阵营>
+
+/sfgame class list normal
+/sfgame class list captain
+/sfgame class set <玩家> <普通职业ID>
+/sfgame class setcaptain <玩家> <队长职业ID>
+```
+
+管理员指定或补选出新队长时，系统会无死亡记录地重新部署该玩家并应用队长职业。队长可以在菜单中预选其他队长职业，新配装在下一次部署时生效。
 
 ## 验证
 
