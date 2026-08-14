@@ -233,7 +233,14 @@ config/sfgame/classes/breakthrough.json
 /sfgame sector clear
 ```
 
-`roles` 中可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。设置 `legs 2` 后第一赛段结束会自动交换攻守，并重新从第一个 sector 开始。
+`legs` 表示整场比赛进行几次完整的攻防赛段，不是 sector 数量：
+
+- `/sfgame breakthrough legs 1`：只进行一次攻防。`roles` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜，任一 sector 超时或进攻票数归零时防守方获胜。比赛结束后不会交换攻守。
+- `/sfgame breakthrough legs 2`：双方各进攻一次。第一赛段结束后自动交换攻守并从第一个 sector 重新开始；第二赛段结束后比较双方推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
+
+例如 `roles red blue` 配合 `legs 1` 表示整局固定由红队进攻、蓝队防守；配合 `legs 2` 则第一赛段红攻蓝守，第二赛段蓝攻红守。
+
+`roles` 中可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。sector 的数量由 `/sfgame sector add` 决定，与 `legs` 无关。
 
 ### Sector 点位指令
 
