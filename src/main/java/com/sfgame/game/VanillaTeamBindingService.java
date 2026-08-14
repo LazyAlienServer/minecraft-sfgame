@@ -37,11 +37,16 @@ public final class VanillaTeamBindingService {
     public boolean assign(ServerPlayer player, TeamSide side, SFGameSavedData data) {
         if (side == TeamSide.NONE) return false;
         PlayerTeam team = player.getServer().getScoreboard().getPlayerTeam(data.teamName(side));
-        return team != null && player.getServer().getScoreboard().addPlayerToTeam(player.getScoreboardName(), team);
+        if (team == null || !player.getServer().getScoreboard().addPlayerToTeam(player.getScoreboardName(), team)) {
+            return false;
+        }
+        refreshTabName(player);
+        return true;
     }
 
     public void remove(ServerPlayer player) {
         player.getServer().getScoreboard().removePlayerFromTeam(player.getScoreboardName());
+        refreshTabName(player);
     }
 
     public TeamSide balancedSide(MinecraftServer server, SFGameSavedData data) {
@@ -54,5 +59,12 @@ public final class VanillaTeamBindingService {
 
     private int count(MinecraftServer server, SFGameSavedData data, TeamSide side) {
         return (int) server.getPlayerList().getPlayers().stream().filter(player -> sideOf(player, data) == side).count();
+    }
+
+    private static void refreshTabName(ServerPlayer player) {
+        // SFGame supplies a custom tab-list component with K/D appended. Forge
+        // caches that component, so vanilla scoreboard packets alone cannot
+        // update its embedded team color after a menu-driven team change.
+        player.refreshTabListName();
     }
 }

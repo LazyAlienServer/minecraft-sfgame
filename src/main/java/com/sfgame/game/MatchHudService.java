@@ -20,6 +20,9 @@ public final class MatchHudService {
     public void update(MinecraftServer server, MatchManager manager) {
         Scoreboard scoreboard = server.getScoreboard();
         Objective objective = scoreboard.getObjective(OBJECTIVE_NAME);
+        // Also refresh in the lobby so direct vanilla /team changes and team
+        // color modifications invalidate Forge's cached custom tab-list names.
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) player.refreshTabListName();
         if (manager.phase() == MatchPhase.LOBBY || manager.phase() == MatchPhase.UNCONFIGURED) {
             if (objective != null && scoreboard.getDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR) == objective) {
                 scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, null);
@@ -54,8 +57,6 @@ public final class MatchHudService {
             scoreboard.resetPlayerScore(LEG_LINE, objective);
             scoreboard.resetPlayerScore(SECTOR_LINE, objective);
         }
-        for (ServerPlayer player : server.getPlayerList().getPlayers()) player.refreshTabListName();
-
     }
 
     private static String title(String modeId, int scoreLimit) {
