@@ -56,6 +56,18 @@ final class SFGameSavedDataTest {
     }
 
     @Test
+    void acceptsSingleDigitMapIdsAndPersistsThem() {
+        SFGameSavedData source = new SFGameSavedData();
+        assertTrue(source.createMap("1"));
+        assertEquals("1", source.selectedMap());
+
+        SFGameSavedData restored = SFGameSavedData.load(source.save(new CompoundTag()));
+
+        assertEquals("1", restored.selectedMap());
+        assertTrue(restored.selectMap("1"));
+    }
+
+    @Test
     void refusesToRemoveLastMapAndFallsBackAfterRemovingSelectedMap() {
         SFGameSavedData data = new SFGameSavedData();
         assertFalse(data.removeMap("default"));
@@ -142,13 +154,17 @@ final class SFGameSavedDataTest {
     }
 
     @Test
-    void acceptsSingleUppercasePointIdsAndNormalizesLookups() {
+    void acceptsSingleLetterAndDigitPointIdsAndNormalizesLookups() {
         DominationMapConfig config = new DominationMapConfig();
         config.add(new CapturePointDefinition("A",
                 new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+        config.add(new CapturePointDefinition("1",
+                new SquareCaptureRegion("minecraft:overworld", 20, 0, 5, null, null), 2));
 
         assertEquals("a", config.points().get(0).id());
+        assertEquals("1", config.points().get(1).id());
         assertTrue(config.point("A").isPresent());
+        assertTrue(config.point("1").isPresent());
         config.replace("A", config.point("a").orElseThrow().withOrder(2));
         assertEquals(2, config.point("A").orElseThrow().order());
         assertTrue(config.remove("A"));
@@ -220,6 +236,18 @@ final class SFGameSavedDataTest {
         assertEquals(List.of(com.sfgame.game.TeamSide.YELLOW, com.sfgame.game.TeamSide.GREEN), restored.enabledTeams());
         assertEquals("a", restored.activeMap().breakthrough().sectors().get(0).points().get(0).id());
         assertEquals(List.of(RED), restored.activeMap().breakthrough().sectors().get(0).spawns(true));
+    }
+
+    @Test
+    void acceptsSingleDigitBreakthroughSectorAndPointIds() {
+        BreakthroughMapConfig config = new BreakthroughMapConfig();
+        BreakthroughSectorDefinition sector = new BreakthroughSectorDefinition("1", 1);
+        sector.addPoint(new CapturePointDefinition("2",
+                new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+        config.addSector(sector);
+
+        assertEquals("1", config.sector("1").orElseThrow().id());
+        assertEquals("2", config.sector("1").orElseThrow().point("2").orElseThrow().id());
     }
 
     @Test

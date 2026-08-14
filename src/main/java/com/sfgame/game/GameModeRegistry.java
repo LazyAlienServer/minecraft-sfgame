@@ -1,5 +1,7 @@
 package com.sfgame.game;
 
+import com.sfgame.data.SFGameId;
+
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -18,16 +20,18 @@ public final class GameModeRegistry {
     }
 
     public static void register(GameModeDefinition mode) {
-        if (!mode.id().matches("[a-z][a-z0-9_]{0,31}")) {
+        if (!SFGameId.isValid(mode.id())) {
             throw new IllegalArgumentException("Invalid game mode id: " + mode.id());
         }
-        if (MODES.putIfAbsent(mode.id(), mode) != null) {
+        String id = SFGameId.normalize(mode.id());
+        GameModeDefinition normalized = id.equals(mode.id()) ? mode : new GameModeDefinition(id, mode.displayName());
+        if (MODES.putIfAbsent(id, normalized) != null) {
             throw new IllegalArgumentException("Duplicate game mode id: " + mode.id());
         }
     }
 
     public static Optional<GameModeDefinition> get(String id) {
-        return Optional.ofNullable(MODES.get(id));
+        return SFGameId.isValid(id) ? Optional.ofNullable(MODES.get(SFGameId.normalize(id))) : Optional.empty();
     }
 
     public static Collection<GameModeDefinition> all() {

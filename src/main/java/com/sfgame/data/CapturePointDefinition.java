@@ -10,9 +10,11 @@ public record CapturePointDefinition(String id, CaptureRegion region, int order)
     }
 
     public static String normalizeId(String id) {
-        String normalized = id == null ? "" : id.toLowerCase(java.util.Locale.ROOT);
-        if (!normalized.matches("[a-z][a-z0-9_]{0,31}")) throw new IllegalArgumentException("Invalid point id: " + id);
-        return normalized;
+        try {
+            return SFGameId.normalize(id);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid point id: " + id, exception);
+        }
     }
 
     public CapturePointDefinition withRegion(CaptureRegion value) { return new CapturePointDefinition(id, value, order); }

@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sfgame.SFGame;
+import com.sfgame.data.SFGameId;
 import com.sfgame.game.GameModeRegistry;
 import net.minecraftforge.fml.loading.FMLPaths;
 
@@ -138,7 +139,7 @@ public final class ClassRegistry {
         Map<String, ClassDefinition> loaded = new LinkedHashMap<>();
         for (ClassDefinition definition : definitions) {
             String id = definition.id() == null ? "" : definition.id().trim().toLowerCase(Locale.ROOT);
-            if (!id.matches("[a-z][a-z0-9_]{1,63}")) { errors.add(profile + "/" + pool + ": invalid class id " + id); continue; }
+            if (!SFGameId.isValidClass(id)) { errors.add(profile + "/" + pool + ": invalid class id " + id); continue; }
             if (loaded.putIfAbsent(id, definition) != null) errors.add(profile + "/" + pool + ": duplicate class id " + id);
         }
         if ("classes".equals(pool) && loaded.isEmpty()) errors.add(profile + ": no valid normal classes were loaded");
@@ -168,7 +169,7 @@ public final class ClassRegistry {
         }
     }
     private static String profileIdForMode(String modeId) { return modeId == null ? GameModeRegistry.TEAM_DEATHMATCH : modeId; }
-    private static boolean validProfileId(String id) { return id != null && id.matches("[a-z][a-z0-9_]{0,31}"); }
+    private static boolean validProfileId(String id) { return SFGameId.isValid(id); }
     private static String message(Exception exception) { return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(); }
 
     private record RawProfile(String parent, Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains) { }

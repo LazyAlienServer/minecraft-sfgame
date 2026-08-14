@@ -21,7 +21,7 @@ public final class ArenaMap {
     private BreakthroughMapConfig breakthrough = new BreakthroughMapConfig();
 
     public ArenaMap(String id) {
-        this.id = id;
+        this.id = SFGameId.normalize(id);
         TeamSide.PLAYABLE.forEach(side -> spawns.put(side, new ArrayList<>()));
     }
 

@@ -8,7 +8,6 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -106,9 +105,11 @@ public final class BreakthroughSectorDefinition {
     }
 
     public static String normalizeId(String value) {
-        String normalized = value == null ? "" : value.toLowerCase(Locale.ROOT);
-        if (!normalized.matches("[a-z][a-z0-9_]{0,31}")) throw new IllegalArgumentException("Invalid sector id: " + value);
-        return normalized;
+        try {
+            return SFGameId.normalize(value);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("Invalid sector id: " + value, exception);
+        }
     }
 
     private int indexOfPoint(String pointId) {

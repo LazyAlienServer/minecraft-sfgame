@@ -89,25 +89,30 @@ public final class SFGameSavedData extends SavedData {
     }
 
     public boolean createMap(String mapId) {
-        if (!validId(mapId)) return false;
+        if (!SFGameId.isValid(mapId)) return false;
+        String normalized = SFGameId.normalize(mapId);
         LinkedHashMap<String, ArenaMap> maps = mapsFor(selectedMode);
-        if (maps.putIfAbsent(mapId, new ArenaMap(mapId)) != null) return false;
-        selectedMap = mapId;
+        if (maps.putIfAbsent(normalized, new ArenaMap(normalized)) != null) return false;
+        selectedMap = normalized;
         setDirty();
         return true;
     }
 
     public boolean selectMap(String mapId) {
-        if (!mapsFor(selectedMode).containsKey(mapId)) return false;
-        selectedMap = mapId;
+        if (!SFGameId.isValid(mapId)) return false;
+        String normalized = SFGameId.normalize(mapId);
+        if (!mapsFor(selectedMode).containsKey(normalized)) return false;
+        selectedMap = normalized;
         setDirty();
         return true;
     }
 
     public boolean removeMap(String mapId) {
+        if (!SFGameId.isValid(mapId)) return false;
+        String normalized = SFGameId.normalize(mapId);
         LinkedHashMap<String, ArenaMap> maps = mapsFor(selectedMode);
-        if (maps.size() <= 1 || maps.remove(mapId) == null) return false;
-        if (selectedMap.equals(mapId)) selectedMap = maps.keySet().iterator().next();
+        if (maps.size() <= 1 || maps.remove(normalized) == null) return false;
+        if (selectedMap.equals(normalized)) selectedMap = maps.keySet().iterator().next();
         setDirty();
         return true;
     }
@@ -187,8 +192,12 @@ public final class SFGameSavedData extends SavedData {
                 LinkedHashMap<String, ArenaMap> maps = data.mapsFor(modeId);
                 ListTag mapList = modeTag.getList("Maps", Tag.TAG_COMPOUND);
                 for (int j = 0; j < mapList.size(); j++) {
-                    ArenaMap map = ArenaMap.load(mapList.getCompound(j));
-                    if (validId(map.id())) maps.put(map.id(), map);
+                    try {
+                        ArenaMap map = ArenaMap.load(mapList.getCompound(j));
+                        maps.put(map.id(), map);
+                    } catch (IllegalArgumentException ignored) {
+                        // Ignore malformed map identifiers instead of making the world unloadable.
+                    }
                 }
             }
             data.selectedMode = GameModeRegistry.get(tag.getString("SelectedMode")).isPresent()
@@ -236,7 +245,4 @@ public final class SFGameSavedData extends SavedData {
         return map.enabledTeams().size() >= 2;
     }
 
-    private static boolean validId(String id) {
-        return id != null && id.matches("[a-z][a-z0-9_]{0,31}");
-    }
 }
