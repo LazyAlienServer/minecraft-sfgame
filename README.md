@@ -56,6 +56,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 ```text
 /sfgame menu
+/sfgame leave
 /sfgame status
 /sfgame start
 /sfgame stop
@@ -133,6 +134,7 @@ config/sfgame/classes/breakthrough.json
 - 等待配置、大厅和结算返回大厅倒计时期间，所有在线玩家获得抗性提升 V；进入开场倒计时或正式比赛时移除该阶段保护。
 - 删除绑定队伍会无结果终止当前比赛；离开绑定队伍会转旁观并排入下一局。
 - 中途玩家默认旁观并进入下一局；管理员可用 `joinnow` 允许当前局参赛。
+- 对局开始后，参赛玩家菜单不显示加入或退出按钮；玩家需要主动退出时使用 `/sfgame leave`。队长选拔期间，进攻方菜单只保留投票与职业功能，服务端也会拒绝过期或伪造的菜单加入/退出请求。
 - 友军伤害与友军击退被取消；出生保护同时阻止造成和受到伤害，首次使用 TACZ 枪械开火会提前解除。
 - 有归属的敌方击杀计分；自杀、环境或无归属死亡不计团队分。
 - 比赛玩家为冒险模式，禁止破坏、放置和丢弃受保护的职业装备。
@@ -255,10 +257,12 @@ config/sfgame/classes/breakthrough.json
 /sfgame sector point set radius <sectorID> <点位ID> <半径>
 /sfgame sector point set height <sectorID> <点位ID> full
 /sfgame sector point set height <sectorID> <点位ID> <minY> <maxY>
+/sfgame sector point set respawn <sectorID> <点位ID> inside
+/sfgame sector point set respawn <sectorID> <点位ID> nearby
 /sfgame sector point remove <sectorID> <点位ID>
 ```
 
-同一个 sector 内的点位不可重叠；不同 sector 可以复用区域和点位 ID。sector 与点位 ID 均支持单个字母或单个数字；字母显示时会自动转为大写，数字保持不变。
+同一个 sector 内的点位不可重叠；不同 sector 可以复用区域和点位 ID。sector 与点位 ID 均支持单个字母或单个数字；字母显示时会自动转为大写，数字保持不变。每个突破点位都必须配置两个重生坐标：站在点位区域内部执行 `inside`，站在该点附近的安全位置执行 `nearby`。两者必须和点位处于同一维度，缺少任意一个都会阻止开赛。
 
 ### Sector 出生点指令
 
@@ -279,6 +283,7 @@ config/sfgame/classes/breakthrough.json
 - 单赛段中，攻陷最后 sector 则进攻方获胜；票数归零或超时则防守方获胜。
 - 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
 - 阶段整备期间全员无敌，不能通过开火提前解除保护。
+- 突破模式默认死亡重生倒计时为 10 秒。倒计时结束后自动打开位置选择，可选择当前 sector 的队伍出生点，或当前由本队占领的点位；安全点位使用 `inside` 坐标，人数并列或敌方正在中立化/夺取时使用 `nearby` 坐标。按钮点击时会再次校验归属，已经失守的点不能重生。
 
 突破模式规则：
 
@@ -292,6 +297,7 @@ config/sfgame/classes/breakthrough.json
 /sfgame rules set captureMaxMultiplier <倍率>
 /sfgame rules set captainVoteSeconds <秒>
 /sfgame rules set captainReplacementVoteSeconds <秒>
+/sfgame rules set attackerCaptainGlowing <true|false>
 /sfgame rules set attackerCaptainCaptureWeight <小数>
 /sfgame rules set defenderCaptureWeight <小数>
 ```
@@ -304,9 +310,10 @@ config/sfgame/classes/breakthrough.json
 
 - `/sfgame start` 后先进入默认 15 秒投票阶段，进攻玩家会自动打开投票菜单。
 - 玩家可以投给任意在线进攻队友、自投或弃权；未投票按弃权处理。
-- 队长头顶显示本方颜色旗帜，并使用 `captainClasses` 中的专属职业。
+- 队长的头盔栏固定装备本方颜色旗帜，并使用 `captainClasses` 中的专属职业；旗帜会覆盖队长职业 JSON 中的头盔配置。
+- 进攻方队长默认对全服玩家显示发光轮廓，可用 `attackerCaptainGlowing` 热规则关闭。
 - 普通进攻玩家占点权重为 1.0，进攻队长默认 2.0；每名防守玩家默认 1.4。
-- 队长死亡后保留身份，重生期间隐藏旗帜；掉线、离队或换队会触发默认 10 秒补选。
+- 队长死亡后保留身份，重生期间隐藏旗帜并清除发光；重新部署后恢复。掉线、离队或换队会触发默认 10 秒补选，比赛结束时也会清理旗帜与 SFGame 发光状态。
 - 补选期间普通进攻玩家仍可占点，但没有队长加成。
 - 双赛段换边时，原队长恢复普通职业，新进攻方重新选举队长。
 

@@ -74,6 +74,20 @@ public final class BreakthroughSectorDefinition {
         if (points.size() > MAX_POINTS) errors.add("Sector " + id + " has more than 16 capture points");
         if (attackerSpawns.isEmpty()) errors.add("Sector " + id + " needs an attacker spawn");
         if (defenderSpawns.isEmpty()) errors.add("Sector " + id + " needs a defender spawn");
+        for (CapturePointDefinition point : points) {
+            if (point.respawnPosition() == null) {
+                errors.add("Sector " + id + " point " + point.id() + " needs an inside respawn position");
+            } else if (!point.region().dimension().equals(point.respawnPosition().dimension())) {
+                errors.add("Sector " + id + " point " + point.id() + " respawn position must use the point dimension");
+            } else if (!point.region().contains(point.respawnPosition())) {
+                errors.add("Sector " + id + " point " + point.id() + " inside respawn position must be inside the capture region");
+            }
+            if (point.nearbyRespawnPosition() == null) {
+                errors.add("Sector " + id + " point " + point.id() + " needs a nearby contested respawn position");
+            } else if (!point.region().dimension().equals(point.nearbyRespawnPosition().dimension())) {
+                errors.add("Sector " + id + " point " + point.id() + " nearby respawn position must use the point dimension");
+            }
+        }
         for (int i = 0; i < points.size(); i++) for (int j = i + 1; j < points.size(); j++) {
             if (points.get(i).region().overlaps(points.get(j).region())) {
                 errors.add("Sector " + id + " capture points overlap: " + points.get(i).id() + " and " + points.get(j).id());

@@ -202,6 +202,18 @@ final class SFGameSavedDataTest {
     }
 
     @Test
+    void migratesLegacyBreakthroughDefaultRespawnToTenSeconds() {
+        SFGameSavedData source = new SFGameSavedData();
+        source.rules(com.sfgame.game.GameModeRegistry.BREAKTHROUGH).respawnSeconds(5);
+        CompoundTag oldSave = source.save(new CompoundTag());
+        oldSave.putInt("DataVersion", 7);
+
+        SFGameSavedData restored = SFGameSavedData.load(oldSave);
+
+        assertEquals(10, restored.rules(com.sfgame.game.GameModeRegistry.BREAKTHROUGH).respawnSeconds());
+    }
+
+    @Test
     void migratesLegacyGlobalRulesOnlyIntoTdm() {
         CompoundTag legacy = new CompoundTag();
         MatchRules oldRules = new MatchRules();
@@ -223,7 +235,8 @@ final class SFGameSavedDataTest {
         source.activeMap().breakthrough().legs(2);
         source.activeMap().breakthrough().roles(com.sfgame.game.TeamSide.YELLOW, com.sfgame.game.TeamSide.GREEN);
         BreakthroughSectorDefinition first = new BreakthroughSectorDefinition("first", 1);
-        first.addPoint(new CapturePointDefinition("A", new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+        first.addPoint(new CapturePointDefinition("A", new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1)
+                .withRespawnPosition(LOBBY).withNearbyRespawnPosition(RED));
         first.addSpawn(true, RED);
         first.addSpawn(false, BLUE);
         source.activeMap().breakthrough().addSector(first);
@@ -235,7 +248,23 @@ final class SFGameSavedDataTest {
         assertEquals(2, restored.activeMap().breakthrough().legs());
         assertEquals(List.of(com.sfgame.game.TeamSide.YELLOW, com.sfgame.game.TeamSide.GREEN), restored.enabledTeams());
         assertEquals("a", restored.activeMap().breakthrough().sectors().get(0).points().get(0).id());
+        assertEquals(LOBBY, restored.activeMap().breakthrough().sectors().get(0).points().get(0).respawnPosition());
+        assertEquals(RED, restored.activeMap().breakthrough().sectors().get(0).points().get(0).nearbyRespawnPosition());
         assertEquals(List.of(RED), restored.activeMap().breakthrough().sectors().get(0).spawns(true));
+    }
+
+    @Test
+    void breakthroughRequiresInsideAndNearbyRespawnPositionsForEveryPoint() {
+        BreakthroughSectorDefinition sector = new BreakthroughSectorDefinition("first", 1);
+        CapturePointDefinition point = new CapturePointDefinition("a",
+                new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1);
+        sector.addPoint(point);
+        sector.addSpawn(true, RED);
+        sector.addSpawn(false, BLUE);
+
+        assertTrue(sector.validate().stream().anyMatch(error -> error.contains("inside respawn")));
+        sector.replacePoint("a", point.withRespawnPosition(LOBBY).withNearbyRespawnPosition(RED));
+        assertTrue(sector.validate().isEmpty());
     }
 
     @Test

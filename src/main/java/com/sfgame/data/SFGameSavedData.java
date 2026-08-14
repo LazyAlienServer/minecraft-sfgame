@@ -149,7 +149,7 @@ public final class SFGameSavedData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag) {
-        tag.putInt("DataVersion", 7);
+        tag.putInt("DataVersion", 8);
         tag.putString("RedTeam", redTeam);
         tag.putString("BlueTeam", blueTeam);
         tag.putString("YellowTeam", yellowTeam);
@@ -225,6 +225,9 @@ public final class SFGameSavedData extends SavedData {
             data.rules(GameModeRegistry.TEAM_DEATHMATCH).load(tag.getCompound("Rules"));
         }
         if (dataVersion < 6) data.rules(GameModeRegistry.DOMINATION).scoreIntervalSeconds(1);
+        if (dataVersion < 8 && data.rules(GameModeRegistry.BREAKTHROUGH).respawnSeconds() == MatchRules.DEFAULT_RESPAWN_SECONDS) {
+            data.rules(GameModeRegistry.BREAKTHROUGH).respawnSeconds(MatchRules.DEFAULT_BREAKTHROUGH_RESPAWN_SECONDS);
+        }
         return data;
     }
 

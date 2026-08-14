@@ -10,6 +10,7 @@ public final class MatchRules {
     public static final int DEFAULT_TIME_LIMIT_SECONDS = 600;
     public static final int DEFAULT_START_COUNTDOWN_SECONDS = 5;
     public static final int DEFAULT_RESPAWN_SECONDS = 5;
+    public static final int DEFAULT_BREAKTHROUGH_RESPAWN_SECONDS = 10;
     public static final int DEFAULT_RESPAWN_PROTECTION_SECONDS = 3;
     public static final int DEFAULT_RESULT_SECONDS = 8;
 
@@ -32,6 +33,7 @@ public final class MatchRules {
     private int sectorTransitionSeconds;
     private int captainVoteSeconds;
     private int captainReplacementVoteSeconds;
+    private boolean attackerCaptainGlowing;
     private double attackerCaptainCaptureWeight;
     private double defenderCaptureWeight;
 
@@ -56,6 +58,7 @@ public final class MatchRules {
     public int sectorTransitionSeconds() { return sectorTransitionSeconds; }
     public int captainVoteSeconds() { return captainVoteSeconds; }
     public int captainReplacementVoteSeconds() { return captainReplacementVoteSeconds; }
+    public boolean attackerCaptainGlowing() { return attackerCaptainGlowing; }
     public double attackerCaptainCaptureWeight() { return attackerCaptainCaptureWeight; }
     public double defenderCaptureWeight() { return defenderCaptureWeight; }
 
@@ -77,6 +80,7 @@ public final class MatchRules {
     public void sectorTransitionSeconds(int value) { sectorTransitionSeconds = clamp(value, 0, 60); }
     public void captainVoteSeconds(int value) { captainVoteSeconds = clamp(value, 1, 120); }
     public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
+    public void attackerCaptainGlowing(boolean value) { attackerCaptainGlowing = value; }
     public void attackerCaptainCaptureWeight(double value) { attackerCaptainCaptureWeight = clamp(value, 1.0, 10.0); }
     public void defenderCaptureWeight(double value) { defenderCaptureWeight = clamp(value, 0.1, 10.0); }
 
@@ -85,7 +89,8 @@ public final class MatchRules {
         scoreLimit = GameModeRegistry.DOMINATION.equals(modeId) ? DEFAULT_DOMINATION_SCORE_LIMIT : DEFAULT_SCORE_LIMIT;
         timeLimitSeconds = DEFAULT_TIME_LIMIT_SECONDS;
         startCountdownSeconds = DEFAULT_START_COUNTDOWN_SECONDS;
-        respawnSeconds = DEFAULT_RESPAWN_SECONDS;
+        respawnSeconds = GameModeRegistry.BREAKTHROUGH.equals(modeId)
+                ? DEFAULT_BREAKTHROUGH_RESPAWN_SECONDS : DEFAULT_RESPAWN_SECONDS;
         respawnProtectionSeconds = DEFAULT_RESPAWN_PROTECTION_SECONDS;
         resultSeconds = DEFAULT_RESULT_SECONDS;
         captureTimeSeconds = 10;
@@ -99,6 +104,7 @@ public final class MatchRules {
         sectorTransitionSeconds = 10;
         captainVoteSeconds = 15;
         captainReplacementVoteSeconds = 10;
+        attackerCaptainGlowing = true;
         attackerCaptainCaptureWeight = 2.0;
         defenderCaptureWeight = 1.4;
     }
@@ -115,6 +121,7 @@ public final class MatchRules {
         tag.putInt("ScorePerPoint", scorePerPoint); tag.putInt("SyncHoldSeconds", syncHoldSeconds);
         tag.putInt("AttackerTickets", attackerTickets); tag.putInt("SectorTransitionSeconds", sectorTransitionSeconds);
         tag.putInt("CaptainVoteSeconds", captainVoteSeconds); tag.putInt("CaptainReplacementVoteSeconds", captainReplacementVoteSeconds);
+        tag.putBoolean("AttackerCaptainGlowing", attackerCaptainGlowing);
         tag.putDouble("AttackerCaptainCaptureWeight", attackerCaptainCaptureWeight);
         tag.putDouble("DefenderCaptureWeight", defenderCaptureWeight);
         return tag;
@@ -139,6 +146,7 @@ public final class MatchRules {
         if (tag.contains("SectorTransitionSeconds")) sectorTransitionSeconds(tag.getInt("SectorTransitionSeconds"));
         if (tag.contains("CaptainVoteSeconds")) captainVoteSeconds(tag.getInt("CaptainVoteSeconds"));
         if (tag.contains("CaptainReplacementVoteSeconds")) captainReplacementVoteSeconds(tag.getInt("CaptainReplacementVoteSeconds"));
+        if (tag.contains("AttackerCaptainGlowing")) attackerCaptainGlowing(tag.getBoolean("AttackerCaptainGlowing"));
         if (tag.contains("AttackerCaptainCaptureWeight")) attackerCaptainCaptureWeight(tag.getDouble("AttackerCaptainCaptureWeight"));
         if (tag.contains("DefenderCaptureWeight")) defenderCaptureWeight(tag.getDouble("DefenderCaptureWeight"));
     }

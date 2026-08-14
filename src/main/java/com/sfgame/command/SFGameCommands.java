@@ -48,7 +48,8 @@ public final class SFGameCommands {
             "captureDifferenceCoefficient", "captureMaxMultiplier", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds"};
     private static final String[] BREAKTHROUGH_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "sectorTransitionSeconds",
-            "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainCaptureWeight", "defenderCaptureWeight"};
+            "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
+            "attackerCaptainCaptureWeight", "defenderCaptureWeight"};
     private static final Map<UUID, ArenaPosition> POINT_POS_1 = new HashMap<>();
     private static final Map<UUID, ArenaPosition> POINT_POS_2 = new HashMap<>();
 
@@ -80,6 +81,7 @@ public final class SFGameCommands {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("sfgame")
                 .then(Commands.literal("menu").executes(SFGameCommands::menu))
+                .then(Commands.literal("leave").executes(SFGameCommands::leave))
                 .then(Commands.literal("status").requires(s -> s.hasPermission(2)).executes(SFGameCommands::status))
                 .then(Commands.literal("start").requires(s -> s.hasPermission(2)).executes(SFGameCommands::start))
                 .then(Commands.literal("stop").requires(s -> s.hasPermission(2)).executes(SFGameCommands::stop))
@@ -191,7 +193,11 @@ public final class SFGameCommands {
                                 .suggests(RULE_SUGGESTIONS).executes(SFGameCommands::rulesGet)))
                         .then(Commands.literal("set")
                                 .then(Commands.literal("captureUsePlayerDifference")
-                                        .then(Commands.argument("value", BoolArgumentType.bool()).executes(SFGameCommands::rulesSetBoolean)))
+                                        .then(Commands.argument("value", BoolArgumentType.bool())
+                                                .executes(context -> rulesSetBoolean(context, "captureUsePlayerDifference"))))
+                                .then(Commands.literal("attackerCaptainGlowing")
+                                        .then(Commands.argument("value", BoolArgumentType.bool())
+                                                .executes(context -> rulesSetBoolean(context, "attackerCaptainGlowing"))))
                                 .then(Commands.literal("captureDifferenceCoefficient")
                                         .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0)).executes(c -> rulesSetDouble(c, "captureDifferenceCoefficient"))))
                                 .then(Commands.literal("attackerCaptainCaptureWeight")
@@ -261,6 +267,10 @@ public final class SFGameCommands {
                         .then(Commands.argument("minY", IntegerArgumentType.integer(-2048, 2048))
                                 .then(Commands.argument("maxY", IntegerArgumentType.integer(-2048, 2048))
                                         .executes(context -> sectorPointSetHeight(context, false)))))));
+        pointSet.then(Commands.literal("respawn").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("point", StringArgumentType.word())
+                        .then(Commands.literal("inside").executes(context -> sectorPointSetRespawn(context, false)))
+                        .then(Commands.literal("nearby").executes(context -> sectorPointSetRespawn(context, true))))));
         point.then(pointSet);
         point.then(Commands.literal("remove").then(Commands.argument("sector", StringArgumentType.word())
                 .then(Commands.argument("point", StringArgumentType.word()).executes(SFGameCommands::sectorPointRemove))));
@@ -301,6 +311,13 @@ public final class SFGameCommands {
     private static int menu(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         SFGameNetwork.openMenu(context.getSource().getPlayerOrException());
         return 1;
+    }
+
+    private static int leave(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        MatchManager.get().leave(player);
+        return success(context, "Left the SFGame match");
     }
 
     private static int status(CommandContext<CommandSourceStack> context) {
@@ -744,6 +761,32 @@ public final class SFGameCommands {
         return replaceSectorPoint(context, existing -> existing.region().withHeight(minY, maxY));
     }
 
+    private static int sectorPointSetRespawn(CommandContext<CommandSourceStack> context, boolean nearby)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkBreakthroughEdit(context)) return 0;
+        String sectorId = StringArgumentType.getString(context, "sector");
+        String pointId = StringArgumentType.getString(context, "point");
+        BreakthroughSectorDefinition sector = sector(context, sectorId);
+        if (sector == null) return failure(context, "Unknown sector: " + sectorId);
+        try {
+            CapturePointDefinition point = sector.point(pointId)
+                    .orElseThrow(() -> new IllegalArgumentException("Unknown point: " + pointId));
+            ArenaPosition position = ArenaPosition.from(context.getSource().getPlayerOrException());
+            if (!point.region().dimension().equals(position.dimension())) {
+                return failure(context, "Point respawn position must be in " + point.region().dimension());
+            }
+            if (!nearby && !point.region().contains(position)) {
+                return failure(context, "Inside respawn position must be inside point " + pointId);
+            }
+            sector.replacePoint(pointId, nearby ? point.withNearbyRespawnPosition(position) : point.withRespawnPosition(position));
+            dirty(context);
+            return success(context, "Set " + (nearby ? "nearby contested" : "inside")
+                    + " respawn position for point " + pointId + " in sector " + sectorId);
+        } catch (IllegalArgumentException exception) {
+            return failure(context, exception.getMessage());
+        }
+    }
+
     private static int replaceSectorPoint(CommandContext<CommandSourceStack> context,
                                           java.util.function.Function<CapturePointDefinition, CaptureRegion> replacement) {
         String sectorId = StringArgumentType.getString(context, "sector"), pointId = StringArgumentType.getString(context, "point");
@@ -815,7 +858,11 @@ public final class SFGameCommands {
     private static void dirty(CommandContext<CommandSourceStack> context) {
         SFGameSavedData.get(context.getSource().getServer()).setDirty(); MatchManager.get().arenaSelectionChanged();
     }
-    private static String displayPoint(CapturePointDefinition point) { return point.id() + " " + regionText(point.region()); }
+    private static String displayPoint(CapturePointDefinition point) {
+        return point.id() + " " + regionText(point.region()) + " respawn="
+                + (point.respawnPosition() == null ? "unset" : positionText(point.respawnPosition()))
+                + " nearby=" + (point.nearbyRespawnPosition() == null ? "unset" : positionText(point.nearbyRespawnPosition()));
+    }
 
     private static int modeList(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
@@ -960,11 +1007,11 @@ public final class SFGameCommands {
         return success(context, key + "=" + ruleValue(SFGameSavedData.get(context.getSource().getServer()).rules(), key));
     }
 
-    private static int rulesSetBoolean(CommandContext<CommandSourceStack> context) {
+    private static int rulesSetBoolean(CommandContext<CommandSourceStack> context, String key) {
         boolean value = BoolArgumentType.getBool(context, "value");
-        try { MatchManager.get().setRule("captureUsePlayerDifference", value); }
+        try { MatchManager.get().setRule(key, value); }
         catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
-        return success(context, "captureUsePlayerDifference=" + value);
+        return success(context, key + "=" + value);
     }
 
     private static int rulesSetDouble(CommandContext<CommandSourceStack> context, String key) {
@@ -1091,6 +1138,7 @@ public final class SFGameCommands {
             case "sectorTransitionSeconds" -> Integer.toString(rules.sectorTransitionSeconds());
             case "captainVoteSeconds" -> Integer.toString(rules.captainVoteSeconds());
             case "captainReplacementVoteSeconds" -> Integer.toString(rules.captainReplacementVoteSeconds());
+            case "attackerCaptainGlowing" -> Boolean.toString(rules.attackerCaptainGlowing());
             case "attackerCaptainCaptureWeight" -> Double.toString(rules.attackerCaptainCaptureWeight());
             case "defenderCaptureWeight" -> Double.toString(rules.defenderCaptureWeight());
             default -> throw new IllegalArgumentException("Unknown rule " + key);
@@ -1103,7 +1151,8 @@ public final class SFGameCommands {
 
     private static boolean isBreakthroughOnlyRule(String key) {
         return key.equals("attackerTickets") || key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
-                || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainCaptureWeight")
+                || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainGlowing")
+                || key.equals("attackerCaptainCaptureWeight")
                 || key.equals("defenderCaptureWeight");
     }
 
@@ -1123,6 +1172,7 @@ public final class SFGameCommands {
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()
                 + ", sectorTransitionSeconds=" + r.sectorTransitionSeconds() + ", captainVoteSeconds=" + r.captainVoteSeconds()
                 + ", captainReplacementVoteSeconds=" + r.captainReplacementVoteSeconds()
+                + ", attackerCaptainGlowing=" + r.attackerCaptainGlowing()
                 + ", attackerCaptainCaptureWeight=" + r.attackerCaptainCaptureWeight()
                 + ", defenderCaptureWeight=" + r.defenderCaptureWeight();
         return common;

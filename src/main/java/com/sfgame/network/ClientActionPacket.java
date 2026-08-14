@@ -8,7 +8,8 @@ import net.minecraftforge.network.NetworkEvent;
 import java.util.function.Supplier;
 
 public record ClientActionPacket(Action action, String value) {
-    public enum Action { REQUEST_SNAPSHOT, JOIN, LEAVE, SELECT_CLASS, SELECT_CAPTAIN_CLASS, CAPTAIN_VOTE, CAPTAIN_ABSTAIN }
+    public enum Action { REQUEST_SNAPSHOT, JOIN, LEAVE, SELECT_CLASS, SELECT_CAPTAIN_CLASS, CAPTAIN_VOTE, CAPTAIN_ABSTAIN,
+        SELECT_RESPAWN }
 
     public static void encode(ClientActionPacket packet, FriendlyByteBuf buffer) {
         buffer.writeEnum(packet.action);
@@ -27,8 +28,8 @@ public record ClientActionPacket(Action action, String value) {
             MatchManager manager = MatchManager.get();
             switch (packet.action) {
                 case REQUEST_SNAPSHOT -> SFGameNetwork.sendSnapshot(player, manager.snapshot(player));
-                case JOIN -> manager.queueOrJoinLobby(player);
-                case LEAVE -> manager.leave(player);
+                case JOIN -> manager.joinFromMenu(player);
+                case LEAVE -> manager.leaveFromMenu(player);
                 case SELECT_CLASS -> manager.selectClass(player, packet.value);
                 case SELECT_CAPTAIN_CLASS -> manager.selectCaptainClass(player, packet.value);
                 case CAPTAIN_ABSTAIN -> manager.breakthrough().vote(player, null, true, manager);
@@ -38,6 +39,7 @@ public record ClientActionPacket(Action action, String value) {
                         manager.breakthrough().vote(player, candidate, false, manager);
                     } catch (IllegalArgumentException ignored) { }
                 }
+                case SELECT_RESPAWN -> manager.selectRespawn(player, packet.value);
             }
         });
         context.setPacketHandled(true);

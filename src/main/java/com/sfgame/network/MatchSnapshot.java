@@ -15,7 +15,8 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
                             int leg, int sector, int sectorCount, String modeSubState, String captainId,
                             String captainName, int electionSeconds, boolean captain,
                             String currentCaptainClass, String pendingCaptainClass, List<ClassView> captainClasses,
-                            List<CaptainCandidate> captainCandidates) {
+                            List<CaptainCandidate> captainCandidates, boolean awaitingRespawnSelection,
+                            List<RespawnOption> respawnOptions) {
     public record ClassView(String id, String name, String description, String icon, String gunId,
                             double health, double speed, int reserveAmmo) {
         void encode(FriendlyByteBuf buffer) {
@@ -31,6 +32,11 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
     public record CaptainCandidate(String uuid, String name) {
         void encode(FriendlyByteBuf buffer) { buffer.writeUtf(uuid); buffer.writeUtf(name); }
         static CaptainCandidate decode(FriendlyByteBuf buffer) { return new CaptainCandidate(buffer.readUtf(), buffer.readUtf()); }
+    }
+
+    public record RespawnOption(String id, String pointId) {
+        void encode(FriendlyByteBuf buffer) { buffer.writeUtf(id); buffer.writeUtf(pointId); }
+        static RespawnOption decode(FriendlyByteBuf buffer) { return new RespawnOption(buffer.readUtf(), buffer.readUtf()); }
     }
 
     public int score(TeamSide team) {
@@ -57,6 +63,8 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         writeNullable(buffer, currentCaptainClass); writeNullable(buffer, pendingCaptainClass);
         writeClasses(buffer, captainClasses);
         buffer.writeVarInt(captainCandidates.size()); captainCandidates.forEach(candidate -> candidate.encode(buffer));
+        buffer.writeBoolean(awaitingRespawnSelection);
+        buffer.writeVarInt(respawnOptions.size()); respawnOptions.forEach(option -> option.encode(buffer));
     }
 
     public static MatchSnapshot decode(FriendlyByteBuf buffer) {
@@ -75,10 +83,14 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         List<ClassView> captainClasses = readClasses(buffer);
         int candidateCount = buffer.readVarInt(); List<CaptainCandidate> candidates = new ArrayList<>(candidateCount);
         for (int i = 0; i < candidateCount; i++) candidates.add(CaptainCandidate.decode(buffer));
+        boolean awaitingRespawn = buffer.readBoolean();
+        int optionCount = buffer.readVarInt(); List<RespawnOption> options = new ArrayList<>(optionCount);
+        for (int i = 0; i < optionCount; i++) options.add(RespawnOption.decode(buffer));
         return new MatchSnapshot(modeId, phase, side, redScore, blueScore, yellowScore, greenScore, scoreLimit, remaining,
                 redPlayers, bluePlayers, yellowPlayers, greenPlayers, current, pending, participating, queued, classes,
                 variant, attacker, defender, tickets, leg, sector, sectors, subState, captainId, captainName, election,
-                isCaptain, currentCaptain, pendingCaptain, captainClasses, List.copyOf(candidates));
+                isCaptain, currentCaptain, pendingCaptain, captainClasses, List.copyOf(candidates), awaitingRespawn,
+                List.copyOf(options));
     }
 
     private static void writeNullable(FriendlyByteBuf buffer, String value) {

@@ -39,12 +39,39 @@ public final class SFGameScreen extends Screen {
             rebuilding = false;
             return;
         }
-        Component joinLabel = snapshot.queued() ? Component.translatable("sfgame.menu.queued") : Component.translatable("sfgame.menu.join");
-        addRenderableWidget(Button.builder(joinLabel, b -> action(ClientActionPacket.Action.JOIN, ""))
-                .bounds(center - 125, y, 120, 20).build());
-        addRenderableWidget(Button.builder(Component.translatable("sfgame.menu.leave"), b -> action(ClientActionPacket.Action.LEAVE, ""))
-                .bounds(center + 5, y, 120, 20).build());
-        y += 32;
+        boolean activeMatch = snapshot.phase() == com.sfgame.game.MatchPhase.PREPARING
+                || snapshot.phase() == com.sfgame.game.MatchPhase.COUNTDOWN
+                || snapshot.phase() == com.sfgame.game.MatchPhase.RUNNING
+                || snapshot.phase() == com.sfgame.game.MatchPhase.RESULT;
+        boolean attackerElectionLocked = snapshot.phase() == com.sfgame.game.MatchPhase.PREPARING
+                && snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker();
+        boolean showJoin = !snapshot.participating() && !attackerElectionLocked;
+        boolean showLeave = !activeMatch;
+        if (showJoin) {
+            Component joinLabel = snapshot.queued() ? Component.translatable("sfgame.menu.queued") : Component.translatable("sfgame.menu.join");
+            Button join = Button.builder(joinLabel, b -> action(ClientActionPacket.Action.JOIN, ""))
+                    .bounds(showLeave ? center - 125 : center - 60, y, 120, 20).build();
+            join.active = !snapshot.queued();
+            addRenderableWidget(join);
+        }
+        if (showLeave) {
+            addRenderableWidget(Button.builder(Component.translatable("sfgame.menu.leave"), b -> action(ClientActionPacket.Action.LEAVE, ""))
+                    .bounds(showJoin ? center + 5 : center - 60, y, 120, 20).build());
+        }
+        if (showJoin || showLeave) y += 32;
+        if (snapshot.awaitingRespawnSelection()) {
+            for (int i = 0; i < snapshot.respawnOptions().size(); i++) {
+                MatchSnapshot.RespawnOption option = snapshot.respawnOptions().get(i);
+                Component label = option.pointId().isEmpty()
+                        ? Component.translatable("sfgame.respawn.base")
+                        : Component.translatable("sfgame.respawn.point", option.pointId().toUpperCase(java.util.Locale.ROOT));
+                int column = i % 2, row = i / 2;
+                addRenderableWidget(Button.builder(label,
+                                b -> action(ClientActionPacket.Action.SELECT_RESPAWN, option.id()))
+                        .bounds(center - 150 + column * 152, y + row * 24, 148, 20).build());
+            }
+            y += ((snapshot.respawnOptions().size() + 1) / 2) * 24 + 8;
+        }
         if (snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker()) {
             for (int i = 0; i < snapshot.captainCandidates().size(); i++) {
                 MatchSnapshot.CaptainCandidate candidate = snapshot.captainCandidates().get(i);
@@ -76,6 +103,10 @@ public final class SFGameScreen extends Screen {
 
     private void action(ClientActionPacket.Action action, String value) {
         SFGameNetwork.sendToServer(new ClientActionPacket(action, value));
+        if (action == ClientActionPacket.Action.SELECT_RESPAWN && minecraft != null) {
+            minecraft.setScreen(null);
+            return;
+        }
         requestRefresh();
     }
 

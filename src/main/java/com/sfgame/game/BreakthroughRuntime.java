@@ -8,6 +8,7 @@ import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.CapturePointDefinition;
 import com.sfgame.data.MatchRules;
 import com.sfgame.network.SFGameNetwork;
+import com.sfgame.network.MatchSnapshot;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -21,7 +22,6 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.BossEvent;
 import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 
@@ -38,6 +38,8 @@ import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class BreakthroughRuntime implements MatchModeRuntime {
+    private static final String CAPTAIN_FLAG_TAG = "SFGameCaptainFlag";
+    private static final String CAPTAIN_GLOW_TAG = "SFGameCaptainGlowing";
     private enum RuntimeState { ACTIVE, SECTOR_TRANSITION, LEG_TRANSITION }
 
     private final Map<String, CapturePointState> pointStates = new HashMap<>();
@@ -49,7 +51,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private TeamSide attacker = TeamSide.NONE;
     private TeamSide defender = TeamSide.NONE;
     private UUID captain;
-    private ArmorStand captainFlag;
+    private UUID appearanceCaptain;
+    private MinecraftServer runtimeServer;
     private int leg = 1;
     private int sectorIndex;
     private int sectorElapsedTicks;
@@ -83,6 +86,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     @Override
     public void prepare(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
+        runtimeServer = server;
         clearRuntimeEntities();
         configureRoles(map.breakthrough(), 1);
         captain = null;
@@ -103,6 +107,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     @Override
     public void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
+        runtimeServer = server;
         clearRuntimeEntities();
         configureRoles(map.breakthrough(), 1);
         leg = 1; sectorIndex = 0; sectorElapsedTicks = 0; totalAttackTicks = 0;
@@ -110,14 +115,15 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         runtimeState = RuntimeState.ACTIVE;
         resetCurrentSector(map);
         refreshDisplays(server, manager, map);
-        updateCaptainFlag(server, manager, map);
+        updateCaptainAppearance(server, manager, map, rules);
         announceObjective(server, manager, map);
     }
 
     @Override
     public ModeTickResult tick(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
+        runtimeServer = server;
         maintainCaptain(server, manager, map, rules);
-        updateCaptainFlag(server, manager, map);
+        updateCaptainAppearance(server, manager, map, rules);
         if (runtimeState != RuntimeState.ACTIVE) return tickTransition(server, manager, map, rules);
 
         sectorElapsedTicks++;
@@ -166,6 +172,40 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     public int electionSeconds() { return Math.max(0, (electionTicks + 19) / 20); }
     public String subState() { return runtimeState.name().toLowerCase(Locale.ROOT); }
 
+    public List<MatchSnapshot.RespawnOption> respawnOptions(ServerPlayer player, MatchManager manager, ArenaMap map) {
+        if (runtimeState != RuntimeState.ACTIVE || !manager.state(player).awaitingRespawnSelection()) return List.of();
+        List<MatchSnapshot.RespawnOption> options = new ArrayList<>();
+        options.add(new MatchSnapshot.RespawnOption("base", ""));
+        TeamSide side = manager.teams().sideOf(player, manager.savedData());
+        for (CapturePointDefinition point : currentSector(map).points()) {
+            CapturePointState state = pointStates.get(point.id());
+            if (point.respawnPosition() != null && point.nearbyRespawnPosition() != null
+                    && state != null && state.owner() == side) {
+                options.add(new MatchSnapshot.RespawnOption("point:" + point.id(), point.id()));
+            }
+        }
+        return List.copyOf(options);
+    }
+
+    @Nullable
+    public ArenaPosition respawnPosition(ServerPlayer player, String optionId, MatchManager manager, ArenaMap map) {
+        if (runtimeState != RuntimeState.ACTIVE || !manager.state(player).awaitingRespawnSelection()) return null;
+        TeamSide side = manager.teams().sideOf(player, manager.savedData());
+        if ("base".equals(optionId)) return spawnFor(side, map);
+        if (optionId == null || !optionId.startsWith("point:")) return null;
+        String pointId = optionId.substring("point:".length());
+        CapturePointDefinition point = currentSector(map).point(pointId).orElse(null);
+        CapturePointState state = pointStates.get(pointId);
+        if (point == null || point.respawnPosition() == null || point.nearbyRespawnPosition() == null
+                || state == null || state.owner() != side) return null;
+        return pointRespawnPosition(point, state);
+    }
+
+    static ArenaPosition pointRespawnPosition(CapturePointDefinition point, CapturePointState state) {
+        boolean underAttack = state.contested() || state.contender() != TeamSide.NONE && state.progress() < 1.0;
+        return underAttack ? point.nearbyRespawnPosition() : point.respawnPosition();
+    }
+
     public boolean vote(ServerPlayer voter, @Nullable ServerPlayer candidate, boolean abstain, MatchManager manager) {
         if (electionTicks <= 0 || manager.teams().sideOf(voter, manager.savedData()) != attacker || !manager.state(voter).participating()) return false;
         votes.remove(voter.getUUID()); abstentions.remove(voter.getUUID());
@@ -190,7 +230,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     public boolean reelect(TeamSide side, MatchRules rules, MatchManager manager) {
         if (side != attacker) return false;
-        UUID previous = captain; captain = null; beginElection(rules.captainReplacementVoteSeconds()); removeFlag();
+        UUID previous = captain; captain = null; beginElection(rules.captainReplacementVoteSeconds()); clearCaptainAppearance();
         if (previous != null) {
             ServerPlayer oldCaptain = manager.serverPlayer(previous);
             if (oldCaptain != null) manager.redeploy(oldCaptain);
@@ -204,6 +244,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         pointStates.clear(); votes.clear(); abstentions.clear(); captain = null;
         attacker = TeamSide.NONE; defender = TeamSide.NONE; firstLeg = null;
         sectorIndex = 0; sectorElapsedTicks = 0; totalAttackTicks = 0; tickets = 0; electionTicks = 0;
+        runtimeServer = null;
     }
 
     private void tickPoint(MinecraftServer server, MatchManager manager, ArenaMap map,
@@ -289,7 +330,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         if (leg == 1) {
             firstLeg = current; leg = 2;
             TeamSide oldAttacker = attacker; attacker = defender; defender = oldAttacker;
-            captain = null; removeFlag();
+            captain = null; clearCaptainAppearance();
             sectorIndex = 0; sectorElapsedTicks = 0; totalAttackTicks = 0; tickets = rules.attackerTickets();
             runtimeState = RuntimeState.LEG_TRANSITION;
             transitionTicks = Math.max(rules.sectorTransitionSeconds(),
@@ -332,7 +373,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
                     || manager.teams().sideOf(player, manager.savedData()) != attacker) {
                 captain = null;
                 if (player != null && manager.state(player).participating()) manager.redeploy(player);
-                removeFlag(); beginElection(rules.captainReplacementVoteSeconds());
+                clearCaptainAppearance(); beginElection(rules.captainReplacementVoteSeconds());
                 announce(server, manager, Component.translatable("sfgame.breakthrough.captain.reelect", rules.captainReplacementVoteSeconds()));
             }
         } else if (electionTicks <= 0) beginElection(rules.captainReplacementVoteSeconds());
@@ -377,22 +418,27 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         }
     }
 
-    private void updateCaptainFlag(MinecraftServer server, MatchManager manager, ArenaMap map) {
-        if (map.breakthrough().variant() != BreakthroughVariant.CAPTAIN || captain == null) { removeFlag(); return; }
-        ServerPlayer player = server.getPlayerList().getPlayer(captain);
-        if (player == null || player.isSpectator() || manager.state(player).respawning()) { removeFlag(); return; }
-        if (captainFlag == null || !captainFlag.isAlive() || captainFlag.level() != player.level()) {
-            removeFlag();
-            captainFlag = new ArmorStand(player.level(), player.getX(), player.getY() + 2.2, player.getZ());
-            captainFlag.setInvisible(true); setMarker(captainFlag); captainFlag.setNoGravity(true);
-            captainFlag.setInvulnerable(true); captainFlag.setSilent(true); captainFlag.setGlowingTag(true);
-            captainFlag.setItemSlot(EquipmentSlot.HEAD, new ItemStack(switch (attacker) {
-                case RED -> Blocks.RED_BANNER; case BLUE -> Blocks.BLUE_BANNER;
-                case YELLOW -> Blocks.YELLOW_BANNER; case GREEN -> Blocks.GREEN_BANNER; default -> Blocks.WHITE_BANNER;
-            }));
-            player.level().addFreshEntity(captainFlag);
+    private void updateCaptainAppearance(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
+        if (map.breakthrough().variant() != BreakthroughVariant.CAPTAIN || captain == null) {
+            clearCaptainAppearance();
+            return;
         }
-        captainFlag.teleportTo(player.getX(), player.getY() + 2.2, player.getZ());
+        if (appearanceCaptain != null && !appearanceCaptain.equals(captain)) clearCaptainAppearance();
+        ServerPlayer player = server.getPlayerList().getPlayer(captain);
+        if (player == null || player.isSpectator() || manager.state(player).respawning()) {
+            clearCaptainAppearance();
+            return;
+        }
+        appearanceCaptain = captain;
+        ItemStack flag = captainFlag(attacker);
+        ItemStack equipped = player.getItemBySlot(EquipmentSlot.HEAD);
+        if (!isCaptainFlag(equipped) || !equipped.is(flag.getItem())) player.setItemSlot(EquipmentSlot.HEAD, flag);
+        updateCaptainGlow(player, rules.attackerCaptainGlowing());
+    }
+
+    void clearStaleCaptainAppearance(ServerPlayer player) {
+        if (captain != null && captain.equals(player.getUUID())) return;
+        clearCaptainAppearance(player);
     }
 
     private void refreshDisplays(MinecraftServer server, MatchManager manager, ArenaMap map) {
@@ -460,13 +506,53 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private void clearDisplays() {
         bossBars.values().forEach(ServerBossEvent::removeAllPlayers); bossBars.clear(); pointMarkers.clear();
     }
-    private void removeFlag() { if (captainFlag != null) captainFlag.discard(); captainFlag = null; }
-    private void clearRuntimeEntities() { clearDisplays(); removeFlag(); }
-
-    private static void setMarker(ArmorStand stand) {
-        net.minecraft.nbt.CompoundTag tag = new net.minecraft.nbt.CompoundTag();
-        stand.saveWithoutId(tag); tag.putBoolean("Marker", true); stand.load(tag);
+    private void clearCaptainAppearance() {
+        if (appearanceCaptain != null && runtimeServer != null) {
+            ServerPlayer player = runtimeServer.getPlayerList().getPlayer(appearanceCaptain);
+            if (player != null) clearCaptainAppearance(player);
+        }
+        appearanceCaptain = null;
     }
+
+    private static void clearCaptainAppearance(ServerPlayer player) {
+        if (isCaptainFlag(player.getItemBySlot(EquipmentSlot.HEAD))) {
+            player.setItemSlot(EquipmentSlot.HEAD, ItemStack.EMPTY);
+        }
+        if (player.getPersistentData().getBoolean(CAPTAIN_GLOW_TAG)) {
+            player.setGlowingTag(false);
+            player.getPersistentData().remove(CAPTAIN_GLOW_TAG);
+        }
+    }
+
+    private static void updateCaptainGlow(ServerPlayer player, boolean enabled) {
+        if (enabled) {
+            player.setGlowingTag(true);
+            player.getPersistentData().putBoolean(CAPTAIN_GLOW_TAG, true);
+        } else {
+            clearCaptainGlow(player);
+        }
+    }
+
+    private static void clearCaptainGlow(ServerPlayer player) {
+        if (!player.getPersistentData().getBoolean(CAPTAIN_GLOW_TAG)) return;
+        player.setGlowingTag(false);
+        player.getPersistentData().remove(CAPTAIN_GLOW_TAG);
+    }
+
+    private static ItemStack captainFlag(TeamSide side) {
+        ItemStack stack = new ItemStack(switch (side) {
+            case RED -> Blocks.RED_BANNER; case BLUE -> Blocks.BLUE_BANNER;
+            case YELLOW -> Blocks.YELLOW_BANNER; case GREEN -> Blocks.GREEN_BANNER; default -> Blocks.WHITE_BANNER;
+        });
+        stack.getOrCreateTag().putBoolean(CAPTAIN_FLAG_TAG, true);
+        return stack;
+    }
+
+    private static boolean isCaptainFlag(ItemStack stack) {
+        return stack.hasTag() && stack.getTag().getBoolean(CAPTAIN_FLAG_TAG);
+    }
+
+    private void clearRuntimeEntities() { clearDisplays(); clearCaptainAppearance(); }
 
     private record LegResult(TeamSide attacker, int completedSectors, int capturedPoints, int elapsedTicks, int tickets) { }
 }

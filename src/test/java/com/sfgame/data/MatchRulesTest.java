@@ -85,10 +85,12 @@ final class MatchRulesTest {
     @Test
     void breakthroughRulesPersistTicketsTransitionsAndWeights() {
         MatchRules rules = new MatchRules(GameModeRegistry.BREAKTHROUGH);
+        assertEquals(10, rules.respawnSeconds());
         rules.attackerTickets(150);
         rules.sectorTransitionSeconds(12);
         rules.captainVoteSeconds(20);
         rules.captainReplacementVoteSeconds(8);
+        rules.attackerCaptainGlowing(false);
         rules.attackerCaptainCaptureWeight(2.5);
         rules.defenderCaptureWeight(1.6);
 
@@ -99,6 +101,7 @@ final class MatchRulesTest {
         assertEquals(12, restored.sectorTransitionSeconds());
         assertEquals(20, restored.captainVoteSeconds());
         assertEquals(8, restored.captainReplacementVoteSeconds());
+        assertEquals(false, restored.attackerCaptainGlowing());
         assertEquals(2.5, restored.attackerCaptainCaptureWeight());
         assertEquals(1.6, restored.defenderCaptureWeight());
     }
