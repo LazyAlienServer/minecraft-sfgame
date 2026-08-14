@@ -2,8 +2,12 @@ package com.sfgame.classsystem;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import com.sfgame.SFGame;
+import com.sfgame.game.GameModeRegistry;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
@@ -17,77 +21,158 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class ClassRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private final Path configPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes.json");
-    private volatile Map<String, ClassDefinition> classes = Map.of();
+    private static final String DEFAULT_CAPTAIN = """
+            {"id":"heavy_captain","displayName":"重装队长","description":"突破模式进攻队长专属职业","icon":"minecraft:red_banner",
+             "maxHealth":40.0,"movementSpeedMultiplier":0.9,"gunId":"tacz:hk416d","ammoId":"tacz:556x45",
+             "initialMagazine":30,"reserveAmmo":180,"fireMode":"AUTO","attachments":{},"inventory":[],"armor":{},"effects":[],"allowDrop":false}
+            """;
+
+    private final Path legacyPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes.json");
+    private final Path profilesPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes");
+    private volatile Map<String, Profile> profiles = Map.of();
     private volatile List<String> loadErrors = List.of();
 
     public synchronized List<String> reload() {
         List<String> errors = new ArrayList<>();
         try {
-            createDefaultFileIfMissing();
-            try (Reader reader = Files.newBufferedReader(configPath, StandardCharsets.UTF_8)) {
-                ClassFile file = GSON.fromJson(reader, ClassFile.class);
-                if (file == null) throw new JsonParseException("The root JSON object is missing");
-                Map<String, ClassDefinition> loaded = new LinkedHashMap<>();
-                for (ClassDefinition definition : file.classes()) {
-                    String id = definition.id() == null ? "" : definition.id().trim().toLowerCase(Locale.ROOT);
-                    if (!id.matches("[a-z][a-z0-9_]{1,63}")) {
-                        errors.add("Invalid class id: " + id);
-                        continue;
-                    }
-                    if (loaded.putIfAbsent(id, definition) != null) {
-                        errors.add("Duplicate class id: " + id);
-                    }
-                }
-                if (loaded.isEmpty()) errors.add("No valid classes were loaded");
-                if (errors.isEmpty()) classes = Collections.unmodifiableMap(new LinkedHashMap<>(loaded));
-            }
+            createLegacyFileIfMissing();
+            createModeProfilesIfMissing();
+            Map<String, RawProfile> raw = readProfiles(errors);
+            Map<String, Profile> resolved = new LinkedHashMap<>();
+            for (String id : raw.keySet()) resolve(id, raw, resolved, new LinkedHashSet<>(), errors);
+            if (errors.isEmpty()) profiles = Collections.unmodifiableMap(new LinkedHashMap<>(resolved));
         } catch (IOException | JsonParseException exception) {
-            errors.add(exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage());
-            SFGame.LOGGER.error("Could not load SFGame classes from {}", configPath, exception);
+            errors.add(message(exception));
+            SFGame.LOGGER.error("Could not load SFGame class profiles from {}", profilesPath, exception);
         }
         loadErrors = List.copyOf(errors);
         return loadErrors;
     }
 
-    public Optional<ClassDefinition> get(String id) {
-        return id == null ? Optional.empty() : Optional.ofNullable(classes.get(id.toLowerCase(Locale.ROOT)));
+    public Optional<ClassDefinition> get(String modeId, String id) { return get(modeId, id, false); }
+    public Optional<ClassDefinition> getCaptain(String modeId, String id) { return get(modeId, id, true); }
+    public Optional<ClassDefinition> get(String modeId, String id, boolean captain) {
+        if (id == null) return Optional.empty();
+        Profile profile = profiles.get(profileIdForMode(modeId));
+        return profile == null ? Optional.empty() : Optional.ofNullable(
+                (captain ? profile.captains : profile.classes).get(id.toLowerCase(Locale.ROOT)));
+    }
+    public boolean contains(String modeId, String id) { return get(modeId, id).isPresent(); }
+    public boolean containsCaptain(String modeId, String id) { return getCaptain(modeId, id).isPresent(); }
+    public Collection<ClassDefinition> all(String modeId) {
+        Profile profile = profiles.get(profileIdForMode(modeId));
+        return profile == null ? List.of() : profile.classes.values();
+    }
+    public Collection<ClassDefinition> captainClasses(String modeId) {
+        Profile profile = profiles.get(profileIdForMode(modeId));
+        return profile == null ? List.of() : profile.captains.values();
+    }
+    public Optional<ClassDefinition> defaultClass(String modeId) { return all(modeId).stream().findFirst(); }
+    public Optional<ClassDefinition> defaultCaptainClass(String modeId) { return captainClasses(modeId).stream().findFirst(); }
+
+    /** Compatibility accessors for code that explicitly wants the TDM profile. */
+    public Optional<ClassDefinition> get(String id) { return get(GameModeRegistry.TEAM_DEATHMATCH, id); }
+    public boolean contains(String id) { return contains(GameModeRegistry.TEAM_DEATHMATCH, id); }
+    public Collection<ClassDefinition> all() { return all(GameModeRegistry.TEAM_DEATHMATCH); }
+    public Optional<ClassDefinition> defaultClass() { return defaultClass(GameModeRegistry.TEAM_DEATHMATCH); }
+    public List<String> loadErrors() { return loadErrors; }
+    public Path configPath() { return profilesPath; }
+
+    private Map<String, RawProfile> readProfiles(List<String> errors) throws IOException {
+        Map<String, RawProfile> result = new LinkedHashMap<>();
+        try (var paths = Files.list(profilesPath)) {
+            for (Path path : paths.filter(file -> file.getFileName().toString().endsWith(".json")).sorted().toList()) {
+                String name = path.getFileName().toString();
+                String id = name.substring(0, name.length() - 5).toLowerCase(Locale.ROOT);
+                if (!validProfileId(id)) { errors.add("Invalid class profile filename: " + name); continue; }
+                try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                    ClassFile file = GSON.fromJson(reader, ClassFile.class);
+                    if (file == null) throw new JsonParseException("The root JSON object is missing");
+                    String parent = file.parent();
+                    if (parent != null) {
+                        parent = parent.toLowerCase(Locale.ROOT);
+                        if (!validProfileId(parent)) { errors.add(id + ": invalid parent profile " + parent); parent = null; }
+                    }
+                    result.put(id, new RawProfile(parent,
+                            validateDefinitions(id, "classes", file.classes(), errors),
+                            validateDefinitions(id, "captainClasses", file.captainClasses(), errors)));
+                } catch (JsonParseException exception) {
+                    errors.add(id + ": " + message(exception));
+                }
+            }
+        }
+        for (var mode : GameModeRegistry.all()) if (!result.containsKey(mode.id())) errors.add("Missing class profile: " + mode.id() + ".json");
+        return result;
     }
 
-    public boolean contains(String id) {
-        return get(id).isPresent();
+    private Profile resolve(String id, Map<String, RawProfile> raw, Map<String, Profile> resolved,
+                            Set<String> stack, List<String> errors) {
+        if (resolved.containsKey(id)) return resolved.get(id);
+        RawProfile current = raw.get(id);
+        if (current == null) { errors.add("Missing parent class profile: " + id); return Profile.EMPTY; }
+        if (!stack.add(id)) { errors.add("Class profile inheritance cycle: " + String.join(" -> ", stack) + " -> " + id); return Profile.EMPTY; }
+        LinkedHashMap<String, ClassDefinition> classes = new LinkedHashMap<>();
+        LinkedHashMap<String, ClassDefinition> captains = new LinkedHashMap<>();
+        if (current.parent != null) {
+            Profile parent = resolve(current.parent, raw, resolved, stack, errors);
+            classes.putAll(parent.classes); captains.putAll(parent.captains);
+        }
+        classes.putAll(current.classes); captains.putAll(current.captains);
+        stack.remove(id);
+        Profile profile = new Profile(Collections.unmodifiableMap(classes), Collections.unmodifiableMap(captains));
+        resolved.put(id, profile);
+        return profile;
     }
 
-    public Collection<ClassDefinition> all() {
-        return classes.values();
+    private Map<String, ClassDefinition> validateDefinitions(String profile, String pool,
+                                                              List<ClassDefinition> definitions, List<String> errors) {
+        Map<String, ClassDefinition> loaded = new LinkedHashMap<>();
+        for (ClassDefinition definition : definitions) {
+            String id = definition.id() == null ? "" : definition.id().trim().toLowerCase(Locale.ROOT);
+            if (!id.matches("[a-z][a-z0-9_]{1,63}")) { errors.add(profile + "/" + pool + ": invalid class id " + id); continue; }
+            if (loaded.putIfAbsent(id, definition) != null) errors.add(profile + "/" + pool + ": duplicate class id " + id);
+        }
+        if ("classes".equals(pool) && loaded.isEmpty()) errors.add(profile + ": no valid normal classes were loaded");
+        return loaded;
     }
 
-    /** Returns the first enabled class in JSON order for players without a selection. */
-    public Optional<ClassDefinition> defaultClass() {
-        return classes.values().stream().findFirst();
-    }
-
-    public List<String> loadErrors() {
-        return loadErrors;
-    }
-
-    public Path configPath() {
-        return configPath;
-    }
-
-    private void createDefaultFileIfMissing() throws IOException {
-        if (Files.exists(configPath)) return;
-        Files.createDirectories(configPath.getParent());
+    private void createLegacyFileIfMissing() throws IOException {
+        if (Files.exists(legacyPath)) return;
+        Files.createDirectories(legacyPath.getParent());
         try (InputStream input = ClassRegistry.class.getResourceAsStream("/defaults/classes.json")) {
             if (input == null) throw new IOException("Bundled defaults/classes.json is missing");
-            Files.copy(input, configPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(input, legacyPath, StandardCopyOption.REPLACE_EXISTING);
         }
+    }
+    private void createModeProfilesIfMissing() throws IOException {
+        Files.createDirectories(profilesPath);
+        String legacy = Files.readString(legacyPath, StandardCharsets.UTF_8);
+        for (var mode : GameModeRegistry.all()) {
+            Path target = profilesPath.resolve(mode.id() + ".json");
+            if (Files.exists(target)) continue;
+            JsonObject object = JsonParser.parseString(legacy).getAsJsonObject();
+            if (GameModeRegistry.BREAKTHROUGH.equals(mode.id())) {
+                JsonArray captains = new JsonArray(); captains.add(JsonParser.parseString(DEFAULT_CAPTAIN));
+                object.add("captainClasses", captains);
+            } else if (!object.has("captainClasses")) object.add("captainClasses", new JsonArray());
+            Files.writeString(target, GSON.toJson(object), StandardCharsets.UTF_8);
+        }
+    }
+    private static String profileIdForMode(String modeId) { return modeId == null ? GameModeRegistry.TEAM_DEATHMATCH : modeId; }
+    private static boolean validProfileId(String id) { return id != null && id.matches("[a-z][a-z0-9_]{0,31}"); }
+    private static String message(Exception exception) { return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(); }
+
+    private record RawProfile(String parent, Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains) { }
+    private record Profile(Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains) {
+        private static final Profile EMPTY = new Profile(Map.of(), Map.of());
     }
 }

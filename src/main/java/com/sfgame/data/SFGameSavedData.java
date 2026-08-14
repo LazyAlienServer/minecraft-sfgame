@@ -127,7 +127,11 @@ public final class SFGameSavedData extends SavedData {
     @Nullable public ArenaPosition defaultLobby() { return defaultLobby; }
     @Nullable public ArenaPosition localLobby() { return activeMap() == null ? null : activeMap().lobby(); }
     public java.util.List<ArenaPosition> spawns(TeamSide side) { return activeMap() == null ? java.util.List.of() : activeMap().spawns(side); }
-    public java.util.List<TeamSide> enabledTeams() { return activeMap() == null ? java.util.List.of() : activeMap().enabledTeams(); }
+    public java.util.List<TeamSide> enabledTeams() {
+        if (activeMap() == null) return java.util.List.of();
+        return GameModeRegistry.BREAKTHROUGH.equals(selectedMode)
+                ? activeMap().breakthrough().teams() : activeMap().enabledTeams();
+    }
     @Nullable public ArenaPosition randomSpawn(TeamSide side) { return activeMap() == null ? null : activeMap().randomSpawn(side); }
     public void lobby(ArenaPosition value) { activeMapRequired().lobby(value); setDirty(); }
     public void defaultLobby(ArenaPosition value) { defaultLobby = value; setDirty(); }
@@ -140,7 +144,7 @@ public final class SFGameSavedData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag) {
-        tag.putInt("DataVersion", 6);
+        tag.putInt("DataVersion", 7);
         tag.putString("RedTeam", redTeam);
         tag.putString("BlueTeam", blueTeam);
         tag.putString("YellowTeam", yellowTeam);
@@ -226,8 +230,10 @@ public final class SFGameSavedData extends SavedData {
     }
 
     private boolean mapConfigured(ArenaMap map, String modeId) {
-        if (map == null || (map.lobby() == null && defaultLobby == null) || map.enabledTeams().size() < 2) return false;
-        return !GameModeRegistry.DOMINATION.equals(modeId) || map.domination().configured();
+        if (map == null || (map.lobby() == null && defaultLobby == null)) return false;
+        if (GameModeRegistry.DOMINATION.equals(modeId)) return map.enabledTeams().size() >= 2 && map.domination().configured();
+        if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) return map.breakthrough().configured();
+        return map.enabledTeams().size() >= 2;
     }
 
     private static boolean validId(String id) {

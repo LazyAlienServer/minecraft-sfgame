@@ -13,6 +13,7 @@
   "sfgame.team.none": "Unassigned",
   "sfgame.phase.unconfigured": "Unconfigured",
   "sfgame.phase.lobby": "Lobby",
+  "sfgame.phase.preparing": "Preparing",
   "sfgame.phase.countdown": "Starting",
   "sfgame.phase.running": "Running",
   "sfgame.phase.result": "Results",
@@ -35,5 +36,12 @@
   "sfgame.point.neutralized": "%s neutralized",
   "sfgame.point.next": "Next capture point: %s",
   "sfgame.point.active": "Active capture point: %s",
-  "sfgame.point.transition": "Point %s has fallen. Proceed to capture point %s!"
+  "sfgame.point.transition": "Point %s has fallen. Proceed to capture point %s!",
+  "sfgame.menu.captain.abstain": "Abstain",
+  "sfgame.breakthrough.captain.vote": "Vote for the attacking captain within %s seconds",
+  "sfgame.breakthrough.captain.reelect": "The attacking captain is unavailable. A %s-second replacement vote has started",
+  "sfgame.breakthrough.captain.selected": "%s is the attacking captain",
+  "sfgame.breakthrough.objective": "Attack sector %s",
+  "sfgame.breakthrough.sector.transition": "Sector %s has fallen. Proceed to sector %s!",
+  "sfgame.breakthrough.leg.transition": "Sides swapped. Prepare for the next attack leg!"
 }

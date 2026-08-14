@@ -1,15 +1,29 @@
 package com.sfgame.game;
 
 import com.sfgame.data.ArenaMap;
+import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.MatchRules;
 import net.minecraft.server.MinecraftServer;
 
 import java.util.List;
+import java.util.UUID;
 
 public interface MatchModeRuntime {
     List<String> validate(MinecraftServer server, ArenaMap map);
+    default boolean needsPreparation(ArenaMap map) { return false; }
+    default void prepare(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) { }
+    default boolean tickPreparation(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) { return true; }
     void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules);
     ModeTickResult tick(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules);
     default void onKill(TeamSide killer, MatchManager manager) { }
+    default void onPlayerDeath(TeamSide victim, MatchManager manager) { }
+    default void onRuleChanged(String key, MatchRules rules) { }
+    default ArenaPosition spawnFor(TeamSide side, ArenaMap map) { return map.randomSpawn(side); }
+    default int remainingSeconds(MatchManager manager, MatchRules rules) {
+        return Math.max(0, rules.timeLimitSeconds() - manager.elapsedTicks() / 20);
+    }
+    default boolean isCaptain(UUID playerId) { return false; }
+    default boolean usesCommonTimeLimit() { return true; }
+    default boolean blocksCombat() { return false; }
     void stop();
 }

@@ -7,6 +7,8 @@ public sealed interface CaptureRegion permits BoxCaptureRegion, SquareCaptureReg
     String dimension();
     Integer minY();
     Integer maxY();
+    double centerX();
+    double centerZ();
     boolean contains(ServerPlayer player);
     boolean overlaps(CaptureRegion other);
     CaptureRegion withHeight(Integer minY, Integer maxY);

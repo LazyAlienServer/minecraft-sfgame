@@ -23,4 +23,9 @@ public enum TeamSide {
 
     public String id() { return id; }
     public ChatFormatting color() { return color; }
+
+    public static TeamSide fromId(String id) {
+        if (id == null) return NONE;
+        return PLAYABLE.stream().filter(side -> side.id.equalsIgnoreCase(id)).findFirst().orElse(NONE);
+    }
 }

@@ -8,11 +8,13 @@ import java.util.Optional;
 public final class GameModeRegistry {
     public static final String TEAM_DEATHMATCH = "tdm";
     public static final String DOMINATION = "domination";
+    public static final String BREAKTHROUGH = "breakthrough";
     private static final Map<String, GameModeDefinition> MODES = new LinkedHashMap<>();
 
     static {
         register(new GameModeDefinition(TEAM_DEATHMATCH, "Team Deathmatch"));
         register(new GameModeDefinition(DOMINATION, "Domination"));
+        register(new GameModeDefinition(BREAKTHROUGH, "Breakthrough"));
     }
 
     public static void register(GameModeDefinition mode) {

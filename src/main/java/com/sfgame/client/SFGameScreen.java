@@ -45,11 +45,29 @@ public final class SFGameScreen extends Screen {
         addRenderableWidget(Button.builder(Component.translatable("sfgame.menu.leave"), b -> action(ClientActionPacket.Action.LEAVE, ""))
                 .bounds(center + 5, y, 120, 20).build());
         y += 32;
-        for (MatchSnapshot.ClassView view : snapshot.classes()) {
-            boolean selected = view.id().equals(snapshot.pendingClass());
+        if (snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker()) {
+            for (int i = 0; i < snapshot.captainCandidates().size(); i++) {
+                MatchSnapshot.CaptainCandidate candidate = snapshot.captainCandidates().get(i);
+                int column = i % 2, row = i / 2;
+                addRenderableWidget(Button.builder(Component.literal(candidate.name()),
+                                b -> action(ClientActionPacket.Action.CAPTAIN_VOTE, candidate.uuid()))
+                        .bounds(center - 150 + column * 152, y + row * 24, 148, 20).build());
+            }
+            y += ((snapshot.captainCandidates().size() + 1) / 2) * 24;
+            addRenderableWidget(Button.builder(Component.translatable("sfgame.menu.captain.abstain"),
+                            b -> action(ClientActionPacket.Action.CAPTAIN_ABSTAIN, ""))
+                    .bounds(center - 75, y, 150, 20).build());
+            y += 30;
+        }
+        java.util.List<MatchSnapshot.ClassView> classPool = snapshot.captain() ? snapshot.captainClasses() : snapshot.classes();
+        String pendingClass = snapshot.captain() ? snapshot.pendingCaptainClass() : snapshot.pendingClass();
+        ClientActionPacket.Action classAction = snapshot.captain()
+                ? ClientActionPacket.Action.SELECT_CAPTAIN_CLASS : ClientActionPacket.Action.SELECT_CLASS;
+        for (MatchSnapshot.ClassView view : classPool) {
+            boolean selected = view.id().equals(pendingClass);
             Component label = Component.literal((selected ? "✓ " : "") + view.name() + " · " + view.gunId());
             int rowY = y;
-            addRenderableWidget(Button.builder(label, b -> action(ClientActionPacket.Action.SELECT_CLASS, view.id()))
+            addRenderableWidget(Button.builder(label, b -> action(classAction, view.id()))
                     .bounds(center - 150, rowY, 300, 22).build());
             y += 28;
         }
@@ -71,8 +89,11 @@ public final class SFGameScreen extends Screen {
         graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
         MatchSnapshot snapshot = ClientMatchState.snapshot();
         if (snapshot != null) {
-            String scores = TeamSide.PLAYABLE.stream()
-                    .filter(team -> snapshot.players(team) > 0)
+            boolean breakthrough = "breakthrough".equals(snapshot.modeId());
+            String scores = breakthrough
+                    ? "ATTACK " + snapshot.attacker().id().toUpperCase() + " · DEFEND " + snapshot.defender().id().toUpperCase()
+                    + " · TICKETS " + snapshot.attackerTickets()
+                    : TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
                     .map(team -> team.id().toUpperCase() + " " + snapshot.score(team)).collect(java.util.stream.Collectors.joining("  ·  "));
             graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD), width / 2, 36, 0xFFFFFF);
             String side = snapshot.side().id().toUpperCase();
@@ -81,6 +102,8 @@ public final class SFGameScreen extends Screen {
                     + " · " + TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
                     .map(team -> team.id().substring(0, 1).toUpperCase() + snapshot.players(team))
                     .collect(java.util.stream.Collectors.joining("/"));
+            if (breakthrough) status += " · LEG " + snapshot.leg() + " · SECTOR " + snapshot.sector() + "/" + snapshot.sectorCount()
+                    + (snapshot.captainName() == null ? "" : " · CAPTAIN " + snapshot.captainName());
             graphics.drawCenteredString(font, status, width / 2, 51, 0xB8B8B8);
         }
         super.render(graphics, mouseX, mouseY, partialTick);

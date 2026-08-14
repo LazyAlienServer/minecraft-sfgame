@@ -1,6 +1,7 @@
 package com.sfgame.classsystem;
 
 import com.sfgame.SFGame;
+import com.sfgame.game.GameModeRegistry;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.builder.AmmoItemBuilder;
@@ -30,8 +31,14 @@ public final class LoadoutService {
     private static final UUID SPEED_MODIFIER_ID = UUID.fromString("8a6a21da-baf8-41ce-b3aa-6827a7be1102");
 
     public List<String> validate(ClassRegistry registry) {
+        return validate(registry, GameModeRegistry.TEAM_DEATHMATCH, false);
+    }
+
+    public List<String> validate(ClassRegistry registry, String modeId, boolean includeCaptain) {
         List<String> errors = new ArrayList<>(registry.loadErrors());
-        for (ClassDefinition definition : registry.all()) {
+        List<ClassDefinition> definitions = new ArrayList<>(registry.all(modeId));
+        if (includeCaptain) definitions.addAll(registry.captainClasses(modeId));
+        for (ClassDefinition definition : definitions) {
             ResourceLocation gunId = ResourceLocation.tryParse(definition.gunId());
             ResourceLocation ammoId = ResourceLocation.tryParse(definition.ammoId());
             if (gunId == null || TimelessAPI.getCommonGunIndex(gunId).isEmpty()) {
@@ -179,4 +186,3 @@ public final class LoadoutService {
         if (attribute != null) attribute.removeModifier(id);
     }
 }
-

@@ -1,11 +1,15 @@
 package com.sfgame.game;
 
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 public final class PlayerMatchState {
     private final UUID playerId;
-    private String currentClass;
-    private String pendingClass;
+    private final Map<String, String> currentClasses = new HashMap<>();
+    private final Map<String, String> pendingClasses = new HashMap<>();
+    private final Map<String, String> currentCaptainClasses = new HashMap<>();
+    private final Map<String, String> pendingCaptainClasses = new HashMap<>();
     private TeamSide cachedSide = TeamSide.NONE;
     private boolean participating;
     private boolean queued;
@@ -22,10 +26,14 @@ public final class PlayerMatchState {
     }
 
     public UUID playerId() { return playerId; }
-    public String currentClass() { return currentClass; }
-    public void currentClass(String value) { currentClass = value; }
-    public String pendingClass() { return pendingClass; }
-    public void pendingClass(String value) { pendingClass = value; }
+    public String currentClass(String modeId) { return currentClasses.get(modeId); }
+    public void currentClass(String modeId, String value) { putOrRemove(currentClasses, modeId, value); }
+    public String pendingClass(String modeId) { return pendingClasses.get(modeId); }
+    public void pendingClass(String modeId, String value) { putOrRemove(pendingClasses, modeId, value); }
+    public String currentCaptainClass(String modeId) { return currentCaptainClasses.get(modeId); }
+    public void currentCaptainClass(String modeId, String value) { putOrRemove(currentCaptainClasses, modeId, value); }
+    public String pendingCaptainClass(String modeId) { return pendingCaptainClasses.get(modeId); }
+    public void pendingCaptainClass(String modeId, String value) { putOrRemove(pendingCaptainClasses, modeId, value); }
     public TeamSide cachedSide() { return cachedSide; }
     public void cachedSide(TeamSide value) { cachedSide = value; }
     public boolean participating() { return participating; }
@@ -55,5 +63,8 @@ public final class PlayerMatchState {
         protectionTicks = 0;
         pendingImmediateJoin = false;
     }
-}
 
+    private static void putOrRemove(Map<String, String> map, String key, String value) {
+        if (value == null) map.remove(key); else map.put(key, value);
+    }
+}

@@ -7,6 +7,7 @@ import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.sfgame.classsystem.ClassDefinition;
 import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.ArenaMap;
@@ -17,6 +18,8 @@ import com.sfgame.data.CapturePointDefinition;
 import com.sfgame.data.CaptureRegion;
 import com.sfgame.data.PointActivationStrategy;
 import com.sfgame.data.SquareCaptureRegion;
+import com.sfgame.data.BreakthroughVariant;
+import com.sfgame.data.BreakthroughSectorDefinition;
 import com.sfgame.game.GameModeDefinition;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.MatchManager;
@@ -43,17 +46,25 @@ public final class SFGameCommands {
             "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds"};
     private static final String[] DOMINATION_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds"};
+    private static final String[] BREAKTHROUGH_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
+            "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "sectorTransitionSeconds",
+            "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainCaptureWeight", "defenderCaptureWeight"};
     private static final Map<UUID, ArenaPosition> POINT_POS_1 = new HashMap<>();
     private static final Map<UUID, ArenaPosition> POINT_POS_2 = new HashMap<>();
 
     private static final SuggestionProvider<CommandSourceStack> TEAM_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(context.getSource().getServer().getScoreboard().getTeamNames(), builder);
     private static final SuggestionProvider<CommandSourceStack> CLASS_SUGGESTIONS = (context, builder) ->
-            SharedSuggestionProvider.suggest(MatchManager.get().classes().all().stream().map(ClassDefinition::id), builder);
+            SharedSuggestionProvider.suggest(MatchManager.get().classes().all(
+                    SFGameSavedData.get(context.getSource().getServer()).selectedMode()).stream().map(ClassDefinition::id), builder);
+    private static final SuggestionProvider<CommandSourceStack> CAPTAIN_CLASS_SUGGESTIONS = (context, builder) ->
+            SharedSuggestionProvider.suggest(MatchManager.get().classes().captainClasses(
+                    SFGameSavedData.get(context.getSource().getServer()).selectedMode()).stream().map(ClassDefinition::id), builder);
     private static final SuggestionProvider<CommandSourceStack> RULE_SUGGESTIONS = (context, builder) -> {
-        boolean domination = GameModeRegistry.DOMINATION.equals(SFGameSavedData.get(context.getSource().getServer()).selectedMode());
+        String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
         java.util.stream.Stream<String> keys = java.util.Arrays.stream(COMMON_RULE_KEYS);
-        if (domination) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(DOMINATION_RULE_KEYS));
+        if (GameModeRegistry.DOMINATION.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(DOMINATION_RULE_KEYS));
+        if (GameModeRegistry.BREAKTHROUGH.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(BREAKTHROUGH_RULE_KEYS));
         return SharedSuggestionProvider.suggest(keys, builder);
     };
     private static final SuggestionProvider<CommandSourceStack> MODE_SUGGESTIONS = (context, builder) ->
@@ -182,16 +193,109 @@ public final class SFGameCommands {
                                 .then(Commands.literal("captureUsePlayerDifference")
                                         .then(Commands.argument("value", BoolArgumentType.bool()).executes(SFGameCommands::rulesSetBoolean)))
                                 .then(Commands.literal("captureDifferenceCoefficient")
-                                        .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0)).executes(SFGameCommands::rulesSetDouble)))
+                                        .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0)).executes(c -> rulesSetDouble(c, "captureDifferenceCoefficient"))))
+                                .then(Commands.literal("attackerCaptainCaptureWeight")
+                                        .then(Commands.argument("value", DoubleArgumentType.doubleArg(1.0, 10.0)).executes(c -> rulesSetDouble(c, "attackerCaptainCaptureWeight"))))
+                                .then(Commands.literal("defenderCaptureWeight")
+                                        .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0)).executes(c -> rulesSetDouble(c, "defenderCaptureWeight"))))
                                 .then(Commands.argument("key", StringArgumentType.word()).suggests(RULE_SUGGESTIONS)
                                         .then(Commands.argument("value", IntegerArgumentType.integer(0)).executes(SFGameCommands::rulesSet)))))
                 .then(Commands.literal("class").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("reload").executes(SFGameCommands::classReload))
                         .then(Commands.literal("validate").executes(SFGameCommands::classValidate))
-                        .then(Commands.literal("list").executes(SFGameCommands::classList))
+                        .then(Commands.literal("list").executes(SFGameCommands::classList)
+                                .then(Commands.literal("normal").executes(SFGameCommands::classList))
+                                .then(Commands.literal("captain").executes(SFGameCommands::classListCaptain)))
+                        .then(Commands.literal("listcaptain").executes(SFGameCommands::classListCaptain))
                         .then(Commands.literal("set").then(Commands.argument("player", EntityArgument.player())
                                 .then(Commands.argument("class", StringArgumentType.word()).suggests(CLASS_SUGGESTIONS)
-                                        .executes(SFGameCommands::classSet))))));
+                                        .executes(SFGameCommands::classSet))))
+                        .then(Commands.literal("setcaptain").then(Commands.argument("player", EntityArgument.player())
+                                .then(Commands.argument("class", StringArgumentType.word()).suggests(CAPTAIN_CLASS_SUGGESTIONS)
+                                        .executes(SFGameCommands::classSetCaptain)))))
+                .then(breakthroughCommands())
+                .then(sectorCommands())
+                .then(captainCommands()));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> breakthroughCommands() {
+        return Commands.literal("breakthrough").requires(source -> source.hasPermission(2))
+                .then(Commands.literal("variant")
+                        .then(Commands.literal("normal").executes(context -> breakthroughVariant(context, BreakthroughVariant.NORMAL)))
+                        .then(Commands.literal("captain").executes(context -> breakthroughVariant(context, BreakthroughVariant.CAPTAIN))))
+                .then(Commands.literal("legs").then(Commands.argument("legs", IntegerArgumentType.integer(1, 2))
+                        .executes(SFGameCommands::breakthroughLegs)))
+                .then(Commands.literal("roles").then(Commands.argument("attacker", StringArgumentType.word())
+                        .then(Commands.argument("defender", StringArgumentType.word()).executes(SFGameCommands::breakthroughRoles))))
+                .then(Commands.literal("status").executes(SFGameCommands::breakthroughStatus));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> sectorCommands() {
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("sector");
+        root.requires(source -> source.hasPermission(2));
+        root.then(Commands.literal("add").then(Commands.argument("sector", StringArgumentType.word()).executes(SFGameCommands::sectorAdd)));
+        root.then(Commands.literal("set").then(Commands.literal("order").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("order", IntegerArgumentType.integer(1, 16)).executes(SFGameCommands::sectorSetOrder)))));
+        root.then(Commands.literal("list").executes(SFGameCommands::sectorList));
+        root.then(Commands.literal("status").then(Commands.argument("sector", StringArgumentType.word()).executes(SFGameCommands::sectorStatus)));
+        root.then(Commands.literal("remove").then(Commands.argument("sector", StringArgumentType.word()).executes(SFGameCommands::sectorRemove)));
+        root.then(Commands.literal("clear").executes(SFGameCommands::sectorClear));
+
+        LiteralArgumentBuilder<CommandSourceStack> point = Commands.literal("point");
+        LiteralArgumentBuilder<CommandSourceStack> pointAdd = Commands.literal("add");
+        pointAdd.then(Commands.literal("box").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("point", StringArgumentType.word()).executes(SFGameCommands::sectorPointAddBox))));
+        pointAdd.then(Commands.literal("square").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("point", StringArgumentType.word())
+                        .then(Commands.argument("radius", IntegerArgumentType.integer(1, 256)).executes(SFGameCommands::sectorPointAddSquare)))));
+        point.then(pointAdd);
+        LiteralArgumentBuilder<CommandSourceStack> pointSet = Commands.literal("set");
+        pointSet.then(Commands.literal("box").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("point", StringArgumentType.word()).executes(SFGameCommands::sectorPointSetBox))));
+        pointSet.then(Commands.literal("radius").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("point", StringArgumentType.word())
+                        .then(Commands.argument("radius", IntegerArgumentType.integer(1, 256)).executes(SFGameCommands::sectorPointSetRadius)))));
+        pointSet.then(Commands.literal("height").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("point", StringArgumentType.word())
+                        .then(Commands.literal("full").executes(context -> sectorPointSetHeight(context, true)))
+                        .then(Commands.argument("minY", IntegerArgumentType.integer(-2048, 2048))
+                                .then(Commands.argument("maxY", IntegerArgumentType.integer(-2048, 2048))
+                                        .executes(context -> sectorPointSetHeight(context, false)))))));
+        point.then(pointSet);
+        point.then(Commands.literal("remove").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.argument("point", StringArgumentType.word()).executes(SFGameCommands::sectorPointRemove))));
+        root.then(point);
+
+        LiteralArgumentBuilder<CommandSourceStack> spawn = Commands.literal("spawn");
+        spawn.then(Commands.literal("add").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.literal("attacker").executes(context -> sectorSpawnAdd(context, true)))
+                .then(Commands.literal("defender").executes(context -> sectorSpawnAdd(context, false)))));
+        spawn.then(Commands.literal("list").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.literal("attacker").executes(context -> sectorSpawnList(context, true)))
+                .then(Commands.literal("defender").executes(context -> sectorSpawnList(context, false)))));
+        spawn.then(Commands.literal("remove").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.literal("attacker").then(Commands.argument("index", IntegerArgumentType.integer(1))
+                        .executes(context -> sectorSpawnRemove(context, true))))
+                .then(Commands.literal("defender").then(Commands.argument("index", IntegerArgumentType.integer(1))
+                        .executes(context -> sectorSpawnRemove(context, false))))));
+        spawn.then(Commands.literal("clear").then(Commands.argument("sector", StringArgumentType.word())
+                .then(Commands.literal("attacker").executes(context -> sectorSpawnClear(context, true)))
+                .then(Commands.literal("defender").executes(context -> sectorSpawnClear(context, false)))));
+        root.then(spawn);
+        return root;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> captainCommands() {
+        return Commands.literal("captain")
+                .then(Commands.literal("vote")
+                        .then(Commands.literal("abstain").executes(context -> captainVote(context, true)))
+                        .then(Commands.argument("candidate", EntityArgument.player()).executes(context -> captainVote(context, false))))
+                .then(Commands.literal("status").executes(SFGameCommands::captainStatus))
+                .then(Commands.literal("set").requires(source -> source.hasPermission(2))
+                        .then(Commands.argument("side", StringArgumentType.word())
+                                .then(Commands.argument("player", EntityArgument.player()).executes(SFGameCommands::captainSet))))
+                .then(Commands.literal("reelect").requires(source -> source.hasPermission(2))
+                        .then(Commands.argument("side", StringArgumentType.word()).executes(SFGameCommands::captainReelect)));
     }
 
     private static int menu(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -313,7 +417,11 @@ public final class SFGameCommands {
 
     private static int pointPosition(CommandContext<CommandSourceStack> context, boolean first)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        if (!checkPointEdit(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (!GameModeRegistry.DOMINATION.equals(data.selectedMode()) && !GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())) {
+            return failure(context, "Select domination or breakthrough mode before setting capture positions");
+        }
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit capture points during a match");
         ServerPlayer player = context.getSource().getPlayerOrException();
         ArenaPosition position = ArenaPosition.from(player);
         (first ? POINT_POS_1 : POINT_POS_2).put(player.getUUID(), position);
@@ -490,6 +598,225 @@ public final class SFGameCommands {
                 + " radius=" + square.radius() + " " + height;
     }
 
+    private static int breakthroughVariant(CommandContext<CommandSourceStack> context, BreakthroughVariant variant) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        data.activeMap().breakthrough().variant(variant); data.setDirty(); MatchManager.get().arenaSelectionChanged();
+        return success(context, "Breakthrough variant set to " + variant.name().toLowerCase());
+    }
+
+    private static int breakthroughLegs(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        int legs = IntegerArgumentType.getInteger(context, "legs");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        data.activeMap().breakthrough().legs(legs); data.setDirty(); MatchManager.get().arenaSelectionChanged();
+        return success(context, "Breakthrough legs set to " + legs);
+    }
+
+    private static int breakthroughRoles(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        TeamSide attacker = TeamSide.fromId(StringArgumentType.getString(context, "attacker"));
+        TeamSide defender = TeamSide.fromId(StringArgumentType.getString(context, "defender"));
+        try {
+            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            data.activeMap().breakthrough().roles(attacker, defender); data.setDirty(); MatchManager.get().arenaSelectionChanged();
+            return success(context, "Breakthrough roles: attacker=" + attacker.id() + ", defender=" + defender.id());
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int breakthroughStatus(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthrough(context)) return 0;
+        var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().breakthrough();
+        send(context, "variant=" + config.variant().name().toLowerCase() + ", legs=" + config.legs()
+                + ", attacker=" + config.attacker().id() + ", defender=" + config.defender().id()
+                + ", sectors=" + config.sectors().size());
+        return 1;
+    }
+
+    private static int sectorAdd(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        String id = StringArgumentType.getString(context, "sector");
+        int order = data.activeMap().breakthrough().sectors().stream().mapToInt(BreakthroughSectorDefinition::order).max().orElse(0) + 1;
+        try {
+            data.activeMap().breakthrough().addSector(new BreakthroughSectorDefinition(id, order)); data.setDirty();
+            MatchManager.get().arenaSelectionChanged(); return success(context, "Added sector " + id);
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int sectorSetOrder(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        String id = StringArgumentType.getString(context, "sector");
+        int order = IntegerArgumentType.getInteger(context, "order");
+        BreakthroughSectorDefinition sector = sector(context, id);
+        if (sector == null) return failure(context, "Unknown sector: " + id);
+        sector.order(order); dirty(context); return success(context, "Set sector " + id + " order to " + order);
+    }
+
+    private static int sectorList(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthrough(context)) return 0;
+        var sectors = SFGameSavedData.get(context.getSource().getServer()).activeMap().breakthrough().sectors();
+        sectors.forEach(sector -> send(context, sector.order() + ": " + sector.id() + " points=" + sector.points().size()
+                + " attackerSpawns=" + sector.spawns(true).size() + " defenderSpawns=" + sector.spawns(false).size()));
+        return sectors.size();
+    }
+
+    private static int sectorStatus(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthrough(context)) return 0;
+        String id = StringArgumentType.getString(context, "sector");
+        BreakthroughSectorDefinition sector = sector(context, id);
+        if (sector == null) return failure(context, "Unknown sector: " + id);
+        send(context, sector.id() + " order=" + sector.order() + " attackerSpawns=" + sector.spawns(true).size()
+                + " defenderSpawns=" + sector.spawns(false).size());
+        sector.points().forEach(point -> send(context, "  " + displayPoint(point)));
+        return 1;
+    }
+
+    private static int sectorRemove(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        String id = StringArgumentType.getString(context, "sector");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (!data.activeMap().breakthrough().removeSector(id)) return failure(context, "Unknown sector: " + id);
+        dirty(context); return success(context, "Removed sector " + id);
+    }
+
+    private static int sectorClear(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        int count = data.activeMap().breakthrough().sectors().size(); data.activeMap().breakthrough().clear();
+        dirty(context); return success(context, "Cleared " + count + " sector(s)");
+    }
+
+    private static int sectorPointAddBox(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkBreakthroughEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
+        if (first == null || second == null) return failure(context, "Set point pos1 and pos2 first");
+        if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
+        CaptureRegion region = new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
+                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
+        return sectorPointAdd(context, region);
+    }
+
+    private static int sectorPointAddSquare(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkBreakthroughEdit(context)) return 0;
+        return sectorPointAdd(context, SquareCaptureRegion.centeredAt(ArenaPosition.from(context.getSource().getPlayerOrException()),
+                IntegerArgumentType.getInteger(context, "radius")));
+    }
+
+    private static int sectorPointAdd(CommandContext<CommandSourceStack> context, CaptureRegion region) {
+        String sectorId = StringArgumentType.getString(context, "sector");
+        String pointId = StringArgumentType.getString(context, "point");
+        BreakthroughSectorDefinition sector = sector(context, sectorId);
+        if (sector == null) return failure(context, "Unknown sector: " + sectorId);
+        int order = sector.points().stream().mapToInt(CapturePointDefinition::order).max().orElse(0) + 1;
+        try { sector.addPoint(new CapturePointDefinition(pointId, region, order)); dirty(context); return success(context, "Added point " + pointId + " to sector " + sectorId); }
+        catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int sectorPointSetBox(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkBreakthroughEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
+        if (first == null || second == null) return failure(context, "Set point pos1 and pos2 first");
+        if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
+        return replaceSectorPoint(context, existing -> new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()),
+                Math.max(first.x(), second.x()), Math.min(first.z(), second.z()), Math.max(first.z(), second.z()),
+                existing.region().minY(), existing.region().maxY()));
+    }
+
+    private static int sectorPointSetRadius(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        int radius = IntegerArgumentType.getInteger(context, "radius");
+        return replaceSectorPoint(context, existing -> {
+            if (!(existing.region() instanceof SquareCaptureRegion square)) throw new IllegalArgumentException("Point is not square");
+            return square.withRadius(radius);
+        });
+    }
+
+    private static int sectorPointSetHeight(CommandContext<CommandSourceStack> context, boolean full) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        Integer minY = full ? null : IntegerArgumentType.getInteger(context, "minY");
+        Integer maxY = full ? null : IntegerArgumentType.getInteger(context, "maxY");
+        return replaceSectorPoint(context, existing -> existing.region().withHeight(minY, maxY));
+    }
+
+    private static int replaceSectorPoint(CommandContext<CommandSourceStack> context,
+                                          java.util.function.Function<CapturePointDefinition, CaptureRegion> replacement) {
+        String sectorId = StringArgumentType.getString(context, "sector"), pointId = StringArgumentType.getString(context, "point");
+        BreakthroughSectorDefinition sector = sector(context, sectorId);
+        if (sector == null) return failure(context, "Unknown sector: " + sectorId);
+        try {
+            CapturePointDefinition point = sector.point(pointId).orElseThrow(() -> new IllegalArgumentException("Unknown point: " + pointId));
+            sector.replacePoint(pointId, point.withRegion(replacement.apply(point))); dirty(context);
+            return success(context, "Updated point " + pointId + " in sector " + sectorId);
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int sectorPointRemove(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        String sectorId = StringArgumentType.getString(context, "sector"), pointId = StringArgumentType.getString(context, "point");
+        BreakthroughSectorDefinition sector = sector(context, sectorId);
+        if (sector == null || !sector.removePoint(pointId)) return failure(context, "Unknown sector or point");
+        dirty(context); return success(context, "Removed point " + pointId + " from sector " + sectorId);
+    }
+
+    private static int sectorSpawnAdd(CommandContext<CommandSourceStack> context, boolean attacker)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkBreakthroughEdit(context)) return 0;
+        String sectorId = StringArgumentType.getString(context, "sector");
+        BreakthroughSectorDefinition sector = sector(context, sectorId);
+        if (sector == null) return failure(context, "Unknown sector: " + sectorId);
+        sector.addSpawn(attacker, ArenaPosition.from(context.getSource().getPlayerOrException())); dirty(context);
+        return success(context, "Added " + (attacker ? "attacker" : "defender") + " spawn to " + sectorId);
+    }
+
+    private static int sectorSpawnList(CommandContext<CommandSourceStack> context, boolean attacker) {
+        if (!checkBreakthrough(context)) return 0;
+        BreakthroughSectorDefinition sector = sector(context, StringArgumentType.getString(context, "sector"));
+        if (sector == null) return failure(context, "Unknown sector");
+        List<ArenaPosition> spawns = sector.spawns(attacker);
+        for (int i = 0; i < spawns.size(); i++) send(context, (i + 1) + ": " + positionText(spawns.get(i)));
+        return spawns.size();
+    }
+
+    private static int sectorSpawnRemove(CommandContext<CommandSourceStack> context, boolean attacker) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughSectorDefinition sector = sector(context, StringArgumentType.getString(context, "sector"));
+        if (sector == null || !sector.removeSpawn(attacker, IntegerArgumentType.getInteger(context, "index") - 1)) return failure(context, "Unknown sector or spawn index");
+        dirty(context); return success(context, "Removed sector spawn");
+    }
+
+    private static int sectorSpawnClear(CommandContext<CommandSourceStack> context, boolean attacker) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughSectorDefinition sector = sector(context, StringArgumentType.getString(context, "sector"));
+        if (sector == null) return failure(context, "Unknown sector");
+        int count = sector.spawns(attacker).size(); sector.clearSpawns(attacker); dirty(context);
+        return success(context, "Cleared " + count + " sector spawn(s)");
+    }
+
+    private static boolean checkBreakthrough(CommandContext<CommandSourceStack> context) {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (!GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())) { failure(context, "Select breakthrough mode first"); return false; }
+        if (data.activeMap() == null) { failure(context, "No active map"); return false; }
+        return true;
+    }
+    private static boolean checkBreakthroughEdit(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthrough(context)) return false;
+        if (!MatchManager.get().canChangeArena()) { failure(context, "Cannot edit breakthrough map during a match"); return false; }
+        return true;
+    }
+    private static BreakthroughSectorDefinition sector(CommandContext<CommandSourceStack> context, String id) {
+        return SFGameSavedData.get(context.getSource().getServer()).activeMap().breakthrough().sector(id).orElse(null);
+    }
+    private static void dirty(CommandContext<CommandSourceStack> context) {
+        SFGameSavedData.get(context.getSource().getServer()).setDirty(); MatchManager.get().arenaSelectionChanged();
+    }
+    private static String displayPoint(CapturePointDefinition point) { return point.id() + " " + regionText(point.region()); }
+
     private static int modeList(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         GameModeRegistry.all().forEach(mode -> send(context,
@@ -640,12 +967,11 @@ public final class SFGameCommands {
         return success(context, "captureUsePlayerDifference=" + value);
     }
 
-    private static int rulesSetDouble(CommandContext<CommandSourceStack> context) {
+    private static int rulesSetDouble(CommandContext<CommandSourceStack> context, String key) {
         double value = DoubleArgumentType.getDouble(context, "value");
-        try { MatchManager.get().setRule("captureDifferenceCoefficient", value); }
+        try { MatchManager.get().setRule(key, value); }
         catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
-        return success(context, "captureDifferenceCoefficient="
-                + SFGameSavedData.get(context.getSource().getServer()).rules().captureDifferenceCoefficient());
+        return success(context, key + "=" + ruleValue(SFGameSavedData.get(context.getSource().getServer()).rules(), key));
     }
 
     private static int rulesReset(CommandContext<CommandSourceStack> context) {
@@ -655,16 +981,23 @@ public final class SFGameCommands {
 
     private static int classReload(CommandContext<CommandSourceStack> context) {
         List<String> errors = new ArrayList<>(MatchManager.get().classes().reload());
-        errors.addAll(MatchManager.get().loadouts().validate(MatchManager.get().classes()).stream().filter(e -> !errors.contains(e)).toList());
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
+                && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+        errors.addAll(MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), captains)
+                .stream().filter(e -> !errors.contains(e)).toList());
         if (!errors.isEmpty()) {
             errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
             return 0;
         }
-        return success(context, "Loaded " + MatchManager.get().classes().all().size() + " classes");
+        return success(context, "Loaded " + MatchManager.get().classes().all(data.selectedMode()).size() + " classes for " + data.selectedMode());
     }
 
     private static int classValidate(CommandContext<CommandSourceStack> context) {
-        List<String> errors = MatchManager.get().loadouts().validate(MatchManager.get().classes());
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
+                && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+        List<String> errors = MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), captains);
         if (!errors.isEmpty()) {
             errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
             return 0;
@@ -673,8 +1006,15 @@ public final class SFGameCommands {
     }
 
     private static int classList(CommandContext<CommandSourceStack> context) {
-        MatchManager.get().classes().all().forEach(c -> send(context, c.id() + " - " + c.displayName() + " (" + c.gunId() + ")"));
-        return MatchManager.get().classes().all().size();
+        String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
+        MatchManager.get().classes().all(mode).forEach(c -> send(context, c.id() + " - " + c.displayName() + " (" + c.gunId() + ")"));
+        return MatchManager.get().classes().all(mode).size();
+    }
+
+    private static int classListCaptain(CommandContext<CommandSourceStack> context) {
+        String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
+        MatchManager.get().classes().captainClasses(mode).forEach(c -> send(context, c.id() + " - " + c.displayName() + " (" + c.gunId() + ")"));
+        return MatchManager.get().classes().captainClasses(mode).size();
     }
 
     private static int classSet(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -684,9 +1024,53 @@ public final class SFGameCommands {
                 : failure(context, "Unknown class " + classId);
     }
 
+    private static int classSetCaptain(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = EntityArgument.getPlayer(context, "player");
+        String classId = StringArgumentType.getString(context, "class");
+        return MatchManager.get().selectCaptainClass(player, classId)
+                ? success(context, "Selected captain class " + classId + " for " + player.getGameProfile().getName())
+                : failure(context, "Unknown captain class " + classId);
+    }
+
+    private static int captainVote(CommandContext<CommandSourceStack> context, boolean abstain)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer voter = context.getSource().getPlayerOrException();
+        ServerPlayer candidate = abstain ? null : EntityArgument.getPlayer(context, "candidate");
+        return MatchManager.get().breakthrough().vote(voter, candidate, abstain, MatchManager.get())
+                ? success(context, abstain ? "Vote recorded as abstain" : "Captain vote recorded")
+                : failure(context, "Captain voting is not available for you now");
+    }
+
+    private static int captainStatus(CommandContext<CommandSourceStack> context) {
+        var runtime = MatchManager.get().breakthrough();
+        String name = runtime.captain() == null ? "none" : context.getSource().getServer().getProfileCache()
+                .get(runtime.captain()).map(profile -> profile.getName()).orElse(runtime.captain().toString());
+        send(context, "attacker=" + runtime.attacker().id() + ", captain=" + name + ", electionSeconds=" + runtime.electionSeconds());
+        return 1;
+    }
+
+    private static int captainSet(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        TeamSide side = TeamSide.fromId(StringArgumentType.getString(context, "side"));
+        if (side != MatchManager.get().breakthrough().attacker()) return failure(context, "Only the current attacker has a captain");
+        ServerPlayer player = EntityArgument.getPlayer(context, "player");
+        return MatchManager.get().breakthrough().setCaptain(player, MatchManager.get())
+                ? success(context, "Captain set to " + player.getGameProfile().getName()) : failure(context, "Player is not an active attacker");
+    }
+
+    private static int captainReelect(CommandContext<CommandSourceStack> context) {
+        TeamSide side = TeamSide.fromId(StringArgumentType.getString(context, "side"));
+        MatchRules rules = SFGameSavedData.get(context.getSource().getServer()).rules();
+        return MatchManager.get().breakthrough().reelect(side, rules, MatchManager.get())
+                ? success(context, "Captain reelection started") : failure(context, "Only the current attacker elects a captain");
+    }
+
     private static String ruleValue(MatchRules rules, String key) {
-        if (!GameModeRegistry.DOMINATION.equals(rules.modeId()) && isDominationRule(key)) {
+        if (!GameModeRegistry.DOMINATION.equals(rules.modeId()) && isDominationOnlyRule(key)) {
             throw new IllegalArgumentException(key + " is only available in domination mode");
+        }
+        if (!GameModeRegistry.BREAKTHROUGH.equals(rules.modeId()) && isBreakthroughOnlyRule(key)) {
+            throw new IllegalArgumentException(key + " is only available in breakthrough mode");
         }
         return switch (key) {
             case "maxPlayers" -> Integer.toString(rules.maxPlayers());
@@ -703,26 +1087,45 @@ public final class SFGameCommands {
             case "scoreIntervalSeconds" -> Integer.toString(rules.scoreIntervalSeconds());
             case "scorePerPoint" -> Integer.toString(rules.scorePerPoint());
             case "syncHoldSeconds" -> Integer.toString(rules.syncHoldSeconds());
+            case "attackerTickets" -> Integer.toString(rules.attackerTickets());
+            case "sectorTransitionSeconds" -> Integer.toString(rules.sectorTransitionSeconds());
+            case "captainVoteSeconds" -> Integer.toString(rules.captainVoteSeconds());
+            case "captainReplacementVoteSeconds" -> Integer.toString(rules.captainReplacementVoteSeconds());
+            case "attackerCaptainCaptureWeight" -> Double.toString(rules.attackerCaptainCaptureWeight());
+            case "defenderCaptureWeight" -> Double.toString(rules.defenderCaptureWeight());
             default -> throw new IllegalArgumentException("Unknown rule " + key);
         };
     }
 
-    private static boolean isDominationRule(String key) {
-        return key.startsWith("capture") || key.equals("scoreIntervalSeconds")
-                || key.equals("scorePerPoint") || key.equals("syncHoldSeconds");
+    private static boolean isDominationOnlyRule(String key) {
+        return key.equals("scoreIntervalSeconds") || key.equals("scorePerPoint") || key.equals("syncHoldSeconds");
+    }
+
+    private static boolean isBreakthroughOnlyRule(String key) {
+        return key.equals("attackerTickets") || key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
+                || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainCaptureWeight")
+                || key.equals("defenderCaptureWeight");
     }
 
     private static String rulesText(MatchRules r) {
         String common = "maxPlayers=" + r.maxPlayers() + ", scoreLimit=" + r.scoreLimit() + ", timeLimitSeconds=" + r.timeLimitSeconds()
                 + ", startCountdownSeconds=" + r.startCountdownSeconds() + ", respawnSeconds=" + r.respawnSeconds()
                 + ", respawnProtectionSeconds=" + r.respawnProtectionSeconds() + ", resultSeconds=" + r.resultSeconds();
-        if (!GameModeRegistry.DOMINATION.equals(r.modeId())) return common;
-        return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
+        if (GameModeRegistry.DOMINATION.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
                 + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
                 + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier()
                 + ", scoreIntervalSeconds=" + r.scoreIntervalSeconds() + ", scorePerPoint=" + r.scorePerPoint()
                 + ", syncHoldSeconds=" + r.syncHoldSeconds();
+        if (GameModeRegistry.BREAKTHROUGH.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
+                + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
+                + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
+                + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()
+                + ", sectorTransitionSeconds=" + r.sectorTransitionSeconds() + ", captainVoteSeconds=" + r.captainVoteSeconds()
+                + ", captainReplacementVoteSeconds=" + r.captainReplacementVoteSeconds()
+                + ", attackerCaptainCaptureWeight=" + r.attackerCaptainCaptureWeight()
+                + ", defenderCaptureWeight=" + r.defenderCaptureWeight();
+        return common;
     }
 
     private static int success(CommandContext<CommandSourceStack> context, String message) {

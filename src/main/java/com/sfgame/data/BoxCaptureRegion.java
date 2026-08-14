@@ -16,6 +16,9 @@ public record BoxCaptureRegion(String dimension, double minX, double maxX, doubl
                 Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
     }
 
+    @Override public double centerX() { return (minX + maxX) / 2.0; }
+    @Override public double centerZ() { return (minZ + maxZ) / 2.0; }
+
     @Override
     public boolean contains(ServerPlayer player) {
         if (!player.level().dimension().location().toString().equals(dimension)) return false;

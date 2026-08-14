@@ -18,6 +18,7 @@ public final class ArenaMap {
     private ArenaPosition lobby;
     private final Map<TeamSide, List<ArenaPosition>> spawns = new EnumMap<>(TeamSide.class);
     private DominationMapConfig domination = new DominationMapConfig();
+    private BreakthroughMapConfig breakthrough = new BreakthroughMapConfig();
 
     public ArenaMap(String id) {
         this.id = id;
@@ -46,6 +47,7 @@ public final class ArenaMap {
     }
     public boolean configured() { return lobby != null && enabledTeams().size() >= 2; }
     public DominationMapConfig domination() { return domination; }
+    public BreakthroughMapConfig breakthrough() { return breakthrough; }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
@@ -53,6 +55,7 @@ public final class ArenaMap {
         if (lobby != null) tag.put("Lobby", lobby.save());
         TeamSide.PLAYABLE.forEach(side -> tag.put(spawnKey(side), savePositions(spawnList(side))));
         tag.put("Domination", domination.save());
+        tag.put("Breakthrough", breakthrough.save());
         return tag;
     }
 
@@ -68,6 +71,7 @@ public final class ArenaMap {
             map.addSpawn(TeamSide.BLUE, ArenaPosition.load(tag.getCompound("BlueSpawn")));
         }
         if (tag.contains("Domination")) map.domination = DominationMapConfig.load(tag.getCompound("Domination"));
+        if (tag.contains("Breakthrough")) map.breakthrough = BreakthroughMapConfig.load(tag.getCompound("Breakthrough"));
         return map;
     }
 

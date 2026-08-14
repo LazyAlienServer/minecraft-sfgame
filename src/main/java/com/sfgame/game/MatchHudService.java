@@ -13,6 +13,9 @@ import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 public final class MatchHudService {
     private static final String OBJECTIVE_NAME = "sfgame_match";
     private static final String TIME_LINE = ChatFormatting.GOLD + "TIME";
+    private static final String TICKETS_LINE = ChatFormatting.RED + "TICKETS";
+    private static final String LEG_LINE = ChatFormatting.AQUA + "LEG";
+    private static final String SECTOR_LINE = ChatFormatting.YELLOW + "SECTOR";
 
     public void update(MinecraftServer server, MatchManager manager) {
         Scoreboard scoreboard = server.getScoreboard();
@@ -34,19 +37,29 @@ public final class MatchHudService {
         scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, objective);
         for (TeamSide side : TeamSide.PLAYABLE) {
             String line = side.color() + side.id().toUpperCase();
-            if (data.enabledTeams().contains(side)) {
+            if (!GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.enabledTeams().contains(side)) {
                 scoreboard.getOrCreatePlayerScore(line, objective).setScore(manager.score(side));
             } else {
                 scoreboard.resetPlayerScore(line, objective);
             }
         }
-        int remaining = Math.max(0, rules.timeLimitSeconds() - manager.elapsedTicks() / 20);
-        scoreboard.getOrCreatePlayerScore(TIME_LINE, objective).setScore(remaining);
+        scoreboard.getOrCreatePlayerScore(TIME_LINE, objective).setScore(manager.remainingSeconds());
+        if (GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())) {
+            BreakthroughRuntime runtime = manager.breakthrough();
+            scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(runtime.tickets());
+            scoreboard.getOrCreatePlayerScore(LEG_LINE, objective).setScore(runtime.leg());
+            scoreboard.getOrCreatePlayerScore(SECTOR_LINE, objective).setScore(runtime.sectorNumber());
+        } else {
+            scoreboard.resetPlayerScore(TICKETS_LINE, objective);
+            scoreboard.resetPlayerScore(LEG_LINE, objective);
+            scoreboard.resetPlayerScore(SECTOR_LINE, objective);
+        }
         for (ServerPlayer player : server.getPlayerList().getPlayers()) player.refreshTabListName();
 
     }
 
     private static String title(String modeId, int scoreLimit) {
+        if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) return "SFGame BREAKTHROUGH";
         return "SFGame " + (GameModeRegistry.DOMINATION.equals(modeId) ? "DOMINATION" : "TDM") + " / " + scoreLimit;
     }
 

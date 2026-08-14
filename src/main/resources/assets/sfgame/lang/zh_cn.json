@@ -13,6 +13,7 @@
   "sfgame.team.none": "未分队",
   "sfgame.phase.unconfigured": "等待配置",
   "sfgame.phase.lobby": "大厅",
+  "sfgame.phase.preparing": "准备阶段",
   "sfgame.phase.countdown": "准备开始",
   "sfgame.phase.running": "比赛中",
   "sfgame.phase.result": "结算",
@@ -35,5 +36,12 @@
   "sfgame.point.neutralized": "%s 已中立化",
   "sfgame.point.next": "下一个占领点：%s",
   "sfgame.point.active": "当前可占领点：%s",
-  "sfgame.point.transition": "点位 %s 已沦陷，请前往占领点位 %s！"
+  "sfgame.point.transition": "点位 %s 已沦陷，请前往占领点位 %s！",
+  "sfgame.menu.captain.abstain": "弃权",
+  "sfgame.breakthrough.captain.vote": "请在 %s 秒内投票选出进攻方队长",
+  "sfgame.breakthrough.captain.reelect": "进攻方队长已离队，开始 %s 秒补选",
+  "sfgame.breakthrough.captain.selected": "%s 已当选进攻方队长",
+  "sfgame.breakthrough.objective": "请进攻阶段 %s",
+  "sfgame.breakthrough.sector.transition": "阶段 %s 已沦陷，请前往阶段 %s！",
+  "sfgame.breakthrough.leg.transition": "攻守互换，请准备下一赛段！"
 }

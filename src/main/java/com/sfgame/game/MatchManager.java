@@ -5,6 +5,7 @@ import com.sfgame.classsystem.ClassDefinition;
 import com.sfgame.classsystem.ClassRegistry;
 import com.sfgame.classsystem.LoadoutService;
 import com.sfgame.data.ArenaPosition;
+import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.SFGameSavedData;
 import com.sfgame.network.MatchSnapshot;
@@ -41,6 +42,11 @@ public final class MatchManager {
     private final VanillaTeamBindingService teams = new VanillaTeamBindingService();
     private final TeamDeathmatchRuntime teamDeathmatchRuntime = new TeamDeathmatchRuntime();
     private final DominationRuntime dominationRuntime = new DominationRuntime();
+    private final BreakthroughRuntime breakthroughRuntime = new BreakthroughRuntime();
+    private final Map<String, MatchModeRuntime> runtimes = Map.of(
+            GameModeRegistry.TEAM_DEATHMATCH, teamDeathmatchRuntime,
+            GameModeRegistry.DOMINATION, dominationRuntime,
+            GameModeRegistry.BREAKTHROUGH, breakthroughRuntime);
     private MatchModeRuntime activeRuntime = teamDeathmatchRuntime;
 
     private MatchPhase phase = MatchPhase.UNCONFIGURED;
@@ -59,6 +65,7 @@ public final class MatchManager {
     public ClassRegistry classes() { return classRegistry; }
     public LoadoutService loadouts() { return loadoutService; }
     public VanillaTeamBindingService teams() { return teams; }
+    public BreakthroughRuntime breakthrough() { return breakthroughRuntime; }
     public Collection<PlayerMatchState> playerStates() { return players.values(); }
     public int redScore() { return redScore; }
     public int blueScore() { return blueScore; }
@@ -74,6 +81,8 @@ public final class MatchManager {
         };
     }
     public int elapsedTicks() { return elapsedTicks; }
+    public int remainingSeconds() { return activeRuntime.remainingSeconds(this, data().rules()); }
+    public boolean modeBlocksCombat() { return phase == MatchPhase.RUNNING && activeRuntime.blocksCombat(); }
 
     public boolean canChangeArena() {
         return phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED;
@@ -107,7 +116,7 @@ public final class MatchManager {
         if (server == null) return;
         SFGameSavedData data = data();
         if (!teams.bindingsValid(server, data)) {
-            if (phase == MatchPhase.RUNNING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
+            if (phase == MatchPhase.RUNNING || phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
                 stop(false, Component.literal("Bound vanilla team was removed"));
             }
             phase = MatchPhase.UNCONFIGURED;
@@ -118,6 +127,7 @@ public final class MatchManager {
 
         syncVanillaTeams();
         tickPlayerTimers();
+        if (phase == MatchPhase.PREPARING) tickPreparing();
         if (phase == MatchPhase.COUNTDOWN) tickCountdown();
         if (phase == MatchPhase.RUNNING) tickRunning();
         if (phase == MatchPhase.RESULT) tickResult();
@@ -134,7 +144,9 @@ public final class MatchManager {
         SFGameSavedData data = data();
         if (!data.isArenaConfigured()) errors.add("Lobby and spawn points for at least two teams must be set");
         if (!teams.bindingsValid(server, data)) errors.add("All four SFGame sides must bind different existing vanilla teams");
-        errors.addAll(loadoutService.validate(classRegistry));
+        boolean captainMode = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
+                && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+        errors.addAll(loadoutService.validate(classRegistry, data.selectedMode(), captainMode));
         if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
 
         List<TeamSide> enabledTeams = data.enabledTeams();
@@ -147,7 +159,7 @@ public final class MatchManager {
             PlayerMatchState state = state(player);
             ensureDefaultClass(state);
             String selected = selectedClass(state);
-            if (!classRegistry.contains(selected)) errors.add(player.getGameProfile().getName() + " has no valid class");
+            if (!classRegistry.contains(data.selectedMode(), selected)) errors.add(player.getGameProfile().getName() + " has no valid class");
         }
         for (TeamSide side : enabledTeams) {
             if (countSide(side) == 0) errors.add(side.id() + " team needs at least one player");
@@ -173,24 +185,19 @@ public final class MatchManager {
             if (data().enabledTeams().contains(side)) {
                 state.participating(true);
                 state.queued(false);
-                if (state.currentClass() == null) state.currentClass(state.pendingClass());
+                String modeId = data().selectedMode();
+                if (state.currentClass(modeId) == null) state.currentClass(modeId, state.pendingClass(modeId));
                 player.setGameMode(GameType.ADVENTURE);
             } else {
                 state.participating(false);
                 player.setGameMode(GameType.SPECTATOR);
             }
         }
-        phase = MatchPhase.COUNTDOWN;
-        phaseTicks = data().rules().startCountdownSeconds() * 20;
-        if (phaseTicks == 0) {
-            beginRunning();
-        } else {
-            Component title = Component.literal(Integer.toString(data().rules().startCountdownSeconds())).withStyle(ChatFormatting.GOLD);
-            forParticipants(player -> {
-                sendTitle(player, title, Component.translatable("sfgame.match.starting"), 24);
-                playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.0F);
-            });
-        }
+        activeRuntime = modeRuntime();
+        if (activeRuntime.needsPreparation(data().activeMap())) {
+            phase = MatchPhase.PREPARING;
+            activeRuntime.prepare(server, this, data().activeMap(), data().rules());
+        } else beginCountdown();
         syncAll();
         return true;
     }
@@ -210,7 +217,7 @@ public final class MatchManager {
 
     public boolean queueOrJoinLobby(ServerPlayer player) {
         PlayerMatchState state = state(player);
-        if (phase == MatchPhase.RUNNING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
+        if (phase == MatchPhase.RUNNING || phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
             state.queued(true);
             state.participating(false);
             player.setGameMode(GameType.SPECTATOR);
@@ -242,7 +249,7 @@ public final class MatchManager {
         state.pendingImmediateJoin(false);
         state.respawning(false);
         teams.remove(player);
-        if (phase == MatchPhase.RUNNING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
+        if (phase == MatchPhase.RUNNING || phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
             loadoutService.clear(player);
             player.setGameMode(GameType.SPECTATOR);
         }
@@ -261,7 +268,7 @@ public final class MatchManager {
         state.participating(false);
         state.resetRoundStats();
         player.setGameMode(GameType.SPECTATOR);
-        if (classRegistry.contains(selectedClass(state))) {
+        if (classRegistry.contains(data().selectedMode(), selectedClass(state))) {
             activateImmediateJoin(player, state);
         } else {
             SFGameNetwork.openMenu(player);
@@ -271,12 +278,26 @@ public final class MatchManager {
     }
 
     public boolean selectClass(ServerPlayer player, String classId) {
-        Optional<ClassDefinition> definition = classRegistry.get(classId);
+        String modeId = data().selectedMode();
+        Optional<ClassDefinition> definition = classRegistry.get(modeId, classId);
         if (definition.isEmpty()) return false;
         PlayerMatchState state = state(player);
-        state.pendingClass(definition.get().id());
-        if (phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED) state.currentClass(definition.get().id());
+        state.pendingClass(modeId, definition.get().id());
+        if (phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED) state.currentClass(modeId, definition.get().id());
         if (state.pendingImmediateJoin() && phase == MatchPhase.RUNNING) activateImmediateJoin(player, state);
+        sync(player);
+        return true;
+    }
+
+    public boolean selectCaptainClass(ServerPlayer player, String classId) {
+        String modeId = data().selectedMode();
+        Optional<ClassDefinition> definition = classRegistry.getCaptain(modeId, classId);
+        if (definition.isEmpty()) return false;
+        PlayerMatchState state = state(player);
+        state.pendingCaptainClass(modeId, definition.get().id());
+        if (phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED || phase == MatchPhase.PREPARING) {
+            state.currentCaptainClass(modeId, definition.get().id());
+        }
         sync(player);
         return true;
     }
@@ -288,7 +309,7 @@ public final class MatchManager {
         state.cachedSide(side);
         if (phase == MatchPhase.RUNNING && state.participating() && side != TeamSide.NONE) {
             deploy(player, state, false);
-        } else if (phase == MatchPhase.RUNNING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
+        } else if (phase == MatchPhase.RUNNING || phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
             state.queued(true);
             state.participating(false);
             player.setGameMode(GameType.SPECTATOR);
@@ -311,11 +332,12 @@ public final class MatchManager {
         PlayerMatchState victimState = state(victim);
         if (!victimState.participating()) return;
         victimState.addDeath();
+        TeamSide victimSide = teams.sideOf(victim, data());
+        activeRuntime.onPlayerDeath(victimSide, this);
         Player attacker = source.getEntity() instanceof Player player ? player : source.getDirectEntity() instanceof Player player ? player : null;
         if (attacker instanceof ServerPlayer serverAttacker && serverAttacker != victim) {
             PlayerMatchState attackerState = state(serverAttacker);
             TeamSide attackerSide = teams.sideOf(serverAttacker, data());
-            TeamSide victimSide = teams.sideOf(victim, data());
             if (attackerState.participating() && attackerSide != TeamSide.NONE && attackerSide != victimSide) {
                 attackerState.addKill();
                 activeRuntime.onKill(attackerSide, this);
@@ -356,15 +378,25 @@ public final class MatchManager {
     public boolean mayDrop(ServerPlayer player) {
         PlayerMatchState state = state(player);
         if (!state.participating()) return true;
-        return classRegistry.get(state.currentClass()).map(ClassDefinition::allowDrop).orElse(false);
+        String modeId = data().selectedMode();
+        boolean captain = activeRuntime.isCaptain(player.getUUID());
+        return (captain ? classRegistry.getCaptain(modeId, state.currentCaptainClass(modeId))
+                : classRegistry.get(modeId, state.currentClass(modeId))).map(ClassDefinition::allowDrop).orElse(false);
     }
 
     public void setRule(String key, int value) {
         MatchRules rules = data().rules();
-        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode())
-                && (key.startsWith("capture") || key.equals("scoreIntervalSeconds")
-                || key.equals("scorePerPoint") || key.equals("syncHoldSeconds"))) {
+        boolean domination = GameModeRegistry.DOMINATION.equals(data().selectedMode());
+        boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode());
+        if (!domination && !breakthrough && key.startsWith("capture")) {
+            throw new IllegalArgumentException(key + " is only available in a capture mode");
+        }
+        if (!domination && (key.equals("scoreIntervalSeconds") || key.equals("scorePerPoint") || key.equals("syncHoldSeconds"))) {
             throw new IllegalArgumentException(key + " is only available in domination mode");
+        }
+        if (!breakthrough && (key.equals("attackerTickets") || key.equals("sectorTransitionSeconds")
+                || key.equals("captainVoteSeconds") || key.equals("captainReplacementVoteSeconds"))) {
+            throw new IllegalArgumentException(key + " is only available in breakthrough mode");
         }
         switch (key) {
             case "maxPlayers" -> rules.maxPlayers(value);
@@ -379,27 +411,39 @@ public final class MatchManager {
             case "scoreIntervalSeconds" -> rules.scoreIntervalSeconds(value);
             case "scorePerPoint" -> rules.scorePerPoint(value);
             case "syncHoldSeconds" -> rules.syncHoldSeconds(value);
+            case "attackerTickets" -> rules.attackerTickets(value);
+            case "sectorTransitionSeconds" -> rules.sectorTransitionSeconds(value);
+            case "captainVoteSeconds" -> rules.captainVoteSeconds(value);
+            case "captainReplacementVoteSeconds" -> rules.captainReplacementVoteSeconds(value);
             default -> throw new IllegalArgumentException("Unknown rule " + key);
         }
         data().setDirty();
+        activeRuntime.onRuleChanged(key, rules);
         syncAll();
     }
 
     public void setRule(String key, boolean value) {
-        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode())) throw new IllegalArgumentException(key + " is only available in domination mode");
+        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode()) && !GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())) throw new IllegalArgumentException(key + " is only available in a capture mode");
         if (!"captureUsePlayerDifference".equals(key)) throw new IllegalArgumentException("Unknown boolean rule " + key);
-        data().rules().captureUsePlayerDifference(value); data().setDirty(); syncAll();
+        data().rules().captureUsePlayerDifference(value); data().setDirty();
+        activeRuntime.onRuleChanged(key, data().rules()); syncAll();
     }
 
     public void setRule(String key, double value) {
-        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode())) throw new IllegalArgumentException(key + " is only available in domination mode");
-        if (!"captureDifferenceCoefficient".equals(key)) throw new IllegalArgumentException("Unknown decimal rule " + key);
-        data().rules().captureDifferenceCoefficient(value); data().setDirty(); syncAll();
+        if (!GameModeRegistry.DOMINATION.equals(data().selectedMode()) && !GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())) throw new IllegalArgumentException(key + " is only available in a capture mode");
+        switch (key) {
+            case "captureDifferenceCoefficient" -> data().rules().captureDifferenceCoefficient(value);
+            case "attackerCaptainCaptureWeight" -> data().rules().attackerCaptainCaptureWeight(value);
+            case "defenderCaptureWeight" -> data().rules().defenderCaptureWeight(value);
+            default -> throw new IllegalArgumentException("Unknown decimal rule " + key);
+        }
+        data().setDirty(); activeRuntime.onRuleChanged(key, data().rules()); syncAll();
     }
 
     public void resetRules() {
         data().rules().reset();
         data().setDirty();
+        activeRuntime.onRuleChanged("attackerTickets", data().rules());
         syncAll();
     }
 
@@ -407,15 +451,38 @@ public final class MatchManager {
         MatchRules rules = data().rules();
         PlayerMatchState state = state(viewer);
         TeamSide side = teams.sideOf(viewer, data());
-        int remaining = Math.max(0, rules.timeLimitSeconds() - elapsedTicks / 20);
-        List<MatchSnapshot.ClassView> classViews = classRegistry.all().stream()
+        int remaining = activeRuntime.remainingSeconds(this, rules);
+        List<MatchSnapshot.ClassView> classViews = classRegistry.all(data().selectedMode()).stream()
                 .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
                         c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo()))
                 .toList();
+        List<MatchSnapshot.ClassView> captainClassViews = classRegistry.captainClasses(data().selectedMode()).stream()
+                .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
+                        c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo())).toList();
+        boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode()) && data().activeMap() != null;
+        TeamSide attackSide = breakthrough && (phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RUNNING)
+                ? breakthroughRuntime.attacker() : breakthrough ? data().activeMap().breakthrough().attacker() : TeamSide.NONE;
+        TeamSide defenseSide = breakthrough && (phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RUNNING)
+                ? breakthroughRuntime.defender() : breakthrough ? data().activeMap().breakthrough().defender() : TeamSide.NONE;
+        UUID captainId = breakthroughRuntime.captain();
+        ServerPlayer captainPlayer = captainId == null || server == null ? null : server.getPlayerList().getPlayer(captainId);
+        List<MatchSnapshot.CaptainCandidate> candidates = !breakthrough || breakthroughRuntime.electionSeconds() <= 0 || side != attackSide
+                ? List.of() : server.getPlayerList().getPlayers().stream()
+                .filter(player -> state(player).participating() && teams.sideOf(player, data()) == attackSide)
+                .map(player -> new MatchSnapshot.CaptainCandidate(player.getUUID().toString(), player.getGameProfile().getName())).toList();
         return new MatchSnapshot(data().selectedMode(), phase, side, redScore, blueScore, yellowScore, greenScore,
                 rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
-                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(), state.pendingClass(),
-                state.participating(), state.queued(), classViews);
+                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(data().selectedMode()), state.pendingClass(data().selectedMode()),
+                state.participating(), state.queued(), classViews,
+                breakthrough ? data().activeMap().breakthrough().variant().name().toLowerCase(java.util.Locale.ROOT) : "",
+                attackSide, defenseSide, breakthrough ? breakthroughRuntime.tickets() : 0,
+                breakthrough ? breakthroughRuntime.leg() : 0, breakthrough ? breakthroughRuntime.sectorNumber() : 0,
+                breakthrough ? breakthroughRuntime.sectorCount(data().activeMap()) : 0,
+                breakthrough ? breakthroughRuntime.subState() : "", captainId == null ? null : captainId.toString(),
+                captainPlayer == null ? null : captainPlayer.getGameProfile().getName(),
+                breakthrough ? breakthroughRuntime.electionSeconds() : 0, breakthroughRuntime.isCaptain(viewer.getUUID()),
+                state.currentCaptainClass(data().selectedMode()), state.pendingCaptainClass(data().selectedMode()),
+                captainClassViews, candidates);
     }
 
     public PlayerMatchState state(ServerPlayer player) {
@@ -432,6 +499,21 @@ public final class MatchManager {
             });
         }
         if (phaseTicks <= 0) beginRunning();
+    }
+
+    private void tickPreparing() {
+        if (activeRuntime.tickPreparation(server, this, data().activeMap(), data().rules())) beginCountdown();
+    }
+
+    private void beginCountdown() {
+        phase = MatchPhase.COUNTDOWN;
+        phaseTicks = data().rules().startCountdownSeconds() * 20;
+        if (phaseTicks == 0) { beginRunning(); return; }
+        Component title = Component.literal(Integer.toString(data().rules().startCountdownSeconds())).withStyle(ChatFormatting.GOLD);
+        forParticipants(player -> {
+            sendTitle(player, title, Component.translatable("sfgame.match.starting"), 24);
+            playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.0F);
+        });
     }
 
     private void beginRunning() {
@@ -453,7 +535,7 @@ public final class MatchManager {
         elapsedTicks++;
         MatchRules rules = data().rules();
         ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
-        if (modeResult.finished() || elapsedTicks >= rules.timeLimitSeconds() * 20) {
+        if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && elapsedTicks >= rules.timeLimitSeconds() * 20) {
             result = modeResult.finished() ? modeResult.winner() : determineWinner();
             stop(true, Component.empty());
         }
@@ -514,19 +596,33 @@ public final class MatchManager {
     }
 
     private void deploy(ServerPlayer player, PlayerMatchState state, boolean applyPendingClass) {
-        if (applyPendingClass && classRegistry.contains(state.pendingClass())) state.currentClass(state.pendingClass());
-        String classId = selectedClass(state);
-        Optional<ClassDefinition> definition = classRegistry.get(classId);
+        String modeId = data().selectedMode();
+        boolean captain = activeRuntime.isCaptain(player.getUUID());
+        if (captain) ensureCaptainClass(player);
+        if (applyPendingClass) {
+            if (captain && classRegistry.containsCaptain(modeId, state.pendingCaptainClass(modeId))) {
+                state.currentCaptainClass(modeId, state.pendingCaptainClass(modeId));
+            } else if (!captain && classRegistry.contains(modeId, state.pendingClass(modeId))) {
+                state.currentClass(modeId, state.pendingClass(modeId));
+            }
+        }
+        String classId = captain ? selectedCaptainClass(state) : selectedClass(state);
+        Optional<ClassDefinition> definition = captain ? classRegistry.getCaptain(modeId, classId) : classRegistry.get(modeId, classId);
         TeamSide side = teams.sideOf(player, data());
-        ArenaPosition spawn = side == TeamSide.NONE ? null : data().randomSpawn(side);
+        ArenaPosition spawn = side == TeamSide.NONE ? null : activeRuntime.spawnFor(side, data().activeMap());
         if (definition.isEmpty() || spawn == null) {
             state.participating(false);
             state.queued(true);
             player.setGameMode(GameType.SPECTATOR);
             return;
         }
-        state.currentClass(definition.get().id());
-        state.pendingClass(definition.get().id());
+        if (captain) {
+            state.currentCaptainClass(modeId, definition.get().id());
+            state.pendingCaptainClass(modeId, definition.get().id());
+        } else {
+            state.currentClass(modeId, definition.get().id());
+            state.pendingClass(modeId, definition.get().id());
+        }
         state.respawning(false);
         state.respawnTicks(0);
         state.protectionTicks(data().rules().respawnProtectionSeconds() * 20);
@@ -547,7 +643,7 @@ public final class MatchManager {
 
     private void activateImmediateJoin(ServerPlayer player, PlayerMatchState state) {
         state.pendingImmediateJoin(false);
-        state.currentClass(state.pendingClass());
+        state.currentClass(data().selectedMode(), state.pendingClass(data().selectedMode()));
         deploy(player, state, false);
     }
 
@@ -614,18 +710,39 @@ public final class MatchManager {
     }
 
     private String selectedClass(PlayerMatchState state) {
-        if (classRegistry.contains(state.pendingClass())) return state.pendingClass();
-        if (classRegistry.contains(state.currentClass())) return state.currentClass();
+        String modeId = data().selectedMode();
+        if (classRegistry.contains(modeId, state.pendingClass(modeId))) return state.pendingClass(modeId);
+        if (classRegistry.contains(modeId, state.currentClass(modeId))) return state.currentClass(modeId);
+        return null;
+    }
+
+    private String selectedCaptainClass(PlayerMatchState state) {
+        String modeId = data().selectedMode();
+        if (classRegistry.containsCaptain(modeId, state.pendingCaptainClass(modeId))) return state.pendingCaptainClass(modeId);
+        if (classRegistry.containsCaptain(modeId, state.currentCaptainClass(modeId))) return state.currentCaptainClass(modeId);
         return null;
     }
 
     private void ensureDefaultClass(PlayerMatchState state) {
-        if (classRegistry.contains(selectedClass(state))) return;
-        classRegistry.defaultClass().ifPresent(definition -> {
-            state.currentClass(definition.id());
-            state.pendingClass(definition.id());
+        String modeId = data().selectedMode();
+        if (classRegistry.contains(modeId, selectedClass(state))) return;
+        classRegistry.defaultClass(modeId).ifPresent(definition -> {
+            state.currentClass(modeId, definition.id());
+            state.pendingClass(modeId, definition.id());
         });
     }
+
+    void ensureCaptainClass(ServerPlayer player) {
+        String modeId = data().selectedMode();
+        PlayerMatchState state = state(player);
+        if (classRegistry.containsCaptain(modeId, selectedCaptainClass(state))) return;
+        classRegistry.defaultCaptainClass(modeId).ifPresent(definition -> {
+            state.currentCaptainClass(modeId, definition.id());
+            state.pendingCaptainClass(modeId, definition.id());
+        });
+    }
+
+    ServerPlayer serverPlayer(UUID playerId) { return server == null ? null : server.getPlayerList().getPlayer(playerId); }
 
     void addTeamScore(TeamSide side, int amount) {
         if (amount <= 0) return;
@@ -658,7 +775,7 @@ public final class MatchManager {
         return (int) server.getPlayerList().getPlayers().stream().filter(p -> teams.sideOf(p, data()) == side).count();
     }
 
-    private void forParticipants(java.util.function.Consumer<ServerPlayer> consumer) {
+    void forParticipants(java.util.function.Consumer<ServerPlayer> consumer) {
         if (server == null) return;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (state(player).participating()) consumer.accept(player);
@@ -675,8 +792,17 @@ public final class MatchManager {
 
     SFGameSavedData savedData() { return data(); }
 
+    void modeRedeployAll(int protectionTicks) {
+        forParticipants(player -> {
+            PlayerMatchState state = state(player);
+            state.respawning(false); state.respawnTicks(0);
+            deploy(player, state, true);
+            state.protectionTicks(Math.max(state.protectionTicks(), protectionTicks));
+        });
+    }
+
     private MatchModeRuntime modeRuntime() {
-        return GameModeRegistry.DOMINATION.equals(data().selectedMode()) ? dominationRuntime : teamDeathmatchRuntime;
+        return runtimes.getOrDefault(data().selectedMode(), teamDeathmatchRuntime);
     }
 
     private void sync(ServerPlayer player) {

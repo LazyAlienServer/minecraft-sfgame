@@ -109,7 +109,7 @@ public final class SFGameEvents {
     public static void livingAttack(LivingAttackEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer victim)) return;
         MatchManager manager = MatchManager.get();
-        if (isSafePhase(manager.phase())) {
+        if (isSafePhase(manager.phase()) || manager.modeBlocksCombat()) {
             event.setCanceled(true);
             return;
         }
@@ -191,7 +191,7 @@ public final class SFGameEvents {
     }
 
     private static boolean isSafePhase(MatchPhase phase) {
-        return phase == MatchPhase.UNCONFIGURED || phase == MatchPhase.LOBBY || phase == MatchPhase.RESULT;
+        return phase == MatchPhase.UNCONFIGURED || phase == MatchPhase.LOBBY || phase == MatchPhase.PREPARING || phase == MatchPhase.RESULT;
     }
 
     private SFGameEvents() {}

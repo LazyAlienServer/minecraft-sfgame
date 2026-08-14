@@ -28,6 +28,12 @@ public final class MatchRules {
     private int scoreIntervalSeconds;
     private int scorePerPoint;
     private int syncHoldSeconds;
+    private int attackerTickets;
+    private int sectorTransitionSeconds;
+    private int captainVoteSeconds;
+    private int captainReplacementVoteSeconds;
+    private double attackerCaptainCaptureWeight;
+    private double defenderCaptureWeight;
 
     public MatchRules() { this(GameModeRegistry.TEAM_DEATHMATCH); }
     public MatchRules(String modeId) { this.modeId = modeId; reset(); }
@@ -46,6 +52,12 @@ public final class MatchRules {
     public int scoreIntervalSeconds() { return scoreIntervalSeconds; }
     public int scorePerPoint() { return scorePerPoint; }
     public int syncHoldSeconds() { return syncHoldSeconds; }
+    public int attackerTickets() { return attackerTickets; }
+    public int sectorTransitionSeconds() { return sectorTransitionSeconds; }
+    public int captainVoteSeconds() { return captainVoteSeconds; }
+    public int captainReplacementVoteSeconds() { return captainReplacementVoteSeconds; }
+    public double attackerCaptainCaptureWeight() { return attackerCaptainCaptureWeight; }
+    public double defenderCaptureWeight() { return defenderCaptureWeight; }
 
     public void maxPlayers(int value) { maxPlayers = clamp(value, 2, 128); }
     public void scoreLimit(int value) { scoreLimit = clamp(value, 1, 10000); }
@@ -61,6 +73,12 @@ public final class MatchRules {
     public void scoreIntervalSeconds(int value) { scoreIntervalSeconds = clamp(value, 1, 300); }
     public void scorePerPoint(int value) { scorePerPoint = clamp(value, 1, 1000); }
     public void syncHoldSeconds(int value) { syncHoldSeconds = clamp(value, 1, 3600); }
+    public void attackerTickets(int value) { attackerTickets = clamp(value, 1, 10000); }
+    public void sectorTransitionSeconds(int value) { sectorTransitionSeconds = clamp(value, 0, 60); }
+    public void captainVoteSeconds(int value) { captainVoteSeconds = clamp(value, 1, 120); }
+    public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
+    public void attackerCaptainCaptureWeight(double value) { attackerCaptainCaptureWeight = clamp(value, 1.0, 10.0); }
+    public void defenderCaptureWeight(double value) { defenderCaptureWeight = clamp(value, 0.1, 10.0); }
 
     public void reset() {
         maxPlayers = DEFAULT_MAX_PLAYERS;
@@ -77,6 +95,12 @@ public final class MatchRules {
         scoreIntervalSeconds = 1;
         scorePerPoint = 1;
         syncHoldSeconds = 45;
+        attackerTickets = 100;
+        sectorTransitionSeconds = 10;
+        captainVoteSeconds = 15;
+        captainReplacementVoteSeconds = 10;
+        attackerCaptainCaptureWeight = 2.0;
+        defenderCaptureWeight = 1.4;
     }
 
     public CompoundTag save() {
@@ -89,6 +113,10 @@ public final class MatchRules {
         tag.putDouble("CaptureDifferenceCoefficient", captureDifferenceCoefficient);
         tag.putInt("CaptureMaxMultiplier", captureMaxMultiplier); tag.putInt("ScoreIntervalSeconds", scoreIntervalSeconds);
         tag.putInt("ScorePerPoint", scorePerPoint); tag.putInt("SyncHoldSeconds", syncHoldSeconds);
+        tag.putInt("AttackerTickets", attackerTickets); tag.putInt("SectorTransitionSeconds", sectorTransitionSeconds);
+        tag.putInt("CaptainVoteSeconds", captainVoteSeconds); tag.putInt("CaptainReplacementVoteSeconds", captainReplacementVoteSeconds);
+        tag.putDouble("AttackerCaptainCaptureWeight", attackerCaptainCaptureWeight);
+        tag.putDouble("DefenderCaptureWeight", defenderCaptureWeight);
         return tag;
     }
 
@@ -107,6 +135,12 @@ public final class MatchRules {
         if (tag.contains("ScoreIntervalSeconds")) scoreIntervalSeconds(tag.getInt("ScoreIntervalSeconds"));
         if (tag.contains("ScorePerPoint")) scorePerPoint(tag.getInt("ScorePerPoint"));
         if (tag.contains("SyncHoldSeconds")) syncHoldSeconds(tag.getInt("SyncHoldSeconds"));
+        if (tag.contains("AttackerTickets")) attackerTickets(tag.getInt("AttackerTickets"));
+        if (tag.contains("SectorTransitionSeconds")) sectorTransitionSeconds(tag.getInt("SectorTransitionSeconds"));
+        if (tag.contains("CaptainVoteSeconds")) captainVoteSeconds(tag.getInt("CaptainVoteSeconds"));
+        if (tag.contains("CaptainReplacementVoteSeconds")) captainReplacementVoteSeconds(tag.getInt("CaptainReplacementVoteSeconds"));
+        if (tag.contains("AttackerCaptainCaptureWeight")) attackerCaptainCaptureWeight(tag.getDouble("AttackerCaptainCaptureWeight"));
+        if (tag.contains("DefenderCaptureWeight")) defenderCaptureWeight(tag.getDouble("DefenderCaptureWeight"));
     }
 
     private static int clamp(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }

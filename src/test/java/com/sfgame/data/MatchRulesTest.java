@@ -81,4 +81,25 @@ final class MatchRulesTest {
         assertEquals(false, restored.captureUsePlayerDifference());
         assertEquals(90, restored.syncHoldSeconds());
     }
+
+    @Test
+    void breakthroughRulesPersistTicketsTransitionsAndWeights() {
+        MatchRules rules = new MatchRules(GameModeRegistry.BREAKTHROUGH);
+        rules.attackerTickets(150);
+        rules.sectorTransitionSeconds(12);
+        rules.captainVoteSeconds(20);
+        rules.captainReplacementVoteSeconds(8);
+        rules.attackerCaptainCaptureWeight(2.5);
+        rules.defenderCaptureWeight(1.6);
+
+        MatchRules restored = new MatchRules(GameModeRegistry.BREAKTHROUGH);
+        restored.load(rules.save());
+
+        assertEquals(150, restored.attackerTickets());
+        assertEquals(12, restored.sectorTransitionSeconds());
+        assertEquals(20, restored.captainVoteSeconds());
+        assertEquals(8, restored.captainReplacementVoteSeconds());
+        assertEquals(2.5, restored.attackerCaptainCaptureWeight());
+        assertEquals(1.6, restored.defenderCaptureWeight());
+    }
 }

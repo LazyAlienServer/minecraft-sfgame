@@ -44,4 +44,13 @@ final class CapturePointStateTest {
         assertEquals(0.0, state.progress(), 0.0001);
         assertEquals(TeamSide.BLUE, state.contender());
     }
+
+    @Test
+    void canInitializePointAsDefenderOwned() {
+        CapturePointState state = new CapturePointState();
+        state.reset(TeamSide.BLUE);
+        assertEquals(TeamSide.BLUE, state.owner());
+        assertEquals(1.0, state.progress(), 0.0001);
+        assertEquals(CapturePointState.Change.NEUTRALIZED, state.advance(TeamSide.RED, 1.0, false));
+    }
 }

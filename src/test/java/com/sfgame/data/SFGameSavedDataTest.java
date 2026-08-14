@@ -197,4 +197,43 @@ final class SFGameSavedDataTest {
         assertEquals(77, restored.rules(com.sfgame.game.GameModeRegistry.TEAM_DEATHMATCH).scoreLimit());
         assertEquals(100, restored.rules(com.sfgame.game.GameModeRegistry.DOMINATION).scoreLimit());
     }
+
+    @Test
+    void persistsConfiguredBreakthroughMapWithRoleSpawnsAndSectors() {
+        SFGameSavedData source = new SFGameSavedData();
+        source.defaultLobby(LOBBY);
+        assertTrue(source.selectMode(com.sfgame.game.GameModeRegistry.BREAKTHROUGH));
+        source.activeMap().breakthrough().variant(BreakthroughVariant.CAPTAIN);
+        source.activeMap().breakthrough().legs(2);
+        source.activeMap().breakthrough().roles(com.sfgame.game.TeamSide.YELLOW, com.sfgame.game.TeamSide.GREEN);
+        BreakthroughSectorDefinition first = new BreakthroughSectorDefinition("first", 1);
+        first.addPoint(new CapturePointDefinition("A", new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+        first.addSpawn(true, RED);
+        first.addSpawn(false, BLUE);
+        source.activeMap().breakthrough().addSector(first);
+
+        SFGameSavedData restored = SFGameSavedData.load(source.save(new CompoundTag()));
+
+        assertTrue(restored.isArenaConfigured());
+        assertEquals(BreakthroughVariant.CAPTAIN, restored.activeMap().breakthrough().variant());
+        assertEquals(2, restored.activeMap().breakthrough().legs());
+        assertEquals(List.of(com.sfgame.game.TeamSide.YELLOW, com.sfgame.game.TeamSide.GREEN), restored.enabledTeams());
+        assertEquals("a", restored.activeMap().breakthrough().sectors().get(0).points().get(0).id());
+        assertEquals(List.of(RED), restored.activeMap().breakthrough().sectors().get(0).spawns(true));
+    }
+
+    @Test
+    void breakthroughRejectsOverlapsWithinSectorButAllowsSameIdsAcrossSectors() {
+        BreakthroughMapConfig config = new BreakthroughMapConfig();
+        BreakthroughSectorDefinition first = new BreakthroughSectorDefinition("first", 1);
+        first.addPoint(new CapturePointDefinition("a", new SquareCaptureRegion("minecraft:overworld", 0, 0, 5, null, null), 1));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> first.addPoint(
+                new CapturePointDefinition("b", new SquareCaptureRegion("minecraft:overworld", 4, 0, 5, null, null), 2)));
+        BreakthroughSectorDefinition second = new BreakthroughSectorDefinition("second", 2);
+        second.addPoint(new CapturePointDefinition("a", new SquareCaptureRegion("minecraft:overworld", 100, 0, 5, null, null), 1));
+        config.addSector(first);
+        config.addSector(second);
+        assertEquals("a", config.sectors().get(0).points().get(0).id());
+        assertEquals("a", config.sectors().get(1).points().get(0).id());
+    }
 }

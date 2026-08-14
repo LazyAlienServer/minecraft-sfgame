@@ -59,4 +59,11 @@ public final class CapturePointState {
     public void reset() {
         owner = TeamSide.NONE; contender = TeamSide.NONE; progress = 0.0; contested = false;
     }
+
+    public void reset(TeamSide initialOwner) {
+        owner = initialOwner == null ? TeamSide.NONE : initialOwner;
+        contender = TeamSide.NONE;
+        progress = owner == TeamSide.NONE ? 0.0 : 1.0;
+        contested = false;
+    }
 }

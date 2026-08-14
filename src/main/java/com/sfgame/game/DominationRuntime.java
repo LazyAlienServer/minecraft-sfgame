@@ -26,6 +26,7 @@ import java.util.Map;
 public final class DominationRuntime implements MatchModeRuntime {
     private final Map<String, CapturePointState> states = new HashMap<>();
     private final Map<String, ServerBossEvent> bossBars = new HashMap<>();
+    private final CapturePointMarkerService pointMarkers = new CapturePointMarkerService();
     private int scoreTicks;
     private int syncHoldTicks;
     private int syncIndex;
@@ -59,6 +60,7 @@ public final class DominationRuntime implements MatchModeRuntime {
             Collections.shuffle(syncPointOrder);
         }
         refreshBossBars(server, manager, map);
+        pointMarkers.refresh(server, activePoints(map));
         if (!syncPointOrder.isEmpty()) announceActivePoint(server, manager, syncPointOrder.get(0));
     }
 
@@ -88,6 +90,7 @@ public final class DominationRuntime implements MatchModeRuntime {
             }
         }
         refreshBossBars(server, manager, map);
+        pointMarkers.refresh(server, activePoints(map));
         return map.enabledTeams().stream().anyMatch(side -> manager.score(side) >= rules.scoreLimit())
                 ? ModeTickResult.finish(manager.determineWinner()) : ModeTickResult.CONTINUE;
     }
@@ -96,6 +99,7 @@ public final class DominationRuntime implements MatchModeRuntime {
     public void stop() {
         bossBars.values().forEach(ServerBossEvent::removeAllPlayers);
         bossBars.clear(); states.clear(); syncPointOrder.clear(); scoreTicks = 0; syncHoldTicks = 0; syncIndex = 0;
+        pointMarkers.clear();
     }
 
     private void tickPoint(MinecraftServer server, MatchManager manager, CapturePointDefinition point, MatchRules rules) {
