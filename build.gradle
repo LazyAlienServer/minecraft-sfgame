@@ -80,7 +80,13 @@ def installTaczForRuns = tasks.register('installTaczForRuns', Copy) {
 }
 
 tasks.matching { it.name in ['prepareRunClientCompile', 'prepareRunServerCompile', 'prepareRunGameTestServerCompile'] }
-        .configureEach { dependsOn installTaczForRuns }
+        .configureEach {
+            // IDEA launches the generated Application configuration directly. After
+            // `clean`, its legacy classpath and SRG-to-MCP remap files no longer
+            // exist, so rebuild the Forge run metadata before starting Java.
+            dependsOn 'genIntellijRuns'
+            dependsOn installTaczForRuns
+        }
 
 tasks.named('test', Test).configure {
     useJUnitPlatform()
