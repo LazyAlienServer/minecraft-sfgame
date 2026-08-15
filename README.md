@@ -349,9 +349,9 @@ TDM 与占点默认包含：
 /sfgame map create example
 /sfgame spawn set lobby
 
-/sfgame breakthrough variant normal
-/sfgame breakthrough legs 1
-/sfgame breakthrough roles red blue
+/sfgame rule breakthrough variant normal
+/sfgame rule breakthrough legs 1
+/sfgame rule breakthrough roles red blue
 
 /sfgame sector add first
 /sfgame pos1
@@ -377,10 +377,10 @@ TDM 与占点默认包含：
 ### 模式与 sector 指令
 
 ```text
-/sfgame breakthrough variant <normal|captain>
-/sfgame breakthrough legs <1|2>
-/sfgame breakthrough roles <进攻阵营> <防守阵营>
-/sfgame breakthrough status
+/sfgame rule breakthrough variant <normal|captain>
+/sfgame rule breakthrough legs <1|2>
+/sfgame rule breakthrough roles <进攻阵营> <防守阵营>
+/sfgame rule breakthrough status
 
 /sfgame sector add <sectorID>
 /sfgame sector set order <sectorID> <1-16>
@@ -392,8 +392,8 @@ TDM 与占点默认包含：
 
 `legs` 表示整场比赛进行几次完整的攻防赛段，不是 sector 数量：
 
-- `/sfgame breakthrough legs 1`：只进行一次攻防。`roles` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜，任一 sector 超时或进攻票数归零时防守方获胜。比赛结束后不会交换攻守。
-- `/sfgame breakthrough legs 2`：双方各进攻一次。第一赛段结束后自动交换攻守并从第一个 sector 重新开始；第二赛段结束后比较双方推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
+- `/sfgame rule breakthrough legs 1`：只进行一次攻防。`roles` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜，任一 sector 超时或进攻票数归零时防守方获胜。比赛结束后不会交换攻守。
+- `/sfgame rule breakthrough legs 2`：双方各进攻一次。第一赛段结束后自动交换攻守并从第一个 sector 重新开始；第二赛段结束后比较双方推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
 
 例如 `roles red blue` 配合 `legs 1` 表示整局固定由红队进攻、蓝队防守；配合 `legs 2` 则第一赛段红攻蓝守，第二赛段蓝攻红守。
 
@@ -473,7 +473,7 @@ TDM 与占点默认包含：
 
 ### 队长变体用法
 
-执行 `/sfgame breakthrough variant captain` 启用队长变体。只有当前进攻方选举队长，防守方不选举队长、没有旗帜、也不使用队长职业。
+执行 `/sfgame rule breakthrough variant captain` 启用队长变体。只有当前进攻方选举队长，防守方不选举队长、没有旗帜、也不使用队长职业。
 
 - `/sfgame start` 后先进入默认 15 秒投票阶段，进攻玩家会自动打开投票菜单。
 - 玩家可以投给任意在线进攻队友、自投或弃权；未投票按弃权处理。
@@ -508,10 +508,10 @@ TDM 与占点默认包含：
 ### 模式与队伍
 
 ```text
-/sfgame ctf variant <classic|assault|territory>
-/sfgame ctf roles <进攻阵营> <防守阵营>
-/sfgame ctf carrier <normal|movement_limited|no_weapons>
-/sfgame ctf status
+/sfgame rule ctf variant <classic|assault|territory>
+/sfgame rule ctf roles <进攻阵营> <防守阵营>
+/sfgame rule ctf carrier <normal|movement_limited|no_weapons>
+/sfgame rule ctf status
 ```
 
 `classic` 和 `territory` 支持当前地图启用的 2～4 个阵营；`assault` 必须恰好启用两个阵营，并用 `roles` 指定进攻方与防守方。`normal` 允许完整装备，`movement_limited` 禁止冲刺，`no_weapons` 禁止枪械和近战攻击但保留投掷物。
@@ -544,25 +544,25 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 ```text
 /sfgame pos1
 /sfgame pos2
-/sfgame ctf home set <red|blue|yellow|green> flag
-/sfgame ctf home set <red|blue|yellow|green> capture box
-/sfgame ctf home set <red|blue|yellow|green> capture square <半径>
-/sfgame ctf home set <red|blue|yellow|green> depot
-/sfgame ctf home clear <队伍> <flag|capture|depot>
-/sfgame ctf home list
+/sfgame rule ctf home set <red|blue|yellow|green> flag
+/sfgame rule ctf home set <red|blue|yellow|green> capture box
+/sfgame rule ctf home set <red|blue|yellow|green> capture square <半径>
+/sfgame rule ctf home set <red|blue|yellow|green> depot
+/sfgame rule ctf home clear <队伍> <flag|capture|depot>
+/sfgame rule ctf home list
 
-/sfgame ctf forward add box <归属阵营> <旗帜ID>
-/sfgame ctf forward add square <归属阵营> <旗帜ID> <半径>
-/sfgame ctf forward set box <旗帜ID>
-/sfgame ctf forward set center <旗帜ID>
-/sfgame ctf forward set radius <旗帜ID> <半径>
-/sfgame ctf forward set height <旗帜ID> full
-/sfgame ctf forward set height <旗帜ID> <minY> <maxY>
-/sfgame ctf forward set stand <旗帜ID>
-/sfgame ctf forward list
-/sfgame ctf forward status <旗帜ID>
-/sfgame ctf forward remove <旗帜ID>
-/sfgame ctf forward clear
+/sfgame rule ctf forward add box <归属阵营> <旗帜ID>
+/sfgame rule ctf forward add square <归属阵营> <旗帜ID> <半径>
+/sfgame rule ctf forward set box <旗帜ID>
+/sfgame rule ctf forward set center <旗帜ID>
+/sfgame rule ctf forward set radius <旗帜ID> <半径>
+/sfgame rule ctf forward set height <旗帜ID> full
+/sfgame rule ctf forward set height <旗帜ID> <minY> <maxY>
+/sfgame rule ctf forward set stand <旗帜ID>
+/sfgame rule ctf forward list
+/sfgame rule ctf forward status <旗帜ID>
+/sfgame rule ctf forward remove <旗帜ID>
+/sfgame rule ctf forward clear
 ```
 
 `classic` 中每队需要家旗、交旗区域和 depot；己方家旗离开旗座时不能交旗得分。旗帜会在死亡、掉线、离队或换队时掉落，默认 30 秒后自动返回。`territory` 的前线旗初始锁定，敌方先在其点位完成占领才可拾取；带到己方 depot 得 1 分，原归属队伍可在该 depot 回收并插回原点再得 1 分。旗帜在旗座、掉落点和 depot 使用服务端不可见盔甲架承载并直接放置在配置坐标的地面位置，不显示盔甲架轮廓；玩家持旗时旗帜改为装备在头盔栏并使持旗者高亮，交付或掉落后恢复原头盔装备。
@@ -572,15 +572,15 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 ```text
 /sfgame pos1
 /sfgame pos2
-/sfgame ctf build setbox
-/sfgame ctf build clear
-/sfgame ctf build allow <方块ID>
-/sfgame ctf build disallow <方块ID>
-/sfgame ctf build allowlist
-/sfgame ctf build snapshot save
-/sfgame ctf build snapshot restore
-/sfgame ctf build snapshot status
-/sfgame ctf build snapshot clear
+/sfgame rule ctf build setbox
+/sfgame rule ctf build clear
+/sfgame rule ctf build allow <方块ID>
+/sfgame rule ctf build disallow <方块ID>
+/sfgame rule ctf build allowlist
+/sfgame rule ctf build snapshot save
+/sfgame rule ctf build snapshot restore
+/sfgame rule ctf build snapshot status
+/sfgame rule ctf build snapshot clear
 ```
 
 快照以 NBT 保存到世界 `data/sfgame/ctf/<地图ID>.nbt`，开赛前、结算和异常停止时自动恢复。只有 build box 内且在 allowlist 中的方块允许比赛中破坏或放置；默认白名单为空。

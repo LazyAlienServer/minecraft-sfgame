@@ -219,8 +219,6 @@ public final class SFGameCommands {
                         .then(Commands.literal("setcaptain").then(Commands.argument("player", EntityArgument.player())
                                 .then(Commands.argument("class", StringArgumentType.word()).suggests(CAPTAIN_CLASS_SUGGESTIONS)
                                         .executes(SFGameCommands::classSetCaptain)))))
-                .then(breakthroughCommands())
-                .then(ctfCommands())
                 .then(shopCommands())
                 .then(sectorCommands())
                 .then(captainCommands()));
@@ -318,6 +316,8 @@ public final class SFGameCommands {
 
     private static LiteralArgumentBuilder<CommandSourceStack> ruleCommands(String literal) {
         return Commands.literal(literal).requires(s -> s.hasPermission(2))
+                .then(breakthroughCommands())
+                .then(ctfCommands())
                 .then(Commands.literal("list").executes(SFGameCommands::rulesList))
                 .then(Commands.literal("reset").executes(SFGameCommands::rulesReset))
                 .then(Commands.literal("get").then(Commands.argument("key", StringArgumentType.word())
