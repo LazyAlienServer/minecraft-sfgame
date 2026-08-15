@@ -609,7 +609,11 @@ public final class MatchManager {
                 ? captureTheFlagRuntime.flagViews(this).stream()
                 .map(flag -> new MatchSnapshot.CtfFlagView(flag.id(), flag.owner(), flag.state(), flag.carrier(), flag.unlocked(), flag.depotTeam()))
                 .toList() : List.of();
-        List<MatchSnapshot.ShopView> ctfShopItems = ctf ? ctfShopRegistry.items().stream()
+        // Currency and shop data only belong to an active CTF round.  Do not
+        // expose them while the player is in the lobby, queue, countdown or
+        // result screen; those states do not use the economy system.
+        boolean ctfEconomy = ctf && phase == MatchPhase.RUNNING && !ctfShopRegistry.items().isEmpty();
+        List<MatchSnapshot.ShopView> ctfShopItems = ctfEconomy ? ctfShopRegistry.items().stream()
                 .map(item -> new MatchSnapshot.ShopView(item.id(), item.name(), item.icon(), item.price())).toList() : List.of();
         return new MatchSnapshot(data().selectedMode(), phase, side, redScore, blueScore, yellowScore, greenScore,
                 rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
@@ -624,7 +628,7 @@ public final class MatchManager {
                 breakthrough ? breakthroughRuntime.electionSeconds() : 0, breakthroughRuntime.isCaptain(viewer.getUUID()),
                 state.currentCaptainClass(data().selectedMode()), state.pendingCaptainClass(data().selectedMode()),
                 captainClassViews, candidates, state.awaitingRespawnSelection(), respawnOptions,
-                ctfVariant, ctfRestriction, ctf ? state.currency(data().selectedMode()) : 0, ctfFlags, ctfShopItems);
+                ctfVariant, ctfRestriction, ctfEconomy ? state.currency(data().selectedMode()) : 0, ctfFlags, ctfShopItems);
     }
 
     public PlayerMatchState state(ServerPlayer player) {

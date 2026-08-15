@@ -63,7 +63,9 @@ public final class MatchHudService {
             scoreboard.resetPlayerScore(LEG_LINE, objective);
             scoreboard.resetPlayerScore(SECTOR_LINE, objective);
         }
-        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode()) && manager.phase() == MatchPhase.RUNNING) {
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode())
+                && manager.phase() == MatchPhase.RUNNING
+                && !manager.ctfShop().items().isEmpty()) {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (manager.state(player).respawning()) continue;
                 String currency = Integer.toString(manager.state(player).currency(GameModeRegistry.CAPTURE_THE_FLAG));

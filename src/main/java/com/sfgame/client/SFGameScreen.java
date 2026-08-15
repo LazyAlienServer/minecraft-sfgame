@@ -321,7 +321,9 @@ public final class SFGameScreen extends Screen {
                     .collect(java.util.stream.Collectors.joining("  ·  "));
             graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD),
                     width / 2, 36, 0xFFFFFF);
-            if ("ctf".equals(snapshot.modeId())) {
+            if ("ctf".equals(snapshot.modeId())
+                    && snapshot.phase() == MatchPhase.RUNNING
+                    && !snapshot.ctfShopItems().isEmpty()) {
                 graphics.drawCenteredString(font, Component.literal("货币 " + snapshot.ctfCurrency()).withStyle(ChatFormatting.GOLD),
                         width / 2, 52, 0xFFFFFF);
             }
