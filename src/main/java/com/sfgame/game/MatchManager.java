@@ -204,10 +204,10 @@ public final class MatchManager {
         if (!teams.bindingsValid(server, data)) errors.add("All four SFGame sides must bind different existing vanilla teams");
         boolean captainMode = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
                 && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
-        errors.addAll(loadoutService.validate(classRegistry, data.selectedMode(), captainMode));
+        List<TeamSide> enabledTeams = data.enabledTeams();
+        errors.addAll(loadoutService.validate(classRegistry, data.selectedMode(), data.selectedMap(), enabledTeams, captainMode));
         if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
 
-        List<TeamSide> enabledTeams = data.enabledTeams();
         if (enabledTeams.size() < 2) errors.add("The selected map needs spawn points for at least two teams");
         int total = 0;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -215,9 +215,10 @@ public final class MatchManager {
             if (!enabledTeams.contains(side)) continue;
             total++;
             PlayerMatchState state = state(player);
-            ensureDefaultClass(state);
-            String selected = selectedClass(state);
-            if (!classRegistry.contains(data.selectedMode(), selected)) errors.add(player.getGameProfile().getName() + " has no valid class");
+            state.cachedSide(side);
+            ensureDefaultClass(state, side);
+            String selected = selectedClass(state, side);
+            if (!classRegistry.containsForTeam(data.selectedMode(), data.selectedMap(), side, selected)) errors.add(player.getGameProfile().getName() + " has no valid class for " + side.id());
         }
         for (TeamSide side : enabledTeams) {
             if (countSide(side) == 0) errors.add(side.id() + " team needs at least one player");
@@ -244,7 +245,8 @@ public final class MatchManager {
                 state.participating(true);
                 state.queued(false);
                 String modeId = data().selectedMode();
-                if (state.currentClass(modeId) == null) state.currentClass(modeId, state.pendingClass(modeId));
+                ensureDefaultClass(state, side);
+                if (state.currentClass(modeId, side) == null) state.currentClass(modeId, side, state.pendingClass(modeId, side));
                 player.setGameMode(GameType.ADVENTURE);
             } else {
                 state.participating(false);
@@ -289,7 +291,9 @@ public final class MatchManager {
         if (!data().enabledTeams().contains(currentSide) && countAssignedPlayers() >= data().rules().maxPlayers()) return false;
         if (!data().enabledTeams().contains(currentSide)) teams.assign(player, teams.balancedSide(server, data()), data());
         if (!data().enabledTeams().contains(teams.sideOf(player, data()))) return false;
-        ensureDefaultClass(state);
+        currentSide = teams.sideOf(player, data());
+        state.cachedSide(currentSide);
+        ensureDefaultClass(state, currentSide);
         state.queued(false);
         state.participating(false);
         state.pendingImmediateJoin(false);
@@ -298,7 +302,7 @@ public final class MatchManager {
         state.respawnTicks(0);
         state.respawnTicks(0);
         state.protectionTicks(0);
-        state.cachedSide(teams.sideOf(player, data()));
+        state.cachedSide(currentSide);
         player.getFoodData().setFoodLevel(20);
         player.getFoodData().setSaturation(20.0F);
         sync(player);
@@ -360,7 +364,9 @@ public final class MatchManager {
         state.awaitingRespawnSelection(false);
         state.resetRoundStats();
         player.setGameMode(GameType.SPECTATOR);
-        if (classRegistry.contains(data().selectedMode(), selectedClass(state))) {
+        TeamSide joinSide = teams.sideOf(player, data());
+        state.cachedSide(joinSide);
+        if (classRegistry.containsForTeam(data().selectedMode(), data().selectedMap(), joinSide, selectedClass(state, joinSide))) {
             activateImmediateJoin(player, state);
         } else {
             SFGameNetwork.openMenu(player);
@@ -371,11 +377,12 @@ public final class MatchManager {
 
     public boolean selectClass(ServerPlayer player, String classId) {
         String modeId = data().selectedMode();
-        Optional<ClassDefinition> definition = classRegistry.get(modeId, classId);
-        if (definition.isEmpty()) return false;
         PlayerMatchState state = state(player);
-        state.pendingClass(modeId, definition.get().id());
-        if (phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED) state.currentClass(modeId, definition.get().id());
+        TeamSide side = classSide(player, state);
+        Optional<ClassDefinition> definition = classRegistry.getForTeam(modeId, data().selectedMap(), side, classId);
+        if (definition.isEmpty()) return false;
+        state.pendingClass(modeId, side, definition.get().id());
+        if (phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED) state.currentClass(modeId, side, definition.get().id());
         if (state.pendingImmediateJoin() && phase == MatchPhase.RUNNING) activateImmediateJoin(player, state);
         sync(player);
         return true;
@@ -383,12 +390,13 @@ public final class MatchManager {
 
     public boolean selectCaptainClass(ServerPlayer player, String classId) {
         String modeId = data().selectedMode();
-        Optional<ClassDefinition> definition = classRegistry.getCaptain(modeId, classId);
-        if (definition.isEmpty()) return false;
         PlayerMatchState state = state(player);
-        state.pendingCaptainClass(modeId, definition.get().id());
+        TeamSide side = classSide(player, state);
+        Optional<ClassDefinition> definition = classRegistry.getCaptainForTeam(modeId, data().selectedMap(), side, classId);
+        if (definition.isEmpty()) return false;
+        state.pendingCaptainClass(modeId, side, definition.get().id());
         if (phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED || phase == MatchPhase.PREPARING) {
-            state.currentCaptainClass(modeId, definition.get().id());
+            state.currentCaptainClass(modeId, side, definition.get().id());
         }
         sync(player);
         return true;
@@ -493,9 +501,11 @@ public final class MatchManager {
         PlayerMatchState state = state(player);
         if (!state.participating()) return true;
         String modeId = data().selectedMode();
+        TeamSide side = classSide(player, state);
         boolean captain = activeRuntime.isCaptain(player.getUUID());
-        return (captain ? classRegistry.getCaptain(modeId, state.currentCaptainClass(modeId))
-                : classRegistry.get(modeId, state.currentClass(modeId))).map(ClassDefinition::allowDrop).orElse(false);
+        return (captain ? classRegistry.getCaptainForTeam(modeId, data().selectedMap(), side, state.currentCaptainClass(modeId, side))
+                : classRegistry.getForTeam(modeId, data().selectedMap(), side, state.currentClass(modeId, side)))
+                .map(ClassDefinition::allowDrop).orElse(false);
     }
 
     public void setRule(String key, int value) {
@@ -593,12 +603,19 @@ public final class MatchManager {
         MatchRules rules = data().rules();
         PlayerMatchState state = state(viewer);
         TeamSide side = teams.sideOf(viewer, data());
+        TeamSide classSide = side == TeamSide.NONE ? state.cachedSide() : side;
         int remaining = activeRuntime.remainingSeconds(this, rules);
-        List<MatchSnapshot.ClassView> classViews = classRegistry.all(data().selectedMode()).stream()
+        Collection<ClassDefinition> visibleClasses = classSide == TeamSide.NONE
+                ? classRegistry.allForMode(data().selectedMode(), data().selectedMap())
+                : classRegistry.allForTeam(data().selectedMode(), data().selectedMap(), classSide);
+        Collection<ClassDefinition> visibleCaptainClasses = classSide == TeamSide.NONE
+                ? classRegistry.captainClassesForMode(data().selectedMode(), data().selectedMap())
+                : classRegistry.captainClassesForTeam(data().selectedMode(), data().selectedMap(), classSide);
+        List<MatchSnapshot.ClassView> classViews = visibleClasses.stream()
                 .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
                         c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo()))
                 .toList();
-        List<MatchSnapshot.ClassView> captainClassViews = classRegistry.captainClasses(data().selectedMode()).stream()
+        List<MatchSnapshot.ClassView> captainClassViews = visibleCaptainClasses.stream()
                 .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
                         c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo())).toList();
         boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode()) && data().activeMap() != null;
@@ -629,7 +646,7 @@ public final class MatchManager {
                 .map(item -> new MatchSnapshot.ShopView(item.id(), item.name(), item.icon(), item.price())).toList() : List.of();
         return new MatchSnapshot(data().selectedMode(), phase, side, redScore, blueScore, yellowScore, greenScore,
                 rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
-                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(data().selectedMode()), state.pendingClass(data().selectedMode()),
+                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(data().selectedMode(), classSide), state.pendingClass(data().selectedMode(), classSide),
                 state.participating(), state.queued(), classViews,
                 breakthrough ? data().activeMap().breakthrough().variant().name().toLowerCase(java.util.Locale.ROOT) : "",
                 attackSide, defenseSide, breakthrough ? breakthroughRuntime.tickets() : 0,
@@ -638,7 +655,7 @@ public final class MatchManager {
                 breakthrough ? breakthroughRuntime.subState() : "", captainId == null ? null : captainId.toString(),
                 captainPlayer == null ? null : captainPlayer.getGameProfile().getName(),
                 breakthrough ? breakthroughRuntime.electionSeconds() : 0, breakthroughRuntime.isCaptain(viewer.getUUID()),
-                state.currentCaptainClass(data().selectedMode()), state.pendingCaptainClass(data().selectedMode()),
+                state.currentCaptainClass(data().selectedMode(), classSide), state.pendingCaptainClass(data().selectedMode(), classSide),
                 captainClassViews, candidates, state.awaitingRespawnSelection(), respawnOptions,
                 ctfVariant, ctfRestriction, ctfEconomy ? state.currency(data().selectedMode()) : 0, ctfFlags, ctfShopItems);
     }
@@ -797,18 +814,20 @@ public final class MatchManager {
     private void deploy(ServerPlayer player, PlayerMatchState state, boolean applyPendingClass,
                         @Nullable ArenaPosition spawnOverride) {
         String modeId = data().selectedMode();
+        TeamSide side = classSide(player, state);
         boolean captain = activeRuntime.isCaptain(player.getUUID());
         if (captain) ensureCaptainClass(player);
         if (applyPendingClass) {
-            if (captain && classRegistry.containsCaptain(modeId, state.pendingCaptainClass(modeId))) {
-                state.currentCaptainClass(modeId, state.pendingCaptainClass(modeId));
-            } else if (!captain && classRegistry.contains(modeId, state.pendingClass(modeId))) {
-                state.currentClass(modeId, state.pendingClass(modeId));
+            if (captain && classRegistry.containsCaptainForTeam(modeId, data().selectedMap(), side, state.pendingCaptainClass(modeId, side))) {
+                state.currentCaptainClass(modeId, side, state.pendingCaptainClass(modeId, side));
+            } else if (!captain && classRegistry.containsForTeam(modeId, data().selectedMap(), side, state.pendingClass(modeId, side))) {
+                state.currentClass(modeId, side, state.pendingClass(modeId, side));
             }
         }
-        String classId = captain ? selectedCaptainClass(state) : selectedClass(state);
-        Optional<ClassDefinition> definition = captain ? classRegistry.getCaptain(modeId, classId) : classRegistry.get(modeId, classId);
-        TeamSide side = teams.sideOf(player, data());
+        String classId = captain ? selectedCaptainClass(state, side) : selectedClass(state, side);
+        Optional<ClassDefinition> definition = captain
+                ? classRegistry.getCaptainForTeam(modeId, data().selectedMap(), side, classId)
+                : classRegistry.getForTeam(modeId, data().selectedMap(), side, classId);
         ArenaPosition spawn = spawnOverride != null ? spawnOverride
                 : side == TeamSide.NONE ? null : activeRuntime.spawnFor(side, data().activeMap());
         if (definition.isEmpty() || spawn == null) {
@@ -821,11 +840,11 @@ public final class MatchManager {
             return;
         }
         if (captain) {
-            state.currentCaptainClass(modeId, definition.get().id());
-            state.pendingCaptainClass(modeId, definition.get().id());
+            state.currentCaptainClass(modeId, side, definition.get().id());
+            state.pendingCaptainClass(modeId, side, definition.get().id());
         } else {
-            state.currentClass(modeId, definition.get().id());
-            state.pendingClass(modeId, definition.get().id());
+            state.currentClass(modeId, side, definition.get().id());
+            state.pendingClass(modeId, side, definition.get().id());
         }
         state.respawning(false);
         state.awaitingRespawnSelection(false);
@@ -848,7 +867,8 @@ public final class MatchManager {
 
     private void activateImmediateJoin(ServerPlayer player, PlayerMatchState state) {
         state.pendingImmediateJoin(false);
-        state.currentClass(data().selectedMode(), state.pendingClass(data().selectedMode()));
+        TeamSide side = classSide(player, state);
+        state.currentClass(data().selectedMode(), side, state.pendingClass(data().selectedMode(), side));
         deploy(player, state, false);
     }
 
@@ -916,36 +936,62 @@ public final class MatchManager {
         result = TeamSide.NONE;
     }
 
+    private TeamSide classSide(ServerPlayer player, PlayerMatchState state) {
+        TeamSide side = teams.sideOf(player, data());
+        return side == TeamSide.NONE ? state.cachedSide() : side;
+    }
+
+    private TeamSide classSide(PlayerMatchState state) {
+        return state.cachedSide();
+    }
+
     private String selectedClass(PlayerMatchState state) {
+        return selectedClass(state, classSide(state));
+    }
+
+    private String selectedClass(PlayerMatchState state, TeamSide side) {
         String modeId = data().selectedMode();
-        if (classRegistry.contains(modeId, state.pendingClass(modeId))) return state.pendingClass(modeId);
-        if (classRegistry.contains(modeId, state.currentClass(modeId))) return state.currentClass(modeId);
+        String pending = state.pendingClass(modeId, side);
+        String current = state.currentClass(modeId, side);
+        if (classRegistry.containsForTeam(modeId, data().selectedMap(), side, pending)) return pending;
+        if (classRegistry.containsForTeam(modeId, data().selectedMap(), side, current)) return current;
         return null;
     }
 
     private String selectedCaptainClass(PlayerMatchState state) {
+        return selectedCaptainClass(state, classSide(state));
+    }
+
+    private String selectedCaptainClass(PlayerMatchState state, TeamSide side) {
         String modeId = data().selectedMode();
-        if (classRegistry.containsCaptain(modeId, state.pendingCaptainClass(modeId))) return state.pendingCaptainClass(modeId);
-        if (classRegistry.containsCaptain(modeId, state.currentCaptainClass(modeId))) return state.currentCaptainClass(modeId);
+        String pending = state.pendingCaptainClass(modeId, side);
+        String current = state.currentCaptainClass(modeId, side);
+        if (classRegistry.containsCaptainForTeam(modeId, data().selectedMap(), side, pending)) return pending;
+        if (classRegistry.containsCaptainForTeam(modeId, data().selectedMap(), side, current)) return current;
         return null;
     }
 
     private void ensureDefaultClass(PlayerMatchState state) {
+        ensureDefaultClass(state, classSide(state));
+    }
+
+    private void ensureDefaultClass(PlayerMatchState state, TeamSide side) {
         String modeId = data().selectedMode();
-        if (classRegistry.contains(modeId, selectedClass(state))) return;
-        classRegistry.defaultClass(modeId).ifPresent(definition -> {
-            state.currentClass(modeId, definition.id());
-            state.pendingClass(modeId, definition.id());
+        if (classRegistry.containsForTeam(modeId, data().selectedMap(), side, selectedClass(state, side))) return;
+        classRegistry.defaultClassForTeam(modeId, data().selectedMap(), side).ifPresent(definition -> {
+            state.currentClass(modeId, side, definition.id());
+            state.pendingClass(modeId, side, definition.id());
         });
     }
 
     void ensureCaptainClass(ServerPlayer player) {
         String modeId = data().selectedMode();
         PlayerMatchState state = state(player);
-        if (classRegistry.containsCaptain(modeId, selectedCaptainClass(state))) return;
-        classRegistry.defaultCaptainClass(modeId).ifPresent(definition -> {
-            state.currentCaptainClass(modeId, definition.id());
-            state.pendingCaptainClass(modeId, definition.id());
+        TeamSide side = classSide(player, state);
+        if (classRegistry.containsCaptainForTeam(modeId, data().selectedMap(), side, selectedCaptainClass(state, side))) return;
+        classRegistry.defaultCaptainClassForTeam(modeId, data().selectedMap(), side).ifPresent(definition -> {
+            state.currentCaptainClass(modeId, side, definition.id());
+            state.pendingCaptainClass(modeId, side, definition.id());
         });
     }
 

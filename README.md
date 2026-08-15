@@ -210,17 +210,64 @@ TDM 与占点默认包含：
 - `assault`：HK416、180 发备用弹药、105% 移速（TACZ 1.1.8-hotfix 资源 ID 为 `tacz:hk416d`）。
 - `sniper`：M107、30 发备用弹药、95% 移速。
 
-每个模式文件支持可选的 `parent`、普通 `classes` 和队长 `captainClasses`：
+每个模式文件支持可选的 `parent`、普通 `classes`、队长 `captainClasses`，以及按队伍和地图覆盖职业池的 `teams`、`maps`：
 
 ```json
 {
   "parent": "tdm",
   "classes": [],
-  "captainClasses": []
+  "captainClasses": [],
+  "teams": {
+    "red": {
+      "parent": "default",
+      "classes": [],
+      "captainClasses": []
+    },
+    "blue": {
+      "parent": "red",
+      "classes": []
+    }
+  },
+  "maps": {
+    "desert": {
+      "parent": "default",
+      "classes": [],
+      "teams": {
+        "blue": {
+          "parent": "default",
+          "classes": []
+        }
+      }
+    }
+  }
 }
 ```
 
-子配置中相同 ID 会覆盖父配置，缺失父配置和循环继承会被拒绝。突破模式默认普通职业包括 `assault`、`sniper`、`medic`（医疗兵）、`tank`（坦克）和 `smg_assault`（冲锋手）；队长职业包括 `heavy_captain`（重装队长）与 `captain_tank`（坦克）。当前 TACZ 1.1.8-hotfix 默认包只提供枪械、枪械近战动作和弹药，没有独立的手雷、烟雾弹、闪光弹或近战物品；因此职业暂时使用配置中的普通物品占位，待提供包含这些资源的枪包后再接入四选一投掷物和 TACZ 近战物品。护甲和其他物品仍可通过 `inventory` 与 `armor` 修改。
+覆盖顺序固定为“模式默认 → 当前地图 → 当前原版阵营”：玩家在 `desert` 地图的红队会使用 `maps.desert.teams.red`；未填写的字段继续从上一级继承。`parent: "default"`（也可写 `base`）表示继承上一级默认池；队伍可以把 `parent` 写成另一个队伍 ID，地图也可以把 `parent` 写成同一文件中的另一个地图 ID。所有 `parent` 只能引用当前模式文件内部的安全 ID，缺失父级、循环继承、重复职业 ID 和无效 ID 会在重载时报告错误。地图 ID 使用 `/sfgame map create` 创建的 ID，队伍键使用 `red`、`blue`、`yellow`、`green`。
+
+如果每个队伍都完全不对称，模式根对象的 `classes` 可以为空，只要 `teams` 或 `maps.<地图>.teams` 至少提供一个普通职业池；仍然建议保留一个根池作为未分队玩家和新地图的回退。
+
+例如，下面的配置让红队在所有地图使用步枪池，让 `desert` 地图的蓝队改用狙击池，同时保留其他模式默认职业（示例中的职业对象必须按上表填写完整字段）：
+
+```json
+{
+  "classes": [{ "id": "assault", "displayName": "红队步枪手", "gunId": "tacz:hk416d", "ammoId": "tacz:556x45" }],
+  "teams": {
+    "red": { "classes": [{ "id": "assault", "displayName": "红队步枪手", "gunId": "tacz:hk416d", "ammoId": "tacz:556x45" }] }
+  },
+  "maps": {
+    "desert": {
+      "teams": {
+        "blue": { "classes": [{ "id": "sniper", "displayName": "蓝队狙击手", "gunId": "tacz:m107", "ammoId": "tacz:50bmg" }] }
+      }
+    }
+  }
+}
+```
+
+同一池中相同 ID 的职业对象会整体替换父池对象，不是逐字段合并；实际使用时应填写完整的职业字段。职业选择、`/sfgame class set` 和开赛校验都会按玩家当前队伍与当前地图读取对应池；如果玩家原先选的 ID 在新地图/队伍中不存在，会在下一次部署时自动回退到该池第一个有效职业。
+
+突破模式的默认普通职业包括 `assault`、`sniper`、`medic`（医疗兵）、`tank`（坦克）和 `smg_assault`（冲锋手）；队长职业包括 `heavy_captain`（重装队长）与 `captain_tank`（坦克）。当前 TACZ 1.1.8-hotfix 默认包只提供枪械、枪械近战动作和弹药，没有独立的手雷、烟雾弹、闪光弹或近战物品；因此职业暂时使用配置中的普通物品占位，待提供包含这些资源的枪包后再接入四选一投掷物和 TACZ 近战物品。护甲和其他物品仍可通过 `inventory` 与 `armor` 修改。
 
 职业 JSON 字段含义如下：
 
@@ -244,7 +291,7 @@ TDM 与占点默认包含：
 | `effects` | `[ {"id":"minecraft:...", "durationTicks":200, "amplifier":0} ]` | 部署时添加的药水效果；`visible:false` 可隐藏状态图标。 |
 | `allowDrop` | `false` | 是否允许玩家丢弃该职业配装；比赛内通常保持 `false`。 |
 
-模式文件根对象的 `parent` 只能引用同目录的另一个配置 ID；`classes` 是普通职业池，`captainClasses` 是突破队长职业池。子文件中相同 `id` 会覆盖父文件定义，未覆盖的职业继续继承。玩家在不同模式的选择相互隔离。
+模式文件根对象的 `parent` 只能引用同目录的另一个模式配置 ID；`classes` 是普通职业池，`captainClasses` 是突破队长职业池。`teams` 和 `maps` 中的职业池使用相同字段结构，且可以继续嵌套地图下的 `teams`。子配置中相同 `id` 会覆盖父池定义，未覆盖的职业继续继承。玩家在不同模式的选择相互隔离，地图/队伍职业池只影响当前地图与阵营。
 
 修改 JSON 后执行 `/sfgame class reload`。SFGame 会通过 TACZ API 校验枪械、弹药和附件资源；发现无效资源时保留上一份有效配置，并阻止比赛在配装无效时开始。重载不会替换存活玩家的装备，新配置在下一次部署时生效。
 
@@ -258,7 +305,7 @@ TDM 与占点默认包含：
 /sfgame class setcaptain <玩家> <队长职业ID>
 ```
 
-`class list` 的 `normal`/`captain` 参数分别查看当前模式普通职业池和突破队长职业池；不带参数时查看普通池。`class set` 修改普通职业，`class setcaptain` 只在突破 captain 变体中生效；玩家存活期间为“待切换”，下一次死亡重生或管理员重新部署时应用。
+`class list` 的 `normal`/`captain` 参数分别查看当前地图按阵营展开的普通职业池和突破队长职业池；不带参数时查看普通池。`class set` 修改目标玩家当前地图/阵营的普通职业，`class setcaptain` 只在突破 captain 变体中生效；玩家存活期间为“待切换”，下一次死亡重生或管理员重新部署时应用。
 
 职业配置中的 `reserveAmmo` 会装入一个 TACZ 钻石级弹药箱，不再发放散装弹药；弹药箱固定放在背包三行区域左上角（物品栏槽位 `9`）。
 

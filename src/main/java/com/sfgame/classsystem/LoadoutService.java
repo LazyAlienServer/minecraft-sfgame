@@ -2,6 +2,7 @@ package com.sfgame.classsystem;
 
 import com.sfgame.SFGame;
 import com.sfgame.game.GameModeRegistry;
+import com.sfgame.game.TeamSide;
 import com.tacz.guns.api.TimelessAPI;
 import com.tacz.guns.api.item.attachment.AttachmentType;
 import com.tacz.guns.api.item.builder.GunItemBuilder;
@@ -38,10 +39,22 @@ public final class LoadoutService {
     }
 
     public List<String> validate(ClassRegistry registry, String modeId, boolean includeCaptain) {
+        return validate(registry, modeId, null, List.of(TeamSide.NONE), includeCaptain);
+    }
+
+    /** Validate every team-specific pool used by the selected map. */
+    public List<String> validate(ClassRegistry registry, String modeId, String mapId,
+                                  java.util.Collection<TeamSide> sides, boolean includeCaptain) {
         List<String> errors = new ArrayList<>(registry.loadErrors());
-        List<ClassDefinition> definitions = new ArrayList<>(registry.all(modeId));
-        if (includeCaptain) definitions.addAll(registry.captainClasses(modeId));
-        for (ClassDefinition definition : definitions) {
+        java.util.LinkedHashMap<String, ClassDefinition> definitions = new java.util.LinkedHashMap<>();
+        java.util.Collection<TeamSide> requested = sides == null || sides.isEmpty() ? List.of(TeamSide.NONE) : sides;
+        for (TeamSide side : requested) {
+            registry.allForTeam(modeId, mapId, side).forEach(definition -> definitions.putIfAbsent(
+                    side.id() + "/" + definition.id(), definition));
+            if (includeCaptain) registry.captainClassesForTeam(modeId, mapId, side).forEach(definition -> definitions.putIfAbsent(
+                    side.id() + "/captain/" + definition.id(), definition));
+        }
+        for (ClassDefinition definition : definitions.values()) {
             ResourceLocation gunId = ResourceLocation.tryParse(definition.gunId());
             ResourceLocation ammoId = ResourceLocation.tryParse(definition.ammoId());
             if (gunId == null || TimelessAPI.getCommonGunIndex(gunId).isEmpty()) {

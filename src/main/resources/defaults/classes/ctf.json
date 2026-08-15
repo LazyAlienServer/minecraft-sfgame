@@ -1,5 +1,7 @@
 {
   "parent": "tdm",
   "classes": [],
-  "captainClasses": []
+  "captainClasses": [],
+  "teams": {},
+  "maps": {}
 }

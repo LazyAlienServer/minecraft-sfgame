@@ -66,11 +66,13 @@ public final class SFGameCommands {
     private static final SuggestionProvider<CommandSourceStack> TEAM_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(context.getSource().getServer().getScoreboard().getTeamNames(), builder);
     private static final SuggestionProvider<CommandSourceStack> CLASS_SUGGESTIONS = (context, builder) ->
-            SharedSuggestionProvider.suggest(MatchManager.get().classes().all(
-                    SFGameSavedData.get(context.getSource().getServer()).selectedMode()).stream().map(ClassDefinition::id), builder);
+            SharedSuggestionProvider.suggest(MatchManager.get().classes().allForMode(
+                    SFGameSavedData.get(context.getSource().getServer()).selectedMode(),
+                    SFGameSavedData.get(context.getSource().getServer()).selectedMap()).stream().map(ClassDefinition::id), builder);
     private static final SuggestionProvider<CommandSourceStack> CAPTAIN_CLASS_SUGGESTIONS = (context, builder) ->
-            SharedSuggestionProvider.suggest(MatchManager.get().classes().captainClasses(
-                    SFGameSavedData.get(context.getSource().getServer()).selectedMode()).stream().map(ClassDefinition::id), builder);
+            SharedSuggestionProvider.suggest(MatchManager.get().classes().captainClassesForMode(
+                    SFGameSavedData.get(context.getSource().getServer()).selectedMode(),
+                    SFGameSavedData.get(context.getSource().getServer()).selectedMap()).stream().map(ClassDefinition::id), builder);
     private static final SuggestionProvider<CommandSourceStack> RULE_SUGGESTIONS = (context, builder) -> {
         String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
         java.util.stream.Stream<String> keys = java.util.Arrays.stream(COMMON_RULE_KEYS);
@@ -1500,20 +1502,20 @@ public final class SFGameCommands {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
                 && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
-        errors.addAll(MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), captains)
+        errors.addAll(MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), data.selectedMap(), data.enabledTeams(), captains)
                 .stream().filter(e -> !errors.contains(e)).toList());
         if (!errors.isEmpty()) {
             errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
             return 0;
         }
-        return success(context, "Loaded " + MatchManager.get().classes().all(data.selectedMode()).size() + " classes for " + data.selectedMode());
+        return success(context, "Loaded " + MatchManager.get().classes().allForMode(data.selectedMode(), data.selectedMap()).size() + " classes for " + data.selectedMode() + " map " + data.selectedMap());
     }
 
     private static int classValidate(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
                 && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
-        List<String> errors = MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), captains);
+        List<String> errors = MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), data.selectedMap(), data.enabledTeams(), captains);
         if (!errors.isEmpty()) {
             errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
             return 0;
@@ -1522,15 +1524,27 @@ public final class SFGameCommands {
     }
 
     private static int classList(CommandContext<CommandSourceStack> context) {
-        String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
-        MatchManager.get().classes().all(mode).forEach(c -> send(context, c.id() + " - " + c.displayName() + " (" + c.gunId() + ")"));
-        return MatchManager.get().classes().all(mode).size();
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        int count = 0;
+        for (TeamSide side : data.enabledTeams().isEmpty() ? TeamSide.PLAYABLE : data.enabledTeams()) {
+            send(context, side.id() + ":");
+            for (ClassDefinition c : MatchManager.get().classes().allForTeam(data.selectedMode(), data.selectedMap(), side)) {
+                send(context, "  " + c.id() + " - " + c.displayName() + " (" + c.gunId() + ")"); count++;
+            }
+        }
+        return count;
     }
 
     private static int classListCaptain(CommandContext<CommandSourceStack> context) {
-        String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
-        MatchManager.get().classes().captainClasses(mode).forEach(c -> send(context, c.id() + " - " + c.displayName() + " (" + c.gunId() + ")"));
-        return MatchManager.get().classes().captainClasses(mode).size();
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        int count = 0;
+        for (TeamSide side : data.enabledTeams().isEmpty() ? TeamSide.PLAYABLE : data.enabledTeams()) {
+            send(context, side.id() + " captain:");
+            for (ClassDefinition c : MatchManager.get().classes().captainClassesForTeam(data.selectedMode(), data.selectedMap(), side)) {
+                send(context, "  " + c.id() + " - " + c.displayName() + " (" + c.gunId() + ")"); count++;
+            }
+        }
+        return count;
     }
 
     private static int classSet(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
