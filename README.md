@@ -2,7 +2,7 @@
 
 [![Build](https://github.com/LazyAlienServer/minecraft-sfgame/actions/workflows/build.yml/badge.svg)](https://github.com/LazyAlienServer/minecraft-sfgame/actions/workflows/build.yml)
 
-SFGame 是一个 Forge 1.20.1 的枪战游戏框架 Mod，依赖 TACZ 提供枪械和弹药。当前版本实现团队竞技、占点、突破攻防和夺旗（CTF）模式，以及动态规则、原版队伍绑定、职业配装、重生、计分、菜单及 HUD。
+SFGame 是一个 Forge 1.20.1 的枪战游戏框架 Mod，依赖 TACZ 提供枪械和弹药。当前版本实现团队竞技、占点、突破模式和夺旗（CTF）模式，以及动态规则、原版队伍绑定、职业配装、重生、计分、菜单及 HUD。
 
 ## 环境与构建
 
@@ -120,6 +120,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `captainVoteSeconds` | 15 | 1～120 | 突破 captain | 首次队长投票时长。 |
 | `captainReplacementVoteSeconds` | 10 | 1～120 | 突破 captain | 队长掉线、离队或换队后的补选时长。 |
 | `attackerCaptainGlowing` | true | true/false | 突破 captain | 是否让进攻方队长使用发光轮廓；队长不占用头盔栏。 |
+| `breakthroughBlockBreaking` | false | true/false | 突破模式 | 是否允许参赛玩家在正式进行阶段破坏方块；放置方块仍然禁止，准备、倒计时和阶段整备期间也禁止破坏。 |
 | `attackerCaptainCaptureWeight` | 2.0 | 1.0～10.0 | 突破 captain | 进攻队长在点内的占领权重。 |
 | `defenderCaptureWeight` | 1.4 | 0.1～10.0 | 突破 captain | 每名防守玩家在点内的占领权重；防守方不选举队长。 |
 | `ctfFlagReturnSeconds` | 30 | 5～600 | CTF | 掉落旗帜无人回收时自动返回旗座的秒数。 |
@@ -161,7 +162,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 `<玩家>` 使用单个在线玩家参数，`<玩家选择器>` 使用原版多实体选择器，因此 `/sfgame team set @a random` 会一次处理所有在线玩家；`@a`、`@p`、`@r` 的筛选规则与原版 `/team` 相同。管理员命令统一要求权限等级 2。
 
-地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`、`domination`、`breakthrough` 和 `ctf`，每个模式可以拥有多张地图。`/sfgame spawn setdefault lobby` 将管理员当前位置保存为全局默认大厅；世界首次加载时若尚未配置，会自动使用主世界原版出生点。`/sfgame spawn set lobby` 为当前地图设置覆盖点，`/sfgame spawn clear lobby` 清除覆盖并恢复使用全局默认大厅。长方形区域统一先执行根命令 `/sfgame pos1`、`/sfgame pos2` 记录两个角点，再执行对应模式的 `set box` 或 `add box` 命令。团队竞技和占点地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营；也支持 `/sfgame team set random @a` 的随机参数顺序。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。突破攻防地图改用每个 sector 的攻守角色出生点，配置方法见下文。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
+地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`、`domination`、`breakthrough` 和 `ctf`，每个模式可以拥有多张地图。`/sfgame spawn setdefault lobby` 将管理员当前位置保存为全局默认大厅；世界首次加载时若尚未配置，会自动使用主世界原版出生点。`/sfgame spawn set lobby` 为当前地图设置覆盖点，`/sfgame spawn clear lobby` 清除覆盖并恢复使用全局默认大厅。长方形区域统一先执行根命令 `/sfgame pos1`、`/sfgame pos2` 记录两个角点，再执行对应模式的 `set box` 或 `add box` 命令。团队竞技和占点地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营；也支持 `/sfgame team set random @a` 的随机参数顺序。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。突破模式地图改用每个 sector 的攻守角色出生点，配置方法见下文。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
 
 SFGame 自有 ID（地图、模式、sector、点位、职业及职业配置继承 ID）可以字母或数字开头，支持单个字母和单个数字，例如 `a`、`1`、`a1`、`1a`。后续字符可使用字母、数字和下划线；输入的大写字母会统一按小写 ID 处理。枪械、物品和附件等 Minecraft/TACZ 资源 ID 仍遵循其原有的命名空间格式。
 
@@ -381,9 +382,9 @@ TDM 与占点默认包含：
 
 占点模式会在每个当前开放点的中心上方显示发光悬浮字母。`async` 显示全部活动点，`sync` 只显示当前随机开放点；切点和比赛结束时会自动清理。
 
-## 突破攻防模式
+## 突破模式
 
-使用 `/sfgame mode select breakthrough` 选择突破攻防。该模式严格使用两个阵营：管理员指定一个进攻阵营和一个防守阵营。地图由 1～16 个有序 sector 构成，每个 sector 包含 1～16 个同时开放的点位，并分别保存进攻方和防守方出生点。
+使用 `/sfgame mode select breakthrough` 选择突破模式。该模式严格使用两个阵营：管理员指定一个进攻阵营和一个防守阵营。地图由 1～16 个有序 sector 构成，每个 sector 包含 1～16 个同时开放的点位，并分别保存进攻方和防守方出生点。
 
 进攻方必须同时控制当前 sector 的全部点位才能推进。点位初始归防守方，进攻方需要先中立化再占领；在整个 sector 完成前，防守方可以修复和夺回点位。推进后旧 sector 锁定，经过默认 10 秒整备期，全员无死亡记录地部署到下一个 sector。当前开放点会显示 Bossbar 和中心上方的发光悬浮字母。
 
@@ -497,6 +498,7 @@ TDM 与占点默认包含：
 - 单赛段中，攻陷最后 sector 则进攻方获胜；票数归零或超时则防守方获胜。
 - 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
 - 阶段整备期间全员无敌，不能通过开火提前解除保护。
+- `breakthroughBlockBreaking` 默认关闭；开启后仅在正式进行阶段允许参赛玩家破坏方块，玩家仍不能放置方块。规则可在比赛中修改并立即生效。
 - 突破模式默认死亡重生倒计时为 10 秒。倒计时结束后自动打开位置选择，可选择当前 sector 的队伍出生点，或当前由本队占领的点位；安全点位使用 `inside` 坐标，人数并列或敌方正在中立化/夺取时使用 `nearby` 坐标。按钮点击时会再次校验归属，已经失守的点不能重生。
 
 突破模式规则：
@@ -512,6 +514,7 @@ TDM 与占点默认包含：
 /sfgame rule set captainVoteSeconds <秒>
 /sfgame rule set captainReplacementVoteSeconds <秒>
 /sfgame rule set attackerCaptainGlowing <true|false>
+/sfgame rule set breakthroughBlockBreaking <true|false>
 /sfgame rule set attackerCaptainCaptureWeight <小数>
 /sfgame rule set defenderCaptureWeight <小数>
 ```

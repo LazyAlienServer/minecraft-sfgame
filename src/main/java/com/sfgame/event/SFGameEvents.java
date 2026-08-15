@@ -170,7 +170,8 @@ public final class SFGameEvents {
     @SubscribeEvent
     public static void useBlock(PlayerInteractEvent.RightClickBlock event) {
         if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
-                && player.gameMode.getGameModeForPlayer() != GameType.ADVENTURE) {
+                && player.gameMode.getGameModeForPlayer() != GameType.ADVENTURE
+                && !MatchManager.get().usesBreakthroughSurvival(player)) {
             player.setGameMode(GameType.ADVENTURE);
         }
     }

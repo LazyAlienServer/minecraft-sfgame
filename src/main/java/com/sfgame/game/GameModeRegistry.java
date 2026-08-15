@@ -17,7 +17,7 @@ public final class GameModeRegistry {
     static {
         register(new GameModeDefinition(TEAM_DEATHMATCH, "Team Deathmatch"));
         register(new GameModeDefinition(DOMINATION, "Domination"));
-        register(new GameModeDefinition(BREAKTHROUGH, "Breakthrough"));
+        register(new GameModeDefinition(BREAKTHROUGH, "Breakthrough Mode"));
         register(new GameModeDefinition(CAPTURE_THE_FLAG, "Capture the Flag"));
     }
 

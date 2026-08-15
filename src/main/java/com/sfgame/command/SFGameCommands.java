@@ -54,7 +54,7 @@ public final class SFGameCommands {
     private static final String[] BREAKTHROUGH_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
-            "attackerCaptainCaptureWeight", "defenderCaptureWeight"};
+            "attackerCaptainCaptureWeight", "defenderCaptureWeight", "breakthroughBlockBreaking"};
     private static final String[] CTF_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "ctfFlagReturnSeconds",
             "ctfHomeCaptureTimeSeconds"};
@@ -334,6 +334,10 @@ public final class SFGameCommands {
                                 .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
                                 .then(Commands.argument("value", BoolArgumentType.bool())
                                         .executes(context -> rulesSetBoolean(context, "attackerCaptainGlowing"))))
+                        .then(Commands.literal("breakthroughBlockBreaking")
+                                .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
+                                .then(Commands.argument("value", BoolArgumentType.bool())
+                                        .executes(context -> rulesSetBoolean(context, "breakthroughBlockBreaking"))))
                         .then(Commands.literal("captureDifferenceCoefficient")
                                 .requires(s -> modeIs(s, GameModeRegistry.DOMINATION, GameModeRegistry.BREAKTHROUGH,
                                         GameModeRegistry.CAPTURE_THE_FLAG))
@@ -1087,7 +1091,7 @@ public final class SFGameCommands {
         if (!checkBreakthroughEdit(context)) return 0;
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         data.activeMap().breakthrough().variant(variant); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-        return success(context, "Breakthrough variant set to " + variant.name().toLowerCase());
+        return success(context, "Breakthrough mode variant set to " + variant.name().toLowerCase());
     }
 
     private static int breakthroughLegs(CommandContext<CommandSourceStack> context) {
@@ -1095,7 +1099,7 @@ public final class SFGameCommands {
         int legs = IntegerArgumentType.getInteger(context, "legs");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         data.activeMap().breakthrough().legs(legs); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-        return success(context, "Breakthrough legs set to " + legs);
+        return success(context, "Breakthrough mode legs set to " + legs);
     }
 
     private static int breakthroughRoles(CommandContext<CommandSourceStack> context) {
@@ -1105,7 +1109,7 @@ public final class SFGameCommands {
         try {
             SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
             data.activeMap().breakthrough().roles(attacker, defender); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-            return success(context, "Breakthrough roles: attacker=" + attacker.id() + ", defender=" + defender.id());
+            return success(context, "Breakthrough mode roles: attacker=" + attacker.id() + ", defender=" + defender.id());
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
 
@@ -1636,6 +1640,7 @@ public final class SFGameCommands {
             case "captainVoteSeconds" -> Integer.toString(rules.captainVoteSeconds());
             case "captainReplacementVoteSeconds" -> Integer.toString(rules.captainReplacementVoteSeconds());
             case "attackerCaptainGlowing" -> Boolean.toString(rules.attackerCaptainGlowing());
+            case "breakthroughBlockBreaking" -> Boolean.toString(rules.breakthroughBlockBreaking());
             case "attackerCaptainCaptureWeight" -> Double.toString(rules.attackerCaptainCaptureWeight());
             case "defenderCaptureWeight" -> Double.toString(rules.defenderCaptureWeight());
             case "ctfFlagReturnSeconds" -> Integer.toString(rules.ctfFlagReturnSeconds());
@@ -1656,6 +1661,7 @@ public final class SFGameCommands {
     private static boolean isBreakthroughOnlyRule(String key) {
         return key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
                 || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainGlowing")
+                || key.equals("breakthroughBlockBreaking")
                 || key.equals("attackerCaptainCaptureWeight")
                 || key.equals("defenderCaptureWeight");
     }
@@ -1682,6 +1688,7 @@ public final class SFGameCommands {
                 + ", sectorTransitionSeconds=" + r.sectorTransitionSeconds() + ", captainVoteSeconds=" + r.captainVoteSeconds()
                 + ", captainReplacementVoteSeconds=" + r.captainReplacementVoteSeconds()
                 + ", attackerCaptainGlowing=" + r.attackerCaptainGlowing()
+                + ", breakthroughBlockBreaking=" + r.breakthroughBlockBreaking()
                 + ", attackerCaptainCaptureWeight=" + r.attackerCaptainCaptureWeight()
                 + ", defenderCaptureWeight=" + r.defenderCaptureWeight();
         if (GameModeRegistry.CAPTURE_THE_FLAG.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()

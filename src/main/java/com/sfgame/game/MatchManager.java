@@ -95,6 +95,12 @@ public final class MatchManager {
         return phase == MatchPhase.RUNNING && state(player).participating()
                 && activeRuntime.canBreakBlock(player, pos, state, this);
     }
+    /** Breakthrough uses Survival only while its block-breaking rule is active. */
+    public boolean usesBreakthroughSurvival(ServerPlayer player) {
+        return phase == MatchPhase.RUNNING && state(player).participating()
+                && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
+                && data().rules().breakthroughBlockBreaking();
+    }
     public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                  net.minecraft.world.level.block.state.BlockState state) {
         return phase == MatchPhase.RUNNING && state(player).participating()
@@ -568,10 +574,16 @@ public final class MatchManager {
                 if (!breakthrough) throw new IllegalArgumentException(key + " is only available in breakthrough mode");
                 data().rules().attackerCaptainGlowing(value);
             }
+            case "breakthroughBlockBreaking" -> {
+                if (!breakthrough) throw new IllegalArgumentException(key + " is only available in breakthrough mode");
+                data().rules().breakthroughBlockBreaking(value);
+            }
             default -> throw new IllegalArgumentException("Unknown boolean rule " + key);
         }
         data().setDirty();
-        activeRuntime.onRuleChanged(key, data().rules()); syncAll();
+        activeRuntime.onRuleChanged(key, data().rules());
+        if ("breakthroughBlockBreaking".equals(key)) refreshParticipantGameModes();
+        syncAll();
     }
 
     public void setRule(String key, double value) {
@@ -596,6 +608,7 @@ public final class MatchManager {
         data().rules().reset();
         data().setDirty();
         activeRuntime.onRuleChanged("attackerTickets", data().rules());
+        refreshParticipantGameModes();
         syncAll();
     }
 
@@ -852,7 +865,7 @@ public final class MatchManager {
         state.protectionTicks(data().rules().respawnProtectionSeconds() * 20);
         state.participating(true);
         state.queued(false);
-        player.setGameMode(GameType.ADVENTURE);
+        player.setGameMode(participantGameType());
         spawn.teleport(player);
         if (!loadoutService.apply(player, definition.get())) {
             state.participating(false);
@@ -870,6 +883,17 @@ public final class MatchManager {
         TeamSide side = classSide(player, state);
         state.currentClass(data().selectedMode(), side, state.pendingClass(data().selectedMode(), side));
         deploy(player, state, false);
+    }
+
+    private GameType participantGameType() {
+        return phase == MatchPhase.RUNNING && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
+                && data().rules().breakthroughBlockBreaking() ? GameType.SURVIVAL : GameType.ADVENTURE;
+    }
+
+    private void refreshParticipantGameModes() {
+        if (server == null) return;
+        GameType gameType = participantGameType();
+        forParticipants(player -> player.setGameMode(gameType));
     }
 
     private void finishToLobby() {

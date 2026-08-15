@@ -35,6 +35,7 @@ public final class MatchRules {
     private int captainVoteSeconds;
     private int captainReplacementVoteSeconds;
     private boolean attackerCaptainGlowing;
+    private boolean breakthroughBlockBreaking;
     private double attackerCaptainCaptureWeight;
     private double defenderCaptureWeight;
     private int ctfFlagReturnSeconds;
@@ -62,6 +63,7 @@ public final class MatchRules {
     public int captainVoteSeconds() { return captainVoteSeconds; }
     public int captainReplacementVoteSeconds() { return captainReplacementVoteSeconds; }
     public boolean attackerCaptainGlowing() { return attackerCaptainGlowing; }
+    public boolean breakthroughBlockBreaking() { return breakthroughBlockBreaking; }
     public double attackerCaptainCaptureWeight() { return attackerCaptainCaptureWeight; }
     public double defenderCaptureWeight() { return defenderCaptureWeight; }
     public int ctfFlagReturnSeconds() { return ctfFlagReturnSeconds; }
@@ -86,6 +88,7 @@ public final class MatchRules {
     public void captainVoteSeconds(int value) { captainVoteSeconds = clamp(value, 1, 120); }
     public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
     public void attackerCaptainGlowing(boolean value) { attackerCaptainGlowing = value; }
+    public void breakthroughBlockBreaking(boolean value) { breakthroughBlockBreaking = value; }
     public void attackerCaptainCaptureWeight(double value) { attackerCaptainCaptureWeight = clamp(value, 1.0, 10.0); }
     public void defenderCaptureWeight(double value) { defenderCaptureWeight = clamp(value, 0.1, 10.0); }
     public void ctfFlagReturnSeconds(int value) { ctfFlagReturnSeconds = clamp(value, 5, 600); }
@@ -113,6 +116,7 @@ public final class MatchRules {
         captainVoteSeconds = 15;
         captainReplacementVoteSeconds = 10;
         attackerCaptainGlowing = true;
+        breakthroughBlockBreaking = false;
         attackerCaptainCaptureWeight = 2.0;
         defenderCaptureWeight = 1.4;
         ctfFlagReturnSeconds = 30;
@@ -132,6 +136,7 @@ public final class MatchRules {
         tag.putInt("AttackerTickets", attackerTickets); tag.putInt("SectorTransitionSeconds", sectorTransitionSeconds);
         tag.putInt("CaptainVoteSeconds", captainVoteSeconds); tag.putInt("CaptainReplacementVoteSeconds", captainReplacementVoteSeconds);
         tag.putBoolean("AttackerCaptainGlowing", attackerCaptainGlowing);
+        tag.putBoolean("BreakthroughBlockBreaking", breakthroughBlockBreaking);
         tag.putDouble("AttackerCaptainCaptureWeight", attackerCaptainCaptureWeight);
         tag.putDouble("DefenderCaptureWeight", defenderCaptureWeight);
         tag.putInt("CtfFlagReturnSeconds", ctfFlagReturnSeconds);
@@ -159,6 +164,7 @@ public final class MatchRules {
         if (tag.contains("CaptainVoteSeconds")) captainVoteSeconds(tag.getInt("CaptainVoteSeconds"));
         if (tag.contains("CaptainReplacementVoteSeconds")) captainReplacementVoteSeconds(tag.getInt("CaptainReplacementVoteSeconds"));
         if (tag.contains("AttackerCaptainGlowing")) attackerCaptainGlowing(tag.getBoolean("AttackerCaptainGlowing"));
+        if (tag.contains("BreakthroughBlockBreaking")) breakthroughBlockBreaking(tag.getBoolean("BreakthroughBlockBreaking"));
         if (tag.contains("AttackerCaptainCaptureWeight")) attackerCaptainCaptureWeight(tag.getDouble("AttackerCaptainCaptureWeight"));
         if (tag.contains("DefenderCaptureWeight")) defenderCaptureWeight(tag.getDouble("DefenderCaptureWeight"));
         if (tag.contains("CtfFlagReturnSeconds")) ctfFlagReturnSeconds(tag.getInt("CtfFlagReturnSeconds"));
