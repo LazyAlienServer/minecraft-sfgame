@@ -203,7 +203,7 @@ config/sfgame/classes/breakthrough.json
 config/sfgame/classes/ctf.json
 ```
 
-第一次迁移会为三个模式建立独立文件，不默认建立继承关系。TDM 与占点的内置来源位于 `src/main/resources/defaults/classes.json`；突破模式的完整默认来源位于 `src/main/resources/defaults/classes/breakthrough.json`。已有的突破配置会执行一次增量升级：保留管理员已填写的字段，补入缺失的内置职业，并为内置职业补齐为空的 `inventory` 与 `armor`。
+第一次迁移会为四个模式建立独立文件，不默认建立继承关系。TDM 与占点的内置来源位于 `src/main/resources/defaults/classes.json`；突破模式的完整默认来源位于 `src/main/resources/defaults/classes/breakthrough.json`；CTF 默认继承 TDM。已有的突破配置会执行一次增量升级：保留管理员已填写的字段，补入缺失的内置职业，并为内置职业补齐为空的 `inventory` 与 `armor`。
 
 TDM 与占点默认包含：
 
