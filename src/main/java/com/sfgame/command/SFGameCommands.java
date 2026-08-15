@@ -206,9 +206,6 @@ public final class SFGameCommands {
                         .then(Commands.literal("remove").then(Commands.argument("players", EntityArgument.players())
                                 .executes(SFGameCommands::removeTeam))))
                 .then(ruleCommands("rule"))
-                // Keep the old plural spelling as a compatibility alias for
-                // existing servers, while the singular command is canonical.
-                .then(ruleCommands("rules"))
                 .then(Commands.literal("class").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("reload").executes(SFGameCommands::classReload))
                         .then(Commands.literal("validate").executes(SFGameCommands::classValidate))
@@ -230,7 +227,9 @@ public final class SFGameCommands {
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> breakthroughCommands() {
-        return Commands.literal("breakthrough").requires(source -> source.hasPermission(2))
+        return Commands.literal("breakthrough")
+                .requires(source -> source.hasPermission(2)
+                        && modeIs(source, GameModeRegistry.BREAKTHROUGH))
                 .then(Commands.literal("variant")
                         .then(Commands.literal("normal").executes(context -> breakthroughVariant(context, BreakthroughVariant.NORMAL)))
                         .then(Commands.literal("captain").executes(context -> breakthroughVariant(context, BreakthroughVariant.CAPTAIN))))
@@ -242,7 +241,9 @@ public final class SFGameCommands {
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> ctfCommands() {
-        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("ctf").requires(source -> source.hasPermission(2));
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("ctf")
+                .requires(source -> source.hasPermission(2)
+                        && modeIs(source, GameModeRegistry.CAPTURE_THE_FLAG));
         root.then(Commands.literal("variant")
                 .then(Commands.literal("classic").executes(c -> ctfVariant(c, CtfVariant.CLASSIC)))
                 .then(Commands.literal("assault").executes(c -> ctfVariant(c, CtfVariant.ASSAULT)))

@@ -93,7 +93,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame class set <玩家> <职业ID>
 ```
 
-规则统一通过 `/sfgame rule` 管理。`list`、`get` 和命令补全只显示当前模式适用的规则；其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。规则及地图坐标保存在世界 SavedData 中，重启后保留。旧版 `/sfgame rules` 仍作为兼容别名保留。
+规则统一通过 `/sfgame rule` 管理。`list`、`get` 和命令补全只显示当前模式适用的规则；其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。规则及地图坐标保存在世界 SavedData 中，重启后保留。
 
 ### 规则参数完整说明
 
