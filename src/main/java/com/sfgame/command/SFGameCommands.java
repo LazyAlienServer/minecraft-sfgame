@@ -20,6 +20,7 @@ import com.sfgame.data.PointActivationStrategy;
 import com.sfgame.data.SquareCaptureRegion;
 import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.BreakthroughSectorDefinition;
+import com.sfgame.data.BreakthroughVehicleDefinition;
 import com.sfgame.data.CtfVariant;
 import com.sfgame.data.CarrierRestriction;
 import com.sfgame.data.CtfForwardFlagDefinition;
@@ -86,6 +87,11 @@ public final class SFGameCommands {
     private static final SuggestionProvider<CommandSourceStack> MAP_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(SFGameSavedData.get(context.getSource().getServer()).maps().stream()
                     .map(ArenaMap::id), builder);
+    private static final SuggestionProvider<CommandSourceStack> BREAKTHROUGH_VEHICLE_SUGGESTIONS = (context, builder) -> {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        return SharedSuggestionProvider.suggest(data.activeMap() == null ? java.util.stream.Stream.empty()
+                : data.activeMap().breakthrough().vehicles().stream().map(BreakthroughVehicleDefinition::id), builder);
+    };
     private static final SuggestionProvider<CommandSourceStack> POINT_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(SFGameSavedData.get(context.getSource().getServer()).activeMap() == null
                     ? java.util.stream.Stream.empty() : SFGameSavedData.get(context.getSource().getServer()).activeMap()
@@ -237,7 +243,40 @@ public final class SFGameCommands {
                         .executes(SFGameCommands::breakthroughLegs)))
                 .then(Commands.literal("roles").then(Commands.argument("attacker", StringArgumentType.word())
                         .then(Commands.argument("defender", StringArgumentType.word()).executes(SFGameCommands::breakthroughRoles))))
+                .then(breakthroughVehicleCommands())
                 .then(Commands.literal("status").executes(SFGameCommands::breakthroughStatus));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> breakthroughVehicleCommands() {
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("vehicle");
+        root.then(Commands.literal("add")
+                .then(Commands.argument("id", StringArgumentType.word())
+                        .then(Commands.argument("entity", StringArgumentType.word())
+                                .then(Commands.argument("role", StringArgumentType.word())
+                                        .then(Commands.argument("respawnSeconds", IntegerArgumentType.integer(1, 3600))
+                                                .executes(SFGameCommands::breakthroughVehicleAdd))))));
+        root.then(Commands.literal("set")
+                .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                        .executes(SFGameCommands::breakthroughVehicleSetPosition))
+                .then(Commands.literal("entity")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.argument("entity", StringArgumentType.word())
+                                        .executes(SFGameCommands::breakthroughVehicleSetEntity))))
+                .then(Commands.literal("role")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.argument("role", StringArgumentType.word())
+                                        .executes(SFGameCommands::breakthroughVehicleSetRole))))
+                .then(Commands.literal("interval")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.argument("respawnSeconds", IntegerArgumentType.integer(1, 3600))
+                                        .executes(SFGameCommands::breakthroughVehicleSetInterval)))));
+        root.then(Commands.literal("list").executes(SFGameCommands::breakthroughVehicleList));
+        root.then(Commands.literal("status").then(Commands.argument("id", StringArgumentType.word())
+                .suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS).executes(SFGameCommands::breakthroughVehicleStatus)));
+        root.then(Commands.literal("remove").then(Commands.argument("id", StringArgumentType.word())
+                .suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS).executes(SFGameCommands::breakthroughVehicleRemove)));
+        root.then(Commands.literal("clear").executes(SFGameCommands::breakthroughVehicleClear));
+        return root;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> ctfCommands() {
@@ -1118,8 +1157,109 @@ public final class SFGameCommands {
         var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().breakthrough();
         send(context, "variant=" + config.variant().name().toLowerCase() + ", legs=" + config.legs()
                 + ", attacker=" + config.attacker().id() + ", defender=" + config.defender().id()
-                + ", sectors=" + config.sectors().size());
+                + ", sectors=" + config.sectors().size() + ", vehicles=" + config.vehicles().size());
         return 1;
+    }
+
+    private static int breakthroughVehicleAdd(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkBreakthroughEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        String id = StringArgumentType.getString(context, "id");
+        String entity = StringArgumentType.getString(context, "entity");
+        BreakthroughVehicleDefinition.Role role = BreakthroughVehicleDefinition.Role.fromId(
+                StringArgumentType.getString(context, "role"));
+        if (role == null) return failure(context, "Vehicle role must be attacker or defender");
+        int respawnSeconds = IntegerArgumentType.getInteger(context, "respawnSeconds");
+        try {
+            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            data.activeMap().breakthrough().addVehicle(new BreakthroughVehicleDefinition(id, entity, role,
+                    ArenaPosition.from(player), respawnSeconds));
+            dirty(context);
+            return success(context, "Added breakthrough vehicle " + id + " (" + entity + ", " + role.id()
+                    + ", respawn " + respawnSeconds + "s)");
+        } catch (IllegalArgumentException exception) {
+            return failure(context, exception.getMessage());
+        }
+    }
+
+    private static int breakthroughVehicleSetPosition(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        vehicle.spawn(ArenaPosition.from(context.getSource().getPlayerOrException()));
+        dirty(context);
+        return success(context, "Updated vehicle spawn position for " + vehicle.id());
+    }
+
+    private static int breakthroughVehicleSetEntity(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        try {
+            vehicle.entityId(StringArgumentType.getString(context, "entity"));
+            dirty(context);
+            return success(context, "Updated vehicle entity for " + vehicle.id());
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int breakthroughVehicleSetRole(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        BreakthroughVehicleDefinition.Role role = BreakthroughVehicleDefinition.Role.fromId(
+                StringArgumentType.getString(context, "role"));
+        if (role == null) return failure(context, "Vehicle role must be attacker or defender");
+        vehicle.role(role); dirty(context);
+        return success(context, "Updated vehicle role for " + vehicle.id() + " to " + role.id());
+    }
+
+    private static int breakthroughVehicleSetInterval(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        vehicle.respawnSeconds(IntegerArgumentType.getInteger(context, "respawnSeconds"));
+        dirty(context);
+        return success(context, "Updated vehicle respawn interval for " + vehicle.id());
+    }
+
+    private static int breakthroughVehicleList(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthrough(context)) return 0;
+        List<BreakthroughVehicleDefinition> vehicles = SFGameSavedData.get(context.getSource().getServer())
+                .activeMap().breakthrough().vehicles();
+        vehicles.forEach(vehicle -> send(context, vehicle.toString() + " @ " + positionText(vehicle.spawn())));
+        return vehicles.size();
+    }
+
+    private static int breakthroughVehicleStatus(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthrough(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        send(context, vehicle.toString() + " @ " + positionText(vehicle.spawn()));
+        return 1;
+    }
+
+    private static int breakthroughVehicleRemove(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        String id = StringArgumentType.getString(context, "id");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (!data.activeMap().breakthrough().removeVehicle(id)) return failure(context, "Unknown vehicle: " + id);
+        dirty(context);
+        return success(context, "Removed breakthrough vehicle " + id);
+    }
+
+    private static int breakthroughVehicleClear(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        int count = data.activeMap().breakthrough().vehicles().size();
+        data.activeMap().breakthrough().clearVehicles(); dirty(context);
+        return success(context, "Cleared " + count + " breakthrough vehicle(s)");
+    }
+
+    private static BreakthroughVehicleDefinition breakthroughVehicle(CommandContext<CommandSourceStack> context) {
+        return SFGameSavedData.get(context.getSource().getServer()).activeMap().breakthrough()
+                .vehicle(StringArgumentType.getString(context, "id")).orElse(null);
     }
 
     private static int sectorAdd(CommandContext<CommandSourceStack> context) {

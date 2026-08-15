@@ -4,6 +4,7 @@ import com.sfgame.data.ArenaMap;
 import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.BreakthroughMapConfig;
 import com.sfgame.data.BreakthroughSectorDefinition;
+import com.sfgame.data.BreakthroughVehicleDefinition;
 import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.CapturePointDefinition;
 import com.sfgame.data.MatchRules;
@@ -11,6 +12,7 @@ import com.sfgame.network.SFGameNetwork;
 import com.sfgame.network.MatchSnapshot;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -21,6 +23,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.BossEvent;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
@@ -44,6 +47,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     private final Map<String, CapturePointState> pointStates = new HashMap<>();
     private final Map<String, ServerBossEvent> bossBars = new HashMap<>();
+    private final Map<String, Entity> spawnedVehicles = new HashMap<>();
+    private final Map<String, Integer> vehicleCooldowns = new HashMap<>();
     private final CapturePointMarkerService pointMarkers = new CapturePointMarkerService();
     private final Map<UUID, UUID> votes = new HashMap<>();
     private final Set<UUID> abstentions = new HashSet<>();
@@ -75,6 +80,18 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
                         || point.region().maxY() >= level.getMaxBuildHeight())) {
                     errors.add("Sector " + sector.id() + " point " + point.id() + " height is outside dimension build limits");
                 }
+            }
+        }
+        for (BreakthroughVehicleDefinition vehicle : map.breakthrough().vehicles()) {
+            ResourceLocation entityId = ResourceLocation.tryParse(vehicle.entityId());
+            if (entityId == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(entityId)) {
+                errors.add("Vehicle " + vehicle.id() + " uses unavailable entity type " + vehicle.entityId());
+            }
+            ResourceLocation dimensionId = ResourceLocation.tryParse(vehicle.spawn().dimension());
+            ServerLevel level = dimensionId == null ? null
+                    : server.getLevel(ResourceKey.create(Registries.DIMENSION, dimensionId));
+            if (level == null) {
+                errors.add("Vehicle " + vehicle.id() + " uses unavailable dimension " + vehicle.spawn().dimension());
             }
         }
         return errors;
@@ -129,6 +146,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         sectorElapsedTicks++;
         totalAttackTicks++;
         for (CapturePointDefinition point : currentSector(map).points()) tickPoint(server, manager, map, point, rules);
+        tickVehicles(server, manager, map);
         refreshDisplays(server, manager, map);
 
         if (allPointsCaptured(map)) return completeSector(server, manager, map, rules);
@@ -164,9 +182,16 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     @Override
     public boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                   net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        // Breakthrough keeps placement disabled.  When enabled, only active
-        // sectors are editable; captain elections and sector transitions stay
-        // protected so the map cannot be altered during deployments.
+        // The breakthrough block-editing rule enables both breaking and
+        // placing while the active sector is running.  Captain elections and
+        // sector transitions stay protected so the map cannot be altered
+        // during deployments.
+        return runtimeState == RuntimeState.ACTIVE && manager.savedData().rules().breakthroughBlockBreaking();
+    }
+
+    @Override
+    public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
+                                  net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
         return runtimeState == RuntimeState.ACTIVE && manager.savedData().rules().breakthroughBlockBreaking();
     }
 
@@ -480,6 +505,59 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             CapturePointState state = new CapturePointState(); state.reset(defender); pointStates.put(point.id(), state);
         });
     }
+
+    /**
+     * Maintains one entity per configured vehicle slot.  A slot is considered
+     * occupied as long as its entity is alive; the respawn timer starts only
+     * after that entity has been removed or killed, so repeated ticks never
+     * create duplicate vehicles.
+     */
+    private void tickVehicles(MinecraftServer server, MatchManager manager, ArenaMap map) {
+        for (BreakthroughVehicleDefinition definition : map.breakthrough().vehicles()) {
+            Entity existing = spawnedVehicles.get(definition.id());
+            if (existing != null) {
+                if (!existing.isRemoved() && existing.isAlive()) continue;
+                spawnedVehicles.remove(definition.id());
+                vehicleCooldowns.put(definition.id(), definition.respawnSeconds() * 20);
+            }
+            int cooldown = vehicleCooldowns.getOrDefault(definition.id(), 0);
+            if (cooldown > 0) {
+                vehicleCooldowns.put(definition.id(), cooldown - 1);
+                continue;
+            }
+            Entity spawned = spawnVehicle(server, definition);
+            if (spawned != null) spawnedVehicles.put(definition.id(), spawned);
+        }
+    }
+
+    @Nullable
+    private Entity spawnVehicle(MinecraftServer server, BreakthroughVehicleDefinition definition) {
+        ResourceLocation entityId = ResourceLocation.tryParse(definition.entityId());
+        ResourceLocation dimensionId = ResourceLocation.tryParse(definition.spawn().dimension());
+        if (entityId == null || dimensionId == null) return null;
+        ServerLevel level = server.getLevel(ResourceKey.create(Registries.DIMENSION, dimensionId));
+        if (level == null) return null;
+        if (!BuiltInRegistries.ENTITY_TYPE.containsKey(entityId)) return null;
+        net.minecraft.world.entity.EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.get(entityId);
+        if (type == null) return null;
+        Entity entity = type.create(level);
+        if (entity == null) return null;
+        ArenaPosition spawn = definition.spawn();
+        entity.moveTo(spawn.x(), spawn.y(), spawn.z(), spawn.yaw(), spawn.pitch());
+        entity.getPersistentData().putString("SFGameVehicleSlot", definition.id());
+        entity.getPersistentData().putString("SFGameVehicleRole", definition.role().id());
+        entity.addTag("sfgame_vehicle");
+        level.addFreshEntity(entity);
+        return entity;
+    }
+
+    private void clearVehicles() {
+        spawnedVehicles.values().forEach(entity -> {
+            if (!entity.isRemoved()) entity.discard();
+        });
+        spawnedVehicles.clear();
+        vehicleCooldowns.clear();
+    }
     private boolean allPointsCaptured(ArenaMap map) {
         return currentSector(map).points().stream().allMatch(point -> pointStates.get(point.id()).owner() == attacker);
     }
@@ -560,7 +638,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         return stack.hasTag() && stack.getTag().getBoolean(CAPTAIN_FLAG_TAG);
     }
 
-    private void clearRuntimeEntities() { clearDisplays(); clearCaptainAppearance(); }
+    private void clearRuntimeEntities() { clearDisplays(); clearCaptainAppearance(); clearVehicles(); }
 
     private record LegResult(TeamSide attacker, int completedSectors, int capturedPoints, int elapsedTicks, int tickets) { }
 }

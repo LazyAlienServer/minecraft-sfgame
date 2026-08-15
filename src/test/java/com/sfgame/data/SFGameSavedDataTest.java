@@ -280,6 +280,22 @@ final class SFGameSavedDataTest {
     }
 
     @Test
+    void persistsBreakthroughVehicleSlots() {
+        BreakthroughMapConfig config = new BreakthroughMapConfig();
+        config.addVehicle(new BreakthroughVehicleDefinition("1", "minecraft:minecart",
+                BreakthroughVehicleDefinition.Role.DEFENDER, RED, 30));
+
+        BreakthroughMapConfig restored = BreakthroughMapConfig.load(config.save());
+
+        assertEquals(1, restored.vehicles().size());
+        BreakthroughVehicleDefinition vehicle = restored.vehicle("1").orElseThrow();
+        assertEquals("minecraft:minecart", vehicle.entityId());
+        assertEquals(BreakthroughVehicleDefinition.Role.DEFENDER, vehicle.role());
+        assertEquals(30, vehicle.respawnSeconds());
+        assertEquals(RED, vehicle.spawn());
+    }
+
+    @Test
     void breakthroughRejectsOverlapsWithinSectorButAllowsSameIdsAcrossSectors() {
         BreakthroughMapConfig config = new BreakthroughMapConfig();
         BreakthroughSectorDefinition first = new BreakthroughSectorDefinition("first", 1);

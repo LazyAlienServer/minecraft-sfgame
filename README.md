@@ -120,7 +120,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `captainVoteSeconds` | 15 | 1～120 | 突破 captain | 首次队长投票时长。 |
 | `captainReplacementVoteSeconds` | 10 | 1～120 | 突破 captain | 队长掉线、离队或换队后的补选时长。 |
 | `attackerCaptainGlowing` | true | true/false | 突破 captain | 是否让进攻方队长使用发光轮廓；队长不占用头盔栏。 |
-| `breakthroughBlockBreaking` | false | true/false | 突破模式 | 是否允许参赛玩家在正式进行阶段破坏方块；放置方块仍然禁止，准备、倒计时和阶段整备期间也禁止破坏。 |
+| `breakthroughBlockBreaking` | false | true/false | 突破模式 | 是否允许参赛玩家在正式进行阶段破坏和放置方块；准备、倒计时和阶段整备期间仍然禁止编辑方块。为兼容旧配置，规则名保留 `Breaking`。 |
 | `attackerCaptainCaptureWeight` | 2.0 | 1.0～10.0 | 突破 captain | 进攻队长在点内的占领权重。 |
 | `defenderCaptureWeight` | 1.4 | 0.1～10.0 | 突破 captain | 每名防守玩家在点内的占领权重；防守方不选举队长。 |
 | `ctfFlagReturnSeconds` | 30 | 5～600 | CTF | 掉落旗帜无人回收时自动返回旗座的秒数。 |
@@ -490,6 +490,24 @@ TDM 与占点默认包含：
 
 每个 sector 必须至少有一个进攻出生点和一个防守出生点。双赛段交换的是原版队伍的攻守身份，地图中的 `attacker` 和 `defender` 坐标仍表示当前赛段的角色位置，无需重新配置。
 
+### 突破模式载具
+
+突破模式支持按“载具槽位”生成外部载具模组注册的实体。SFGame 不硬编码卓越前线的实体类，而是读取实体资源 ID（例如 `superbwarfare:<实体名>`）；开赛校验会检查该实体是否已在当前服务器注册。缺少对应载具模组或实体 ID 写错会阻止开赛。每个槽位最多同时存在一个实体，实体被摧毁或移除后才开始该槽位的重生计时，计时结束才会生成下一辆，不会因为 Tick 重复生成。
+
+```text
+/sfgame rule breakthrough vehicle add <槽位ID> <实体资源ID> <attacker|defender> <重生秒数>
+/sfgame rule breakthrough vehicle set <槽位ID>
+/sfgame rule breakthrough vehicle set entity <槽位ID> <实体资源ID>
+/sfgame rule breakthrough vehicle set role <槽位ID> <attacker|defender>
+/sfgame rule breakthrough vehicle set interval <槽位ID> <重生秒数>
+/sfgame rule breakthrough vehicle list
+/sfgame rule breakthrough vehicle status <槽位ID>
+/sfgame rule breakthrough vehicle remove <槽位ID>
+/sfgame rule breakthrough vehicle clear
+```
+
+`vehicle add` 使用管理员当前位置作为生成点；`vehicle set` 将已有槽位移动到当前位置。重生秒数范围为 1～3600，地图最多配置 16 个槽位。`attacker`/`defender` 用于标记该槽位服务的当前角色，双赛段交换攻守时角色含义随赛段变化；生成位置不会自动移动。阶段推进和赛段切换不会因为计时而重复生成或清理仍存活的载具；只有载具被摧毁/移除后才开始该槽位的重生计时。停止比赛和返回大厅时会清理全部载具。
+
 ### 票数、时间与胜负
 
 - 每个 sector 默认有 100 张进攻票，任意进攻方有效死亡扣除 1；防守方死亡不扣票。
@@ -498,7 +516,7 @@ TDM 与占点默认包含：
 - 单赛段中，攻陷最后 sector 则进攻方获胜；票数归零或超时则防守方获胜。
 - 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
 - 阶段整备期间全员无敌，不能通过开火提前解除保护。
-- `breakthroughBlockBreaking` 默认关闭；开启后仅在正式进行阶段允许参赛玩家破坏方块，玩家仍不能放置方块。规则可在比赛中修改并立即生效。
+- `breakthroughBlockBreaking` 默认关闭；开启后仅在正式进行阶段允许参赛玩家破坏和放置方块，准备、倒计时和阶段整备期间仍禁止编辑。规则可在比赛中修改并立即生效。
 - 突破模式默认死亡重生倒计时为 10 秒。倒计时结束后自动打开位置选择，可选择当前 sector 的队伍出生点，或当前由本队占领的点位；安全点位使用 `inside` 坐标，人数并列或敌方正在中立化/夺取时使用 `nearby` 坐标。按钮点击时会再次校验归属，已经失守的点不能重生。
 
 突破模式规则：
