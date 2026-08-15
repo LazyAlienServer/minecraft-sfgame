@@ -40,6 +40,8 @@ public final class SFGameScreen extends Screen {
     private int captainVoteHeadingY = -1;
     private int respawnHeadingX;
     private int respawnHeadingY = -1;
+    private int shopHeadingX;
+    private int shopHeadingY = -1;
 
     public SFGameScreen() {
         super(Component.translatable("sfgame.menu.title"));
@@ -78,19 +80,26 @@ public final class SFGameScreen extends Screen {
                 && snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker();
         boolean showJoin = !snapshot.participating() && !attackerElectionLocked;
         boolean showLeave = !activeMatch;
+        // In the lobby, the bound vanilla team is the server-side membership
+        // selection made by the Join Game action.  Make the two choices
+        // mutually exclusive: the selected action is disabled while the
+        // opposite action remains available.
+        boolean joinedLobby = showLeave && snapshot.side() != TeamSide.NONE;
         if (showJoin) {
             Component joinLabel = snapshot.queued()
                     ? Component.translatable("sfgame.menu.queued")
                     : Component.translatable("sfgame.menu.join");
             DarkButton join = new DarkButton(showLeave ? center - 125 : center - 60, y, 120, 22,
                     joinLabel, button -> action(ClientActionPacket.Action.JOIN, ""));
-            join.active = !snapshot.queued();
+            join.active = !snapshot.queued() && !joinedLobby;
             addRenderableWidget(join);
         }
         if (showLeave) {
-            addRenderableWidget(new DarkButton(showJoin ? center + 5 : center - 60, y, 120, 22,
+            DarkButton spectate = new DarkButton(showJoin ? center + 5 : center - 60, y, 120, 22,
                     Component.translatable("sfgame.menu.leave"),
-                    button -> action(ClientActionPacket.Action.LEAVE, "")));
+                    button -> action(ClientActionPacket.Action.LEAVE, ""));
+            spectate.active = joinedLobby;
+            addRenderableWidget(spectate);
         }
         if (showJoin || showLeave) y += 34;
 
@@ -137,7 +146,26 @@ public final class SFGameScreen extends Screen {
         ClientActionPacket.Action classAction = snapshot.captain()
                 ? ClientActionPacket.Action.SELECT_CAPTAIN_CLASS : ClientActionPacket.Action.SELECT_CLASS;
         addClassCards(classPool, pendingClass, classAction, center, y);
+        if ("ctf".equals(snapshot.modeId()) && snapshot.phase() == MatchPhase.RUNNING && !snapshot.ctfShopItems().isEmpty()) {
+            int shopY = classStripY >= 0 ? classStripY + CLASS_CARD_SIZE + 24 : y;
+            addShopButtons(snapshot, center, shopY);
+        }
         rebuilding = false;
+    }
+
+    private void addShopButtons(MatchSnapshot snapshot, int center, int y) {
+        shopHeadingX = center - 150;
+        shopHeadingY = y;
+        int visible = Math.min(4, snapshot.ctfShopItems().size());
+        int width = 112;
+        int gap = 6;
+        int left = center - (visible * width + (visible - 1) * gap) / 2;
+        for (int i = 0; i < visible; i++) {
+            MatchSnapshot.ShopView item = snapshot.ctfShopItems().get(i);
+            addRenderableWidget(new DarkButton(left + i * (width + gap), y + 16, width, 22,
+                    Component.literal(item.name() + " · " + item.price()),
+                    button -> action(ClientActionPacket.Action.SHOP_BUY, item.id())));
+        }
     }
 
     private void addClassCards(List<MatchSnapshot.ClassView> classPool, String pendingClass,
@@ -180,6 +208,7 @@ public final class SFGameScreen extends Screen {
         classCards.clear();
         captainVoteHeadingY = -1;
         respawnHeadingY = -1;
+        shopHeadingY = -1;
     }
 
     private void action(ClientActionPacket.Action action, String value) {
@@ -219,15 +248,24 @@ public final class SFGameScreen extends Screen {
         MatchSnapshot snapshot = ClientMatchState.snapshot();
         if (snapshot != null) {
             boolean breakthrough = "breakthrough".equals(snapshot.modeId());
+            boolean ctf = "ctf".equals(snapshot.modeId());
             String scores = breakthrough
                     ? "ATTACK " + snapshot.attacker().id().toUpperCase(Locale.ROOT)
                     + " · DEFEND " + snapshot.defender().id().toUpperCase(Locale.ROOT)
                     + " · TICKETS " + snapshot.attackerTickets()
+                    : ctf ? "CTF " + (snapshot.ctfVariant() == null ? "" : snapshot.ctfVariant().toUpperCase(Locale.ROOT))
+                    + " · " + TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
+                    .map(team -> team.id().toUpperCase(Locale.ROOT) + " " + snapshot.score(team))
+                    .collect(java.util.stream.Collectors.joining("  ·  "))
                     : TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
                     .map(team -> team.id().toUpperCase(Locale.ROOT) + " " + snapshot.score(team))
                     .collect(java.util.stream.Collectors.joining("  ·  "));
             graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD),
                     width / 2, 36, 0xFFFFFF);
+            if ("ctf".equals(snapshot.modeId())) {
+                graphics.drawCenteredString(font, Component.literal("货币 " + snapshot.ctfCurrency()).withStyle(ChatFormatting.GOLD),
+                        width / 2, 52, 0xFFFFFF);
+            }
         }
         if (respawnHeadingY >= 0) {
             graphics.drawString(font, Component.translatable("sfgame.respawn.choose"),
@@ -250,6 +288,9 @@ public final class SFGameScreen extends Screen {
                             classStripY + CLASS_CARD_SIZE / 2 - 4, 0xFFFFFF);
                 }
             }
+        }
+        if (shopHeadingY >= 0) {
+            graphics.drawString(font, Component.translatable("sfgame.menu.shop"), shopHeadingX, shopHeadingY, 0xFFFFFF, true);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
         renderClassTooltip(graphics, mouseX, mouseY);

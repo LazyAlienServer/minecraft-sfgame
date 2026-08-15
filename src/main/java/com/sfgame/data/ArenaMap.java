@@ -19,6 +19,7 @@ public final class ArenaMap {
     private final Map<TeamSide, List<ArenaPosition>> spawns = new EnumMap<>(TeamSide.class);
     private DominationMapConfig domination = new DominationMapConfig();
     private BreakthroughMapConfig breakthrough = new BreakthroughMapConfig();
+    private CaptureTheFlagMapConfig captureTheFlag = new CaptureTheFlagMapConfig();
 
     public ArenaMap(String id) {
         this.id = SFGameId.normalize(id);
@@ -48,6 +49,7 @@ public final class ArenaMap {
     public boolean configured() { return lobby != null && enabledTeams().size() >= 2; }
     public DominationMapConfig domination() { return domination; }
     public BreakthroughMapConfig breakthrough() { return breakthrough; }
+    public CaptureTheFlagMapConfig captureTheFlag() { return captureTheFlag; }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
@@ -56,6 +58,7 @@ public final class ArenaMap {
         TeamSide.PLAYABLE.forEach(side -> tag.put(spawnKey(side), savePositions(spawnList(side))));
         tag.put("Domination", domination.save());
         tag.put("Breakthrough", breakthrough.save());
+        tag.put("CaptureTheFlag", captureTheFlag.save());
         return tag;
     }
 
@@ -72,6 +75,7 @@ public final class ArenaMap {
         }
         if (tag.contains("Domination")) map.domination = DominationMapConfig.load(tag.getCompound("Domination"));
         if (tag.contains("Breakthrough")) map.breakthrough = BreakthroughMapConfig.load(tag.getCompound("Breakthrough"));
+        if (tag.contains("CaptureTheFlag")) map.captureTheFlag = CaptureTheFlagMapConfig.load(tag.getCompound("CaptureTheFlag"));
         return map;
     }
 

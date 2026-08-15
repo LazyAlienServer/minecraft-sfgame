@@ -33,7 +33,7 @@ import java.util.Set;
 
 public final class ClassRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int BREAKTHROUGH_CONFIG_VERSION = 2;
+    private static final int BREAKTHROUGH_CONFIG_VERSION = 4;
 
     private final Path legacyPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes.json");
     private final Path profilesPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes");
@@ -103,7 +103,7 @@ public final class ClassRegistry {
                         if (!validProfileId(parent)) { errors.add(id + ": invalid parent profile " + parent); parent = null; }
                     }
                     result.put(id, new RawProfile(parent,
-                            validateDefinitions(id, "classes", file.classes(), errors),
+                            validateDefinitions(id, "classes", file.classes(), errors, parent == null),
                             validateDefinitions(id, "captainClasses", file.captainClasses(), errors)));
                 } catch (JsonParseException exception) {
                     errors.add(id + ": " + message(exception));
@@ -135,13 +135,19 @@ public final class ClassRegistry {
 
     private Map<String, ClassDefinition> validateDefinitions(String profile, String pool,
                                                               List<ClassDefinition> definitions, List<String> errors) {
+        return validateDefinitions(profile, pool, definitions, errors, true);
+    }
+
+    private Map<String, ClassDefinition> validateDefinitions(String profile, String pool,
+                                                              List<ClassDefinition> definitions, List<String> errors,
+                                                              boolean requireNonEmpty) {
         Map<String, ClassDefinition> loaded = new LinkedHashMap<>();
         for (ClassDefinition definition : definitions) {
             String id = definition.id() == null ? "" : definition.id().trim().toLowerCase(Locale.ROOT);
             if (!SFGameId.isValidClass(id)) { errors.add(profile + "/" + pool + ": invalid class id " + id); continue; }
             if (loaded.putIfAbsent(id, definition) != null) errors.add(profile + "/" + pool + ": duplicate class id " + id);
         }
-        if ("classes".equals(pool) && loaded.isEmpty()) errors.add(profile + ": no valid normal classes were loaded");
+        if ("classes".equals(pool) && requireNonEmpty && loaded.isEmpty()) errors.add(profile + ": no valid normal classes were loaded");
         return loaded;
     }
 
@@ -176,6 +182,8 @@ public final class ClassRegistry {
         if (defaults == null) throw new IOException("Bundled breakthrough class profile is missing");
         mergeDefaultDefinitions(current, defaults, "classes");
         mergeDefaultDefinitions(current, defaults, "captainClasses");
+        renameDefaultClass(current, "smg_assault", "冲锋枪突击手", "冲锋手");
+        renameDefaultClass(current, "captain_tank", "坦克（队长加强版）", "坦克");
         current.addProperty("configVersion", BREAKTHROUGH_CONFIG_VERSION);
         Files.writeString(target, GSON.toJson(current), StandardCharsets.UTF_8);
     }
@@ -219,6 +227,20 @@ public final class ClassRegistry {
                 || target.get(key).isJsonArray() && target.getAsJsonArray(key).size() == 0
                 || target.get(key).isJsonObject() && target.getAsJsonObject(key).size() == 0;
         if (empty) target.add(key, fallback.get(key).deepCopy());
+    }
+
+    private static void renameDefaultClass(JsonObject profile, String id, String oldName, String newName) {
+        for (String pool : List.of("classes", "captainClasses")) {
+            if (!profile.has(pool) || !profile.get(pool).isJsonArray()) continue;
+            for (JsonElement element : profile.getAsJsonArray(pool)) {
+                if (!element.isJsonObject()) continue;
+                JsonObject definition = element.getAsJsonObject();
+                if (id.equalsIgnoreCase(definition.has("id") ? definition.get("id").getAsString() : "")
+                        && oldName.equals(definition.has("displayName") ? definition.get("displayName").getAsString() : "")) {
+                    definition.addProperty("displayName", newName);
+                }
+            }
+        }
     }
     private static String profileIdForMode(String modeId) { return modeId == null ? GameModeRegistry.TEAM_DEATHMATCH : modeId; }
     private static boolean validProfileId(String id) { return SFGameId.isValid(id); }

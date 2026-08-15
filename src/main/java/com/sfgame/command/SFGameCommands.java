@@ -20,6 +20,11 @@ import com.sfgame.data.PointActivationStrategy;
 import com.sfgame.data.SquareCaptureRegion;
 import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.BreakthroughSectorDefinition;
+import com.sfgame.data.CtfVariant;
+import com.sfgame.data.CarrierRestriction;
+import com.sfgame.data.CtfForwardFlagDefinition;
+import com.sfgame.data.CtfHomeFlagDefinition;
+import com.sfgame.data.CaptureTheFlagMapConfig;
 import com.sfgame.game.GameModeDefinition;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.MatchManager;
@@ -50,8 +55,13 @@ public final class SFGameCommands {
             "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
             "attackerCaptainCaptureWeight", "defenderCaptureWeight"};
+    private static final String[] CTF_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
+            "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "ctfFlagReturnSeconds",
+            "ctfHomeCaptureTimeSeconds"};
     private static final Map<UUID, ArenaPosition> POINT_POS_1 = new HashMap<>();
     private static final Map<UUID, ArenaPosition> POINT_POS_2 = new HashMap<>();
+    private static final Map<UUID, ArenaPosition> CTF_POS_1 = new HashMap<>();
+    private static final Map<UUID, ArenaPosition> CTF_POS_2 = new HashMap<>();
 
     private static final SuggestionProvider<CommandSourceStack> TEAM_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(context.getSource().getServer().getScoreboard().getTeamNames(), builder);
@@ -66,6 +76,7 @@ public final class SFGameCommands {
         java.util.stream.Stream<String> keys = java.util.Arrays.stream(COMMON_RULE_KEYS);
         if (GameModeRegistry.DOMINATION.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(DOMINATION_RULE_KEYS));
         if (GameModeRegistry.BREAKTHROUGH.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(BREAKTHROUGH_RULE_KEYS));
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(CTF_RULE_KEYS));
         return SharedSuggestionProvider.suggest(keys, builder);
     };
     private static final SuggestionProvider<CommandSourceStack> MODE_SUGGESTIONS = (context, builder) ->
@@ -89,6 +100,12 @@ public final class SFGameCommands {
                 .then(Commands.literal("reload").requires(s -> s.hasPermission(2)).executes(SFGameCommands::reload))
                 .then(Commands.literal("joinnow").requires(s -> s.hasPermission(2))
                         .then(Commands.argument("player", EntityArgument.player()).executes(SFGameCommands::joinNow)))
+                // All map region tools share these two selection commands.  The
+                // selected mode decides which in-memory selection is updated.
+                .then(Commands.literal("pos1").requires(s -> s.hasPermission(2))
+                        .executes(c -> universalPosition(c, true)))
+                .then(Commands.literal("pos2").requires(s -> s.hasPermission(2))
+                        .executes(c -> universalPosition(c, false)))
                 .then(Commands.literal("spawn").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("setdefault")
                                 .then(Commands.literal("lobby").executes(SFGameCommands::setDefaultLobby)))
@@ -119,8 +136,6 @@ public final class SFGameCommands {
                                 .then(Commands.literal("yellow").executes(c -> spawnClear(c, TeamSide.YELLOW)))
                                 .then(Commands.literal("green").executes(c -> spawnClear(c, TeamSide.GREEN)))))
                 .then(Commands.literal("point").requires(s -> s.hasPermission(2))
-                        .then(Commands.literal("pos1").executes(c -> pointPosition(c, true)))
-                        .then(Commands.literal("pos2").executes(c -> pointPosition(c, false)))
                         .then(Commands.literal("add")
                                 .then(Commands.literal("box").then(Commands.argument("point", StringArgumentType.word())
                                         .executes(SFGameCommands::pointAddBox)))
@@ -184,28 +199,16 @@ public final class SFGameCommands {
                                 .then(Commands.literal("yellow").executes(c -> setTeam(c, TeamSide.YELLOW)))
                                 .then(Commands.literal("green").executes(c -> setTeam(c, TeamSide.GREEN)))
                                 .then(Commands.literal("random").executes(c -> setTeam(c, TeamSide.NONE)))))
+                        // Also accept the natural `/team set random @a` order;
+                        // the documented players-first form remains supported.
+                        .then(Commands.literal("random").then(Commands.argument("players", EntityArgument.players())
+                                .executes(c -> setTeam(c, TeamSide.NONE))))
                         .then(Commands.literal("remove").then(Commands.argument("players", EntityArgument.players())
                                 .executes(SFGameCommands::removeTeam))))
-                .then(Commands.literal("rules").requires(s -> s.hasPermission(2))
-                        .then(Commands.literal("list").executes(SFGameCommands::rulesList))
-                        .then(Commands.literal("reset").executes(SFGameCommands::rulesReset))
-                        .then(Commands.literal("get").then(Commands.argument("key", StringArgumentType.word())
-                                .suggests(RULE_SUGGESTIONS).executes(SFGameCommands::rulesGet)))
-                        .then(Commands.literal("set")
-                                .then(Commands.literal("captureUsePlayerDifference")
-                                        .then(Commands.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> rulesSetBoolean(context, "captureUsePlayerDifference"))))
-                                .then(Commands.literal("attackerCaptainGlowing")
-                                        .then(Commands.argument("value", BoolArgumentType.bool())
-                                                .executes(context -> rulesSetBoolean(context, "attackerCaptainGlowing"))))
-                                .then(Commands.literal("captureDifferenceCoefficient")
-                                        .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0)).executes(c -> rulesSetDouble(c, "captureDifferenceCoefficient"))))
-                                .then(Commands.literal("attackerCaptainCaptureWeight")
-                                        .then(Commands.argument("value", DoubleArgumentType.doubleArg(1.0, 10.0)).executes(c -> rulesSetDouble(c, "attackerCaptainCaptureWeight"))))
-                                .then(Commands.literal("defenderCaptureWeight")
-                                        .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0)).executes(c -> rulesSetDouble(c, "defenderCaptureWeight"))))
-                                .then(Commands.argument("key", StringArgumentType.word()).suggests(RULE_SUGGESTIONS)
-                                        .then(Commands.argument("value", IntegerArgumentType.integer(0)).executes(SFGameCommands::rulesSet)))))
+                .then(ruleCommands("rule"))
+                // Keep the old plural spelling as a compatibility alias for
+                // existing servers, while the singular command is canonical.
+                .then(ruleCommands("rules"))
                 .then(Commands.literal("class").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("reload").executes(SFGameCommands::classReload))
                         .then(Commands.literal("validate").executes(SFGameCommands::classValidate))
@@ -220,6 +223,8 @@ public final class SFGameCommands {
                                 .then(Commands.argument("class", StringArgumentType.word()).suggests(CAPTAIN_CLASS_SUGGESTIONS)
                                         .executes(SFGameCommands::classSetCaptain)))))
                 .then(breakthroughCommands())
+                .then(ctfCommands())
+                .then(shopCommands())
                 .then(sectorCommands())
                 .then(captainCommands()));
     }
@@ -234,6 +239,445 @@ public final class SFGameCommands {
                 .then(Commands.literal("roles").then(Commands.argument("attacker", StringArgumentType.word())
                         .then(Commands.argument("defender", StringArgumentType.word()).executes(SFGameCommands::breakthroughRoles))))
                 .then(Commands.literal("status").executes(SFGameCommands::breakthroughStatus));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> ctfCommands() {
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("ctf").requires(source -> source.hasPermission(2));
+        root.then(Commands.literal("variant")
+                .then(Commands.literal("classic").executes(c -> ctfVariant(c, CtfVariant.CLASSIC)))
+                .then(Commands.literal("assault").executes(c -> ctfVariant(c, CtfVariant.ASSAULT)))
+                .then(Commands.literal("territory").executes(c -> ctfVariant(c, CtfVariant.TERRITORY))));
+        root.then(Commands.literal("roles").then(Commands.argument("attacker", StringArgumentType.word())
+                .then(Commands.argument("defender", StringArgumentType.word()).executes(SFGameCommands::ctfRoles))));
+        root.then(Commands.literal("carrier")
+                .then(Commands.literal("normal").executes(c -> ctfCarrier(c, CarrierRestriction.NORMAL)))
+                .then(Commands.literal("movement_limited").executes(c -> ctfCarrier(c, CarrierRestriction.MOVEMENT_LIMITED)))
+                .then(Commands.literal("no_weapons").executes(c -> ctfCarrier(c, CarrierRestriction.NO_WEAPONS))));
+        root.then(Commands.literal("status").executes(SFGameCommands::ctfStatus));
+        LiteralArgumentBuilder<CommandSourceStack> home = Commands.literal("home");
+        home.then(Commands.literal("set").then(Commands.argument("team", StringArgumentType.word())
+                .then(Commands.literal("flag").executes(c -> ctfHomeSetPosition(c, "flag")))
+                .then(Commands.literal("depot").executes(c -> ctfHomeSetPosition(c, "depot")))
+                .then(Commands.literal("capture").then(Commands.literal("box").executes(c -> ctfHomeSetCapture(c, false)))
+                        .then(Commands.literal("square").then(Commands.argument("radius", IntegerArgumentType.integer(1, 256))
+                                .executes(c -> ctfHomeSetCapture(c, true)))))));
+        home.then(Commands.literal("clear").then(Commands.argument("team", StringArgumentType.word())
+                .then(Commands.literal("flag").executes(c -> ctfHomeClear(c, "flag")))
+                .then(Commands.literal("capture").executes(c -> ctfHomeClear(c, "capture")))
+                .then(Commands.literal("depot").executes(c -> ctfHomeClear(c, "depot")))));
+        home.then(Commands.literal("list").executes(SFGameCommands::ctfHomeList));
+        root.then(home);
+
+        LiteralArgumentBuilder<CommandSourceStack> forward = Commands.literal("forward");
+        forward.then(Commands.literal("add").then(Commands.literal("box").then(Commands.argument("owner", StringArgumentType.word())
+                .then(Commands.argument("id", StringArgumentType.word()).executes(SFGameCommands::ctfForwardAddBox)))));
+        forward.then(Commands.literal("add").then(Commands.literal("square").then(Commands.argument("owner", StringArgumentType.word())
+                .then(Commands.argument("id", StringArgumentType.word()).then(Commands.argument("radius", IntegerArgumentType.integer(1, 256))
+                        .executes(SFGameCommands::ctfForwardAddSquare))))));
+        forward.then(Commands.literal("set").then(Commands.literal("box").then(Commands.argument("id", StringArgumentType.word())
+                .executes(SFGameCommands::ctfForwardSetBox))));
+        forward.then(Commands.literal("set").then(Commands.literal("center").then(Commands.argument("id", StringArgumentType.word())
+                .executes(SFGameCommands::ctfForwardSetCenter))));
+        forward.then(Commands.literal("set").then(Commands.literal("radius").then(Commands.argument("id", StringArgumentType.word())
+                .then(Commands.argument("radius", IntegerArgumentType.integer(1, 256)).executes(SFGameCommands::ctfForwardSetRadius)))));
+        forward.then(Commands.literal("set").then(Commands.literal("height").then(Commands.argument("id", StringArgumentType.word())
+                .then(Commands.literal("full").executes(c -> ctfForwardSetHeight(c, true)))
+                .then(Commands.argument("minY", IntegerArgumentType.integer(-2048, 2048)).then(Commands.argument("maxY", IntegerArgumentType.integer(-2048, 2048))
+                        .executes(c -> ctfForwardSetHeight(c, false)))))));
+        forward.then(Commands.literal("set").then(Commands.literal("stand").then(Commands.argument("id", StringArgumentType.word())
+                .executes(SFGameCommands::ctfForwardSetStand))));
+        forward.then(Commands.literal("list").executes(SFGameCommands::ctfForwardList));
+        forward.then(Commands.literal("status").then(Commands.argument("id", StringArgumentType.word()).executes(SFGameCommands::ctfForwardStatus)));
+        forward.then(Commands.literal("remove").then(Commands.argument("id", StringArgumentType.word()).executes(SFGameCommands::ctfForwardRemove)));
+        forward.then(Commands.literal("clear").executes(SFGameCommands::ctfForwardClear));
+        root.then(forward);
+
+        LiteralArgumentBuilder<CommandSourceStack> build = Commands.literal("build");
+        build.then(Commands.literal("setbox").executes(SFGameCommands::ctfBuildSetBox))
+                .then(Commands.literal("clear").executes(SFGameCommands::ctfBuildClear))
+                .then(Commands.literal("allow").then(Commands.argument("block", StringArgumentType.word()).executes(SFGameCommands::ctfBuildAllow)))
+                .then(Commands.literal("disallow").then(Commands.argument("block", StringArgumentType.word()).executes(SFGameCommands::ctfBuildDisallow)))
+                .then(Commands.literal("allowlist").executes(SFGameCommands::ctfBuildAllowList))
+                .then(Commands.literal("snapshot").then(Commands.literal("save").executes(SFGameCommands::ctfSnapshotSave))
+                        .then(Commands.literal("restore").executes(SFGameCommands::ctfSnapshotRestore))
+                        .then(Commands.literal("status").executes(SFGameCommands::ctfSnapshotStatus))
+                        .then(Commands.literal("clear").executes(SFGameCommands::ctfSnapshotClear)));
+        root.then(build);
+        return root;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> shopCommands() {
+        return Commands.literal("shop")
+                .then(Commands.literal("list").executes(SFGameCommands::shopList))
+                .then(Commands.literal("buy").then(Commands.argument("item", StringArgumentType.word())
+                        .executes(SFGameCommands::shopBuy)))
+                .then(Commands.literal("reload").requires(source -> source.hasPermission(2))
+                        .executes(SFGameCommands::shopReload));
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> ruleCommands(String literal) {
+        return Commands.literal(literal).requires(s -> s.hasPermission(2))
+                .then(Commands.literal("list").executes(SFGameCommands::rulesList))
+                .then(Commands.literal("reset").executes(SFGameCommands::rulesReset))
+                .then(Commands.literal("get").then(Commands.argument("key", StringArgumentType.word())
+                        .suggests(RULE_SUGGESTIONS).executes(SFGameCommands::rulesGet)))
+                .then(Commands.literal("set")
+                        .then(Commands.literal("captureUsePlayerDifference")
+                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION, GameModeRegistry.BREAKTHROUGH,
+                                        GameModeRegistry.CAPTURE_THE_FLAG))
+                                .then(Commands.argument("value", BoolArgumentType.bool())
+                                        .executes(context -> rulesSetBoolean(context, "captureUsePlayerDifference"))))
+                        .then(Commands.literal("attackerCaptainGlowing")
+                                .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
+                                .then(Commands.argument("value", BoolArgumentType.bool())
+                                        .executes(context -> rulesSetBoolean(context, "attackerCaptainGlowing"))))
+                        .then(Commands.literal("captureDifferenceCoefficient")
+                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION, GameModeRegistry.BREAKTHROUGH,
+                                        GameModeRegistry.CAPTURE_THE_FLAG))
+                                .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0))
+                                        .executes(c -> rulesSetDouble(c, "captureDifferenceCoefficient"))))
+                        .then(Commands.literal("attackerCaptainCaptureWeight")
+                                .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
+                                .then(Commands.argument("value", DoubleArgumentType.doubleArg(1.0, 10.0))
+                                        .executes(c -> rulesSetDouble(c, "attackerCaptainCaptureWeight"))))
+                        .then(Commands.literal("defenderCaptureWeight")
+                                .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
+                                .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0))
+                                        .executes(c -> rulesSetDouble(c, "defenderCaptureWeight"))))
+                        // Integer-only mode rules are intentionally exposed as
+                        // literals too, so mode-inapplicable rules never appear
+                        // in command suggestions or execute accidentally.
+                        .then(Commands.literal("scoreIntervalSeconds")
+                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION))
+                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
+                                        .executes(SFGameCommands::rulesSet)))
+                        .then(Commands.literal("scorePerPoint")
+                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION))
+                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
+                                        .executes(SFGameCommands::rulesSet)))
+                        .then(Commands.literal("syncHoldSeconds")
+                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION))
+                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
+                                        .executes(SFGameCommands::rulesSet)))
+                        .then(Commands.literal("ctfFlagReturnSeconds")
+                                .requires(s -> modeIs(s, GameModeRegistry.CAPTURE_THE_FLAG))
+                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
+                                        .executes(SFGameCommands::rulesSet)))
+                        .then(Commands.literal("ctfHomeCaptureTimeSeconds")
+                                .requires(s -> modeIs(s, GameModeRegistry.CAPTURE_THE_FLAG))
+                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
+                                        .executes(SFGameCommands::rulesSet)))
+                        .then(Commands.argument("key", StringArgumentType.word()).suggests(RULE_SUGGESTIONS)
+                                .then(Commands.argument("value", IntegerArgumentType.integer(0)).executes(SFGameCommands::rulesSet))));
+    }
+
+    private static boolean modeIs(CommandSourceStack source, String... modes) {
+        String selected = SFGameSavedData.get(source.getServer()).selectedMode();
+        return java.util.Arrays.stream(modes).anyMatch(selected::equals);
+    }
+
+    private static int ctfVariant(CommandContext<CommandSourceStack> context, CtfVariant variant) {
+        if (!checkCtfEdit(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        data.activeMap().captureTheFlag().variant(variant); data.setDirty(); MatchManager.get().arenaSelectionChanged();
+        return success(context, "CTF variant set to " + variant.id());
+    }
+
+    private static int ctfRoles(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        TeamSide attacker = TeamSide.fromId(StringArgumentType.getString(context, "attacker"));
+        TeamSide defender = TeamSide.fromId(StringArgumentType.getString(context, "defender"));
+        try {
+            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            data.activeMap().captureTheFlag().roles(attacker, defender); data.setDirty(); MatchManager.get().arenaSelectionChanged();
+            return success(context, "CTF roles set to " + attacker.id() + " attack / " + defender.id() + " defend");
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int ctfCarrier(CommandContext<CommandSourceStack> context, CarrierRestriction restriction) {
+        if (!checkCtfEdit(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        data.activeMap().captureTheFlag().carrierRestriction(restriction); data.setDirty();
+        return success(context, "CTF carrier restriction set to " + restriction.id());
+    }
+
+    private static int ctfStatus(CommandContext<CommandSourceStack> context) {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (!GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode()) || data.activeMap() == null) return failure(context, "Select ctf mode first");
+        var config = data.activeMap().captureTheFlag();
+        send(context, "variant=" + config.variant().id() + ", carrierRestriction=" + config.carrierRestriction().id()
+                + ", attacker=" + config.attacker().id() + ", defender=" + config.defender().id()
+                + ", homes=" + config.homes().size() + ", forwardFlags=" + config.forwardFlags().size());
+        return config.validate(data.activeMap().enabledTeams()).isEmpty() ? 1 : 0;
+    }
+
+    private static int ctfPosition(CommandContext<CommandSourceStack> context, boolean first)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        (first ? CTF_POS_1 : CTF_POS_2).put(player.getUUID(), ArenaPosition.from(player));
+        return success(context, "Set CTF pos" + (first ? "1" : "2"));
+    }
+
+    private static int ctfHomeSetPosition(CommandContext<CommandSourceStack> context, String type)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        TeamSide side = TeamSide.fromId(StringArgumentType.getString(context, "team"));
+        if (side == TeamSide.NONE) return failure(context, "Unknown team");
+        CtfHomeFlagDefinition home = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag().home(side);
+        ArenaPosition position = ArenaPosition.from(context.getSource().getPlayerOrException());
+        if ("flag".equals(type)) home.flagPosition(position); else home.depotPosition(position);
+        dirty(context); return success(context, "Set " + side.id() + " home " + type + " position");
+    }
+
+    private static int ctfHomeSetCapture(CommandContext<CommandSourceStack> context, boolean square)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        TeamSide side = TeamSide.fromId(StringArgumentType.getString(context, "team"));
+        if (side == TeamSide.NONE) return failure(context, "Unknown team");
+        CaptureRegion region;
+        try {
+            if (square) region = SquareCaptureRegion.centeredAt(ArenaPosition.from(context.getSource().getPlayerOrException()),
+                    IntegerArgumentType.getInteger(context, "radius"));
+            else {
+                ServerPlayer player = context.getSource().getPlayerOrException();
+                ArenaPosition first = CTF_POS_1.get(player.getUUID()), second = CTF_POS_2.get(player.getUUID());
+                if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
+                if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
+                region = new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
+                        Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
+            }
+            var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
+            config.validateHomeCaptureRegion(side, region);
+            config.home(side).captureRegion(region);
+            dirty(context); return success(context, "Set " + side.id() + " capture region");
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int ctfHomeClear(CommandContext<CommandSourceStack> context, String type) {
+        if (!checkCtfEdit(context)) return 0;
+        TeamSide side = TeamSide.fromId(StringArgumentType.getString(context, "team"));
+        if (side == TeamSide.NONE) return failure(context, "Unknown team");
+        CtfHomeFlagDefinition home = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag().home(side);
+        if ("flag".equals(type)) home.flagPosition(null); else if ("capture".equals(type)) home.captureRegion(null); else home.depotPosition(null);
+        dirty(context); return success(context, "Cleared " + side.id() + " home " + type);
+    }
+
+    private static int ctfHomeList(CommandContext<CommandSourceStack> context) {
+        if (!checkCtf(context)) return 0;
+        var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
+        config.homes().forEach(home -> send(context, home.team().id() + ": flag=" + (home.flagPosition() != null)
+                + ", capture=" + (home.captureRegion() != null) + ", depot=" + (home.depotPosition() != null)));
+        return config.homes().size();
+    }
+
+    private static int ctfForwardAddBox(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        ArenaPosition first = CTF_POS_1.get(player.getUUID()), second = CTF_POS_2.get(player.getUUID());
+        if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
+        if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
+        CaptureRegion region = new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
+                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
+        return ctfForwardAdd(context, region, player);
+    }
+
+    private static int ctfForwardAddSquare(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        CaptureRegion region = SquareCaptureRegion.centeredAt(ArenaPosition.from(player), IntegerArgumentType.getInteger(context, "radius"));
+        return ctfForwardAdd(context, region, player);
+    }
+
+    private static int ctfForwardAdd(CommandContext<CommandSourceStack> context, CaptureRegion region, ServerPlayer player) {
+        TeamSide owner = TeamSide.fromId(StringArgumentType.getString(context, "owner"));
+        if (owner == TeamSide.NONE) return failure(context, "Unknown owner team");
+        String id = StringArgumentType.getString(context, "id");
+        var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
+        int order = config.forwardFlags().stream().mapToInt(CtfForwardFlagDefinition::order).max().orElse(0) + 1;
+        try {
+            config.addForward(new CtfForwardFlagDefinition(id, owner, region, ArenaPosition.from(player), order));
+            dirty(context); return success(context, "Added CTF forward flag " + id);
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int ctfForwardSetBox(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException(); ArenaPosition first = CTF_POS_1.get(player.getUUID()), second = CTF_POS_2.get(player.getUUID());
+        if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
+        if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
+        return ctfReplaceForward(context, old -> old.withRegion(new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
+                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), old.region().minY(), old.region().maxY())));
+    }
+
+    private static int ctfForwardSetCenter(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ArenaPosition center = ArenaPosition.from(context.getSource().getPlayerOrException());
+        return ctfReplaceForward(context, old -> old.region() instanceof SquareCaptureRegion square ? old.withRegion(square.withCenter(center)) : throwIllegal("Forward flag is not square"));
+    }
+
+    private static int ctfForwardSetRadius(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        int radius = IntegerArgumentType.getInteger(context, "radius");
+        return ctfReplaceForward(context, old -> old.region() instanceof SquareCaptureRegion square ? old.withRegion(square.withRadius(radius)) : throwIllegal("Forward flag is not square"));
+    }
+
+    private static int ctfForwardSetHeight(CommandContext<CommandSourceStack> context, boolean full) {
+        if (!checkCtfEdit(context)) return 0;
+        Integer min = full ? null : IntegerArgumentType.getInteger(context, "minY"), max = full ? null : IntegerArgumentType.getInteger(context, "maxY");
+        return ctfReplaceForward(context, old -> old.withRegion(old.region().withHeight(min, max)));
+    }
+
+    private static int ctfForwardSetStand(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ArenaPosition position = ArenaPosition.from(context.getSource().getPlayerOrException());
+        return ctfReplaceForward(context, old -> old.withStand(position));
+    }
+
+    private static CtfForwardFlagDefinition throwIllegal(String message) { throw new IllegalArgumentException(message); }
+
+    private static int ctfReplaceForward(CommandContext<CommandSourceStack> context, java.util.function.Function<CtfForwardFlagDefinition, CtfForwardFlagDefinition> function) {
+        var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
+        String id = StringArgumentType.getString(context, "id");
+        try { CtfForwardFlagDefinition old = config.forward(id).orElseThrow(() -> new IllegalArgumentException("Unknown forward flag: " + id));
+            config.replaceForward(id, function.apply(old)); dirty(context); return success(context, "Updated forward flag " + id); }
+        catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int ctfForwardList(CommandContext<CommandSourceStack> context) {
+        if (!checkCtf(context)) return 0;
+        var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
+        config.forwardFlags().forEach(flag -> send(context, flag.order() + ": " + flag.id() + " owner=" + flag.owner().id() + " " + regionText(flag.region())));
+        return config.forwardFlags().size();
+    }
+
+    private static int ctfForwardStatus(CommandContext<CommandSourceStack> context) {
+        if (!checkCtf(context)) return 0; String id = StringArgumentType.getString(context, "id");
+        CtfForwardFlagDefinition flag = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag().forward(id).orElse(null);
+        if (flag == null) return failure(context, "Unknown forward flag: " + id);
+        send(context, flag.id() + " owner=" + flag.owner().id() + " order=" + flag.order() + " " + regionText(flag.region())); return 1;
+    }
+
+    private static int ctfForwardRemove(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0; String id = StringArgumentType.getString(context, "id");
+        var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
+        if (!config.removeForward(id)) return failure(context, "Unknown forward flag: " + id); dirty(context); return success(context, "Removed forward flag " + id);
+    }
+
+    private static int ctfForwardClear(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0; var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag(); int count = config.forwardFlags().size();
+        config.clearForward(); dirty(context); return success(context, "Cleared " + count + " forward flag(s)");
+    }
+
+    private static int ctfBuildPosition(CommandContext<CommandSourceStack> context, boolean first)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        (first ? CTF_POS_1 : CTF_POS_2).put(player.getUUID(), ArenaPosition.from(player));
+        return success(context, "Set CTF build pos" + (first ? "1" : "2"));
+    }
+
+    private static int ctfBuildSetBox(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        if (!checkCtfEdit(context)) return 0;
+        ServerPlayer player = context.getSource().getPlayerOrException(); ArenaPosition first = CTF_POS_1.get(player.getUUID()), second = CTF_POS_2.get(player.getUUID());
+        if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
+        if (!first.dimension().equals(second.dimension())) return failure(context, "Build corners must be in the same dimension");
+        var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
+        config.build().region(new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
+                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null));
+        dirty(context); return success(context, "Set CTF build box");
+    }
+
+    private static int ctfBuildClear(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag().build().clearRegion(); dirty(context);
+        return success(context, "Cleared CTF build box");
+    }
+
+    private static int ctfBuildAllow(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        try {
+            String id = StringArgumentType.getString(context, "block");
+            SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag().build().allow(id); dirty(context);
+            return success(context, "Allowed block " + id);
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int ctfBuildDisallow(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        try {
+            String id = StringArgumentType.getString(context, "block");
+            var build = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag().build();
+            if (!build.disallow(id)) return failure(context, "Block was not in the allowlist: " + id);
+            dirty(context); return success(context, "Disallowed block " + id);
+        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+    }
+
+    private static int ctfBuildAllowList(CommandContext<CommandSourceStack> context) {
+        if (!checkCtf(context)) return 0;
+        var build = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag().build();
+        build.allowedBlocks().forEach(id -> send(context, id)); return build.allowedBlocks().size();
+    }
+
+    private static int ctfSnapshotSave(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            com.sfgame.game.CtfBuildSnapshotService.save(context.getSource().getServer(), data.activeMap()); data.setDirty();
+            return success(context, "Saved CTF map snapshot");
+        } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not save CTF snapshot" : exception.getMessage()); }
+    }
+
+    private static int ctfSnapshotRestore(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            com.sfgame.game.CtfBuildSnapshotService.restore(context.getSource().getServer(), data.activeMap());
+            return success(context, "Restored CTF map snapshot");
+        } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not restore CTF snapshot" : exception.getMessage()); }
+    }
+
+    private static int ctfSnapshotStatus(CommandContext<CommandSourceStack> context) {
+        if (!checkCtf(context)) return 0; SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        send(context, "buildBox=" + (data.activeMap().captureTheFlag().build().region() != null)
+                + ", snapshot=" + com.sfgame.game.CtfBuildSnapshotService.exists(context.getSource().getServer(), data.activeMap())); return 1;
+    }
+
+    private static int ctfSnapshotClear(CommandContext<CommandSourceStack> context) {
+        if (!checkCtfEdit(context)) return 0;
+        try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer()); com.sfgame.game.CtfBuildSnapshotService.clear(context.getSource().getServer(), data.activeMap()); data.setDirty(); return success(context, "Cleared CTF map snapshot"); }
+        catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not clear CTF snapshot" : exception.getMessage()); }
+    }
+
+    private static int shopList(CommandContext<CommandSourceStack> context) {
+        var registry = MatchManager.get().ctfShop();
+        registry.items().forEach(item -> send(context, item.id() + " - " + item.name() + " (" + item.price() + ")"));
+        registry.errors().forEach(error -> context.getSource().sendFailure(Component.literal(error)));
+        return registry.items().size();
+    }
+
+    private static int shopBuy(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        String item = StringArgumentType.getString(context, "item");
+        return MatchManager.get().ctfPurchase(player, item) ? success(context, "Purchased " + item) : failure(context, "Could not purchase " + item);
+    }
+
+    private static int shopReload(CommandContext<CommandSourceStack> context) {
+        List<String> errors = MatchManager.get().ctfShop().reload();
+        if (!errors.isEmpty()) { errors.forEach(error -> context.getSource().sendFailure(Component.literal(error))); return 0; }
+        return success(context, "Reloaded CTF shop");
+    }
+
+    private static boolean checkCtf(CommandContext<CommandSourceStack> context) {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        return GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode()) && data.activeMap() != null;
+    }
+    private static boolean checkCtfEdit(CommandContext<CommandSourceStack> context) {
+        if (!checkCtf(context)) { failure(context, "Select ctf mode first"); return false; }
+        if (!MatchManager.get().canChangeArena()) { failure(context, "Cannot edit CTF map during a match"); return false; }
+        return true;
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> sectorCommands() {
@@ -445,12 +889,31 @@ public final class SFGameCommands {
         return success(context, "Set capture point pos" + (first ? "1" : "2") + " to " + positionText(position));
     }
 
+    private static int universalPosition(CommandContext<CommandSourceStack> context, boolean first)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        String mode = data.selectedMode();
+        if (!GameModeRegistry.DOMINATION.equals(mode) && !GameModeRegistry.BREAKTHROUGH.equals(mode)
+                && !GameModeRegistry.CAPTURE_THE_FLAG.equals(mode)) {
+            return failure(context, "The selected mode has no region position tool");
+        }
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit regions during a match");
+        ServerPlayer player = context.getSource().getPlayerOrException();
+        ArenaPosition position = ArenaPosition.from(player);
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(mode)) {
+            (first ? CTF_POS_1 : CTF_POS_2).put(player.getUUID(), position);
+        } else {
+            (first ? POINT_POS_1 : POINT_POS_2).put(player.getUUID(), position);
+        }
+        return success(context, "Set " + mode + " pos" + (first ? "1" : "2") + " to " + positionText(position));
+    }
+
     private static int pointAddBox(CommandContext<CommandSourceStack> context)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         if (!checkPointEdit(context)) return 0;
         ServerPlayer player = context.getSource().getPlayerOrException();
         ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
-        if (first == null || second == null) return failure(context, "Set point pos1 and pos2 first");
+        if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
         try {
             addPoint(context, new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
@@ -483,7 +946,7 @@ public final class SFGameCommands {
         if (!checkPointEdit(context)) return 0;
         ServerPlayer player = context.getSource().getPlayerOrException();
         ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
-        if (first == null || second == null) return failure(context, "Set point pos1 and pos2 first");
+        if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
         return replacePointRegion(context, existing -> new BoxCaptureRegion(first.dimension(),
                 Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
@@ -709,7 +1172,7 @@ public final class SFGameCommands {
         if (!checkBreakthroughEdit(context)) return 0;
         ServerPlayer player = context.getSource().getPlayerOrException();
         ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
-        if (first == null || second == null) return failure(context, "Set point pos1 and pos2 first");
+        if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
         CaptureRegion region = new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
                 Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
@@ -738,7 +1201,7 @@ public final class SFGameCommands {
         if (!checkBreakthroughEdit(context)) return 0;
         ServerPlayer player = context.getSource().getPlayerOrException();
         ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
-        if (first == null || second == null) return failure(context, "Set point pos1 and pos2 first");
+        if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
         return replaceSectorPoint(context, existing -> new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()),
                 Math.max(first.x(), second.x()), Math.min(first.z(), second.z()), Math.max(first.z(), second.z()),
@@ -958,6 +1421,7 @@ public final class SFGameCommands {
         Collection<ServerPlayer> players = EntityArgument.getPlayers(context, "players");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         MatchManager manager = MatchManager.get();
+        manager.teams().ensureDefaultTeams(context.getSource().getServer(), data);
         long assigned = context.getSource().getServer().getPlayerList().getPlayers().stream()
                 .filter(p -> manager.teams().sideOf(p, data) != TeamSide.NONE).count();
         long newPlayers = players.stream().filter(p -> manager.teams().sideOf(p, data) == TeamSide.NONE).count();
@@ -968,6 +1432,7 @@ public final class SFGameCommands {
         for (ServerPlayer player : players) {
             TeamSide target = side == TeamSide.NONE
                     ? manager.teams().balancedSide(context.getSource().getServer(), data) : side;
+            if (target == TeamSide.NONE) return failure(context, "No bound vanilla team is available for random assignment");
             if (manager.teams().assign(player, target, data)) {
                 manager.redeploy(player);
                 changed++;
@@ -1113,11 +1578,25 @@ public final class SFGameCommands {
     }
 
     private static String ruleValue(MatchRules rules, String key) {
+        if (!GameModeRegistry.DOMINATION.equals(rules.modeId())
+                && !GameModeRegistry.BREAKTHROUGH.equals(rules.modeId())
+                && !GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId())
+                && isCaptureOnlyRule(key)) {
+            throw new IllegalArgumentException(key + " is only available in a capture mode");
+        }
         if (!GameModeRegistry.DOMINATION.equals(rules.modeId()) && isDominationOnlyRule(key)) {
             throw new IllegalArgumentException(key + " is only available in domination mode");
         }
         if (!GameModeRegistry.BREAKTHROUGH.equals(rules.modeId()) && isBreakthroughOnlyRule(key)) {
             throw new IllegalArgumentException(key + " is only available in breakthrough mode");
+        }
+        if (!GameModeRegistry.BREAKTHROUGH.equals(rules.modeId())
+                && !GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId())
+                && key.equals("attackerTickets")) {
+            throw new IllegalArgumentException(key + " is only available in breakthrough or ctf mode");
+        }
+        if (!GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId()) && isCtfOnlyRule(key)) {
+            throw new IllegalArgumentException(key + " is only available in ctf mode");
         }
         return switch (key) {
             case "maxPlayers" -> Integer.toString(rules.maxPlayers());
@@ -1141,6 +1620,8 @@ public final class SFGameCommands {
             case "attackerCaptainGlowing" -> Boolean.toString(rules.attackerCaptainGlowing());
             case "attackerCaptainCaptureWeight" -> Double.toString(rules.attackerCaptainCaptureWeight());
             case "defenderCaptureWeight" -> Double.toString(rules.defenderCaptureWeight());
+            case "ctfFlagReturnSeconds" -> Integer.toString(rules.ctfFlagReturnSeconds());
+            case "ctfHomeCaptureTimeSeconds" -> Integer.toString(rules.ctfHomeCaptureTimeSeconds());
             default -> throw new IllegalArgumentException("Unknown rule " + key);
         };
     }
@@ -1149,12 +1630,22 @@ public final class SFGameCommands {
         return key.equals("scoreIntervalSeconds") || key.equals("scorePerPoint") || key.equals("syncHoldSeconds");
     }
 
+    private static boolean isCaptureOnlyRule(String key) {
+        return key.equals("captureTimeSeconds") || key.equals("captureUsePlayerDifference")
+                || key.equals("captureDifferenceCoefficient") || key.equals("captureMaxMultiplier");
+    }
+
     private static boolean isBreakthroughOnlyRule(String key) {
-        return key.equals("attackerTickets") || key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
+        return key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
                 || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainGlowing")
                 || key.equals("attackerCaptainCaptureWeight")
                 || key.equals("defenderCaptureWeight");
     }
+
+    private static boolean isCtfOnlyRule(String key) {
+        return key.equals("ctfFlagReturnSeconds") || key.equals("ctfHomeCaptureTimeSeconds");
+    }
+
 
     private static String rulesText(MatchRules r) {
         String common = "maxPlayers=" + r.maxPlayers() + ", scoreLimit=" + r.scoreLimit() + ", timeLimitSeconds=" + r.timeLimitSeconds()
@@ -1175,6 +1666,12 @@ public final class SFGameCommands {
                 + ", attackerCaptainGlowing=" + r.attackerCaptainGlowing()
                 + ", attackerCaptainCaptureWeight=" + r.attackerCaptainCaptureWeight()
                 + ", defenderCaptureWeight=" + r.defenderCaptureWeight();
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
+                + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
+                + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
+                + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()
+                + ", ctfFlagReturnSeconds=" + r.ctfFlagReturnSeconds()
+                + ", ctfHomeCaptureTimeSeconds=" + r.ctfHomeCaptureTimeSeconds();
         return common;
     }
 

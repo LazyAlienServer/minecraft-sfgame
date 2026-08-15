@@ -52,15 +52,29 @@ public final class MatchHudService {
             scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(runtime.tickets());
             scoreboard.getOrCreatePlayerScore(LEG_LINE, objective).setScore(runtime.leg());
             scoreboard.getOrCreatePlayerScore(SECTOR_LINE, objective).setScore(runtime.sectorNumber());
+        } else if (GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode())
+                && data.activeMap() != null
+                && data.activeMap().captureTheFlag().variant() == com.sfgame.data.CtfVariant.ASSAULT) {
+            scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(manager.captureTheFlag().attackerTickets());
+            scoreboard.resetPlayerScore(LEG_LINE, objective);
+            scoreboard.resetPlayerScore(SECTOR_LINE, objective);
         } else {
             scoreboard.resetPlayerScore(TICKETS_LINE, objective);
             scoreboard.resetPlayerScore(LEG_LINE, objective);
             scoreboard.resetPlayerScore(SECTOR_LINE, objective);
         }
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode()) && manager.phase() == MatchPhase.RUNNING) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                if (manager.state(player).respawning()) continue;
+                String currency = Integer.toString(manager.state(player).currency(GameModeRegistry.CAPTURE_THE_FLAG));
+                player.sendSystemMessage(Component.literal(manager.captureTheFlag().hudLine(player) + " · $" + currency), true);
+            }
+        }
     }
 
     private static String title(String modeId, int scoreLimit) {
         if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) return "SFGame BREAKTHROUGH";
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) return "SFGame CTF / " + scoreLimit;
         return "SFGame " + (GameModeRegistry.DOMINATION.equals(modeId) ? "DOMINATION" : "TDM") + " / " + scoreLimit;
     }
 

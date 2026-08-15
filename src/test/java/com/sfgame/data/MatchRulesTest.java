@@ -105,4 +105,17 @@ final class MatchRulesTest {
         assertEquals(2.5, restored.attackerCaptainCaptureWeight());
         assertEquals(1.6, restored.defenderCaptureWeight());
     }
+
+    @Test
+    void ctfRulesUseIndependentDefaultsAndPersistFlagTimers() {
+        MatchRules rules = new MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
+        assertEquals(3, rules.scoreLimit());
+        assertEquals(30, rules.ctfFlagReturnSeconds());
+        rules.ctfFlagReturnSeconds(45);
+        rules.ctfHomeCaptureTimeSeconds(20);
+        MatchRules restored = new MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
+        restored.load(rules.save());
+        assertEquals(45, restored.ctfFlagReturnSeconds());
+        assertEquals(20, restored.ctfHomeCaptureTimeSeconds());
+    }
 }

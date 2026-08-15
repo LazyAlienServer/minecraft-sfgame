@@ -7,6 +7,7 @@ public final class MatchRules {
     public static final int DEFAULT_MAX_PLAYERS = 10;
     public static final int DEFAULT_SCORE_LIMIT = 50;
     public static final int DEFAULT_DOMINATION_SCORE_LIMIT = 100;
+    public static final int DEFAULT_CTF_SCORE_LIMIT = 3;
     public static final int DEFAULT_TIME_LIMIT_SECONDS = 600;
     public static final int DEFAULT_START_COUNTDOWN_SECONDS = 5;
     public static final int DEFAULT_RESPAWN_SECONDS = 5;
@@ -36,6 +37,8 @@ public final class MatchRules {
     private boolean attackerCaptainGlowing;
     private double attackerCaptainCaptureWeight;
     private double defenderCaptureWeight;
+    private int ctfFlagReturnSeconds;
+    private int ctfHomeCaptureTimeSeconds;
 
     public MatchRules() { this(GameModeRegistry.TEAM_DEATHMATCH); }
     public MatchRules(String modeId) { this.modeId = modeId; reset(); }
@@ -61,6 +64,8 @@ public final class MatchRules {
     public boolean attackerCaptainGlowing() { return attackerCaptainGlowing; }
     public double attackerCaptainCaptureWeight() { return attackerCaptainCaptureWeight; }
     public double defenderCaptureWeight() { return defenderCaptureWeight; }
+    public int ctfFlagReturnSeconds() { return ctfFlagReturnSeconds; }
+    public int ctfHomeCaptureTimeSeconds() { return ctfHomeCaptureTimeSeconds; }
 
     public void maxPlayers(int value) { maxPlayers = clamp(value, 2, 128); }
     public void scoreLimit(int value) { scoreLimit = clamp(value, 1, 10000); }
@@ -83,10 +88,13 @@ public final class MatchRules {
     public void attackerCaptainGlowing(boolean value) { attackerCaptainGlowing = value; }
     public void attackerCaptainCaptureWeight(double value) { attackerCaptainCaptureWeight = clamp(value, 1.0, 10.0); }
     public void defenderCaptureWeight(double value) { defenderCaptureWeight = clamp(value, 0.1, 10.0); }
+    public void ctfFlagReturnSeconds(int value) { ctfFlagReturnSeconds = clamp(value, 5, 600); }
+    public void ctfHomeCaptureTimeSeconds(int value) { ctfHomeCaptureTimeSeconds = clamp(value, 1, 600); }
 
     public void reset() {
         maxPlayers = DEFAULT_MAX_PLAYERS;
-        scoreLimit = GameModeRegistry.DOMINATION.equals(modeId) ? DEFAULT_DOMINATION_SCORE_LIMIT : DEFAULT_SCORE_LIMIT;
+        scoreLimit = GameModeRegistry.DOMINATION.equals(modeId) ? DEFAULT_DOMINATION_SCORE_LIMIT
+                : GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId) ? DEFAULT_CTF_SCORE_LIMIT : DEFAULT_SCORE_LIMIT;
         timeLimitSeconds = DEFAULT_TIME_LIMIT_SECONDS;
         startCountdownSeconds = DEFAULT_START_COUNTDOWN_SECONDS;
         respawnSeconds = GameModeRegistry.BREAKTHROUGH.equals(modeId)
@@ -107,6 +115,8 @@ public final class MatchRules {
         attackerCaptainGlowing = true;
         attackerCaptainCaptureWeight = 2.0;
         defenderCaptureWeight = 1.4;
+        ctfFlagReturnSeconds = 30;
+        ctfHomeCaptureTimeSeconds = 15;
     }
 
     public CompoundTag save() {
@@ -124,6 +134,8 @@ public final class MatchRules {
         tag.putBoolean("AttackerCaptainGlowing", attackerCaptainGlowing);
         tag.putDouble("AttackerCaptainCaptureWeight", attackerCaptainCaptureWeight);
         tag.putDouble("DefenderCaptureWeight", defenderCaptureWeight);
+        tag.putInt("CtfFlagReturnSeconds", ctfFlagReturnSeconds);
+        tag.putInt("CtfHomeCaptureTimeSeconds", ctfHomeCaptureTimeSeconds);
         return tag;
     }
 
@@ -149,6 +161,8 @@ public final class MatchRules {
         if (tag.contains("AttackerCaptainGlowing")) attackerCaptainGlowing(tag.getBoolean("AttackerCaptainGlowing"));
         if (tag.contains("AttackerCaptainCaptureWeight")) attackerCaptainCaptureWeight(tag.getDouble("AttackerCaptainCaptureWeight"));
         if (tag.contains("DefenderCaptureWeight")) defenderCaptureWeight(tag.getDouble("DefenderCaptureWeight"));
+        if (tag.contains("CtfFlagReturnSeconds")) ctfFlagReturnSeconds(tag.getInt("CtfFlagReturnSeconds"));
+        if (tag.contains("CtfHomeCaptureTimeSeconds")) ctfHomeCaptureTimeSeconds(tag.getInt("CtfHomeCaptureTimeSeconds"));
     }
 
     private static int clamp(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }

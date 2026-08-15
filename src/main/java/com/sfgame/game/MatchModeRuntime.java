@@ -4,6 +4,7 @@ import com.sfgame.data.ArenaMap;
 import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.MatchRules;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 
 import java.util.List;
 import java.util.UUID;
@@ -17,6 +18,14 @@ public interface MatchModeRuntime {
     ModeTickResult tick(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules);
     default void onKill(TeamSide killer, MatchManager manager) { }
     default void onPlayerDeath(TeamSide victim, MatchManager manager) { }
+    default void onKill(ServerPlayer killer, TeamSide side, MatchManager manager) { onKill(side, manager); }
+    default void onPlayerDeath(ServerPlayer victim, TeamSide side, MatchManager manager) { onPlayerDeath(side, manager); }
+    default void onPlayerTeamChanged(ServerPlayer player, TeamSide oldSide, TeamSide newSide, MatchManager manager) { }
+    default void onPlayerLoggedOut(ServerPlayer player, MatchManager manager) { }
+    default boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state,
+                                   MatchManager manager) { return false; }
+    default boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state,
+                                  MatchManager manager) { return false; }
     default void onRuleChanged(String key, MatchRules rules) { }
     default ArenaPosition spawnFor(TeamSide side, ArenaMap map) { return map.randomSpawn(side); }
     default int remainingSeconds(MatchManager manager, MatchRules rules) {

@@ -108,7 +108,7 @@
     },
     {
       "id": "smg_assault",
-      "displayName": "冲锋枪突击手",
+      "displayName": "冲锋手",
       "description": "使用 P90、军刀与破片投掷物高速突破",
       "icon": "minecraft:crossbow",
       "maxHealth": 20.0,
@@ -161,8 +161,8 @@
     },
     {
       "id": "captain_tank",
-      "displayName": "坦克（队长加强版）",
-      "description": "使用 M249、重型军刀、双投掷物与强化重甲的队长职业",
+      "displayName": "坦克",
+      "description": "使用 M249、重型军刀、双投掷物与重型防护装备",
       "icon": "minecraft:netherite_chestplate",
       "maxHealth": 50.0,
       "movementSpeedMultiplier": 0.75,

@@ -135,7 +135,9 @@ public final class SFGameSavedData extends SavedData {
     public java.util.List<TeamSide> enabledTeams() {
         if (activeMap() == null) return java.util.List.of();
         return GameModeRegistry.BREAKTHROUGH.equals(selectedMode)
-                ? activeMap().breakthrough().teams() : activeMap().enabledTeams();
+                ? activeMap().breakthrough().teams()
+                : GameModeRegistry.CAPTURE_THE_FLAG.equals(selectedMode())
+                ? activeMap().captureTheFlag().teams(activeMap().enabledTeams()) : activeMap().enabledTeams();
     }
     @Nullable public ArenaPosition randomSpawn(TeamSide side) { return activeMap() == null ? null : activeMap().randomSpawn(side); }
     public void lobby(ArenaPosition value) { activeMapRequired().lobby(value); setDirty(); }
@@ -149,7 +151,7 @@ public final class SFGameSavedData extends SavedData {
 
     @Override
     public CompoundTag save(CompoundTag tag) {
-        tag.putInt("DataVersion", 9);
+        tag.putInt("DataVersion", 10);
         tag.putString("RedTeam", redTeam);
         tag.putString("BlueTeam", blueTeam);
         tag.putString("YellowTeam", yellowTeam);
@@ -252,6 +254,7 @@ public final class SFGameSavedData extends SavedData {
         if (map == null || (map.lobby() == null && defaultLobby == null)) return false;
         if (GameModeRegistry.DOMINATION.equals(modeId)) return map.enabledTeams().size() >= 2 && map.domination().configured();
         if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) return map.breakthrough().configured();
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) return map.captureTheFlag().validate(map.enabledTeams()).isEmpty();
         return map.enabledTeams().size() >= 2;
     }
 

@@ -107,14 +107,19 @@ public final class SFGameEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void livingAttack(LivingAttackEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer victim)) return;
+        if (event.getEntity().level().isClientSide) return;
         MatchManager manager = MatchManager.get();
+        Player sourcePlayer = event.getSource().getEntity() instanceof Player player ? player
+                : event.getSource().getDirectEntity() instanceof Player player ? player : null;
+        if (sourcePlayer instanceof ServerPlayer attacker && manager.ctfCarrierCannotUseWeapons(attacker)) {
+            event.setCanceled(true);
+            return;
+        }
+        if (!(event.getEntity() instanceof ServerPlayer victim)) return;
         if (isSafePhase(manager.phase()) || manager.modeBlocksCombat()) {
             event.setCanceled(true);
             return;
         }
-        Player sourcePlayer = event.getSource().getEntity() instanceof Player player ? player
-                : event.getSource().getDirectEntity() instanceof Player player ? player : null;
         if (sourcePlayer instanceof ServerPlayer attacker && manager.areFriendly(attacker, victim)) {
             event.setCanceled(true);
             return;
@@ -137,6 +142,10 @@ public final class SFGameEvents {
     @SubscribeEvent
     public static void gunFire(GunFireEvent event) {
         if (event.getLogicalSide() == LogicalSide.SERVER && event.getShooter() instanceof ServerPlayer player) {
+            if (MatchManager.get().ctfCarrierCannotUseWeapons(player)) {
+                event.setCanceled(true);
+                return;
+            }
             MatchManager.get().removeProtection(player);
         }
     }
@@ -148,12 +157,14 @@ public final class SFGameEvents {
 
     @SubscribeEvent
     public static void breakBlock(BlockEvent.BreakEvent event) {
-        if (event.getPlayer() instanceof ServerPlayer player && MatchManager.get().state(player).participating()) event.setCanceled(true);
+        if (event.getPlayer() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
+                && !MatchManager.get().canBreakBlock(player, event.getPos(), event.getState())) event.setCanceled(true);
     }
 
     @SubscribeEvent
     public static void placeBlock(BlockEvent.EntityPlaceEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()) event.setCanceled(true);
+        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
+                && !MatchManager.get().canPlaceBlock(player, event.getPos(), event.getPlacedBlock())) event.setCanceled(true);
     }
 
     @SubscribeEvent

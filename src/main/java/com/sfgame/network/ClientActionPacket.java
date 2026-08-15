@@ -9,7 +9,7 @@ import java.util.function.Supplier;
 
 public record ClientActionPacket(Action action, String value) {
     public enum Action { REQUEST_SNAPSHOT, JOIN, LEAVE, SELECT_CLASS, SELECT_CAPTAIN_CLASS, CAPTAIN_VOTE, CAPTAIN_ABSTAIN,
-        SELECT_RESPAWN }
+        SELECT_RESPAWN, SHOP_BUY }
 
     public static void encode(ClientActionPacket packet, FriendlyByteBuf buffer) {
         buffer.writeEnum(packet.action);
@@ -40,6 +40,7 @@ public record ClientActionPacket(Action action, String value) {
                     } catch (IllegalArgumentException ignored) { }
                 }
                 case SELECT_RESPAWN -> manager.selectRespawn(player, packet.value);
+                case SHOP_BUY -> manager.ctfPurchase(player, packet.value);
             }
         });
         context.setPacketHandled(true);

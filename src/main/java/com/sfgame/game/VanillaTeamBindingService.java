@@ -51,6 +51,15 @@ public final class VanillaTeamBindingService {
 
     public TeamSide balancedSide(MinecraftServer server, SFGameSavedData data) {
         List<TeamSide> enabled = data.enabledTeams();
+        // Team commands are also useful while a map is still being prepared,
+        // before any spawn has been added.  In that case there is no spawned
+        // team list yet, so balance across the currently bound vanilla teams
+        // instead of returning NONE and making `team set ... random` fail.
+        if (enabled.isEmpty()) {
+            enabled = TeamSide.PLAYABLE.stream()
+                    .filter(side -> server.getScoreboard().getPlayerTeam(data.teamName(side)) != null)
+                    .toList();
+        }
         if (enabled.isEmpty()) return TeamSide.NONE;
         int minimum = enabled.stream().mapToInt(side -> count(server, data, side)).min().orElse(0);
         List<TeamSide> candidates = enabled.stream().filter(side -> count(server, data, side) == minimum).toList();

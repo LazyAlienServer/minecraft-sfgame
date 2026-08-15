@@ -21,6 +21,7 @@ public final class PlayerMatchState {
     private int kills;
     private int deaths;
     private boolean connected;
+    private final Map<String, Integer> currencies = new HashMap<>();
 
     public PlayerMatchState(UUID playerId) {
         this.playerId = playerId;
@@ -57,6 +58,9 @@ public final class PlayerMatchState {
     public void addDeath() { deaths++; }
     public boolean connected() { return connected; }
     public void connected(boolean value) { connected = value; }
+    public int currency(String modeId) { return currencies.getOrDefault(modeId, 0); }
+    public void currency(String modeId, int value) { currencies.put(modeId, Math.max(0, value)); }
+    public void addCurrency(String modeId, int amount) { currency(modeId, currency(modeId) + amount); }
 
     public void resetRoundStats() {
         kills = 0;
@@ -66,6 +70,7 @@ public final class PlayerMatchState {
         respawnTicks = 0;
         protectionTicks = 0;
         pendingImmediateJoin = false;
+        currencies.clear();
     }
 
     private static void putOrRemove(Map<String, String> map, String key, String value) {

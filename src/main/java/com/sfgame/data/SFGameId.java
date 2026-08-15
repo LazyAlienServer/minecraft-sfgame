@@ -2,6 +2,7 @@ package com.sfgame.data;
 
 import java.util.Locale;
 import java.util.regex.Pattern;
+import net.minecraft.resources.ResourceLocation;
 
 /** Shared validation for SFGame-owned identifiers. */
 public final class SFGameId {
@@ -22,6 +23,12 @@ public final class SFGameId {
 
     public static boolean isValidClass(String value) {
         return matches(value, CLASS);
+    }
+
+    public static String normalizeResource(String value) {
+        ResourceLocation id = ResourceLocation.tryParse(value == null ? "" : value.toLowerCase(Locale.ROOT));
+        if (id == null) throw new IllegalArgumentException("Invalid resource id: " + value);
+        return id.toString();
     }
 
     private static String normalize(String value, Pattern pattern, String type) {

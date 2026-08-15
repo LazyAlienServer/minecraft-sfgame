@@ -430,9 +430,9 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             return;
         }
         appearanceCaptain = captain;
-        ItemStack flag = captainFlag(attacker);
-        ItemStack equipped = player.getItemBySlot(EquipmentSlot.HEAD);
-        if (!isCaptainFlag(equipped) || !equipped.is(flag.getItem())) player.setItemSlot(EquipmentSlot.HEAD, flag);
+        // Captains are identified by the server-side glowing outline only.
+        // Their configured helmet remains untouched; CTF flag carriers use a
+        // separate head-slot marker in CaptureTheFlagRuntime.
         updateCaptainGlow(player, rules.attackerCaptainGlowing());
     }
 

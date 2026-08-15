@@ -11,12 +11,14 @@ public final class GameModeRegistry {
     public static final String TEAM_DEATHMATCH = "tdm";
     public static final String DOMINATION = "domination";
     public static final String BREAKTHROUGH = "breakthrough";
+    public static final String CAPTURE_THE_FLAG = "ctf";
     private static final Map<String, GameModeDefinition> MODES = new LinkedHashMap<>();
 
     static {
         register(new GameModeDefinition(TEAM_DEATHMATCH, "Team Deathmatch"));
         register(new GameModeDefinition(DOMINATION, "Domination"));
         register(new GameModeDefinition(BREAKTHROUGH, "Breakthrough"));
+        register(new GameModeDefinition(CAPTURE_THE_FLAG, "Capture the Flag"));
     }
 
     public static void register(GameModeDefinition mode) {
