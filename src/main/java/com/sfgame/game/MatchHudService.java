@@ -30,7 +30,7 @@ public final class MatchHudService {
             return;
         }
         SFGameSavedData data = SFGameSavedData.get(server);
-        MatchRules rules = data.rules();
+        MatchRules rules = manager.rules();
         if (objective == null) {
             objective = scoreboard.addObjective(OBJECTIVE_NAME, ObjectiveCriteria.DUMMY,
                     Component.literal(title(data.selectedMode(), rules.scoreLimit())), ObjectiveCriteria.RenderType.INTEGER);

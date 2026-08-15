@@ -85,7 +85,10 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame rule list
 /sfgame rule get <规则>
 /sfgame rule set <规则> <值>
+/sfgame rule inherit <base|地图ID>
 /sfgame rule reset
+
+/sfgame dev
 
 /sfgame class list
 /sfgame class validate
@@ -93,7 +96,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame class set <玩家> <职业ID>
 ```
 
-规则统一通过 `/sfgame rule` 管理。`list`、`get` 和命令补全只显示当前模式适用的规则；其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。规则及地图坐标保存在世界 SavedData 中，重启后保留。
+规则统一通过 `/sfgame rule` 管理，并按“模式 → 地图”保存。每个模式拥有一个 JSON 文件和一套基础规则，每张地图可以覆盖部分参数，也可以继承同模式的另一张地图；`list`、`get` 和命令补全只显示当前模式适用的规则，其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。
 
 ### 规则参数完整说明
 
@@ -132,7 +135,60 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame rule list
 /sfgame rule get scoreLimit
 /sfgame rule set scoreLimit 75
+/sfgame rule inherit base
 /sfgame rule reset
+```
+
+`rule set` 修改当前选中模式和地图的覆盖值，立即写入 JSON，并在正在进行的当前对局中实时生效，不需要执行 `reload`。`rule get` 与 `rule list` 显示继承合并后的最终值。`rule reset` 只清除当前地图的覆盖值并重新使用父级，不会重置模式基础规则；`rule inherit base` 继承本模式基础规则，`rule inherit <地图ID>` 继承同模式另一张已配置规则的地图。
+
+规则配置文件位于：
+
+```text
+config/sfgame/rules/tdm.json
+config/sfgame/rules/domination.json
+config/sfgame/rules/breakthrough.json
+config/sfgame/rules/ctf.json
+```
+
+文件结构如下。`rules` 是该模式基础规则；`maps` 中只需填写地图需要覆盖的参数。`parent: "base"` 表示继承基础规则，也可以填写同文件内另一个地图 ID。父级缺失或形成循环时，`/sfgame reload` 会报告错误并继续使用上一次有效配置。
+
+```json
+{
+  "rules": {
+    "maxPlayers": 10,
+    "scoreLimit": 50,
+    "timeLimitSeconds": 600
+  },
+  "maps": {
+    "default": {
+      "parent": "base",
+      "rules": {
+        "scoreLimit": 75
+      }
+    },
+    "night": {
+      "parent": "default",
+      "rules": {
+        "timeLimitSeconds": 900
+      }
+    }
+  }
+}
+```
+
+管理员手动编辑 JSON 后执行 `/sfgame reload` 热重载；重载在对局中也会立即替换当前地图的有效规则。首次生成文件时，SFGame 会把旧世界中按模式保存的规则写成各模式基础规则，已有参数不会直接丢失。
+
+单人开发测试使用全局命令 `/sfgame dev`。每次执行会切换开启/关闭状态；状态写入当前世界，切换模式或地图后仍然保持。开启后允许只有一名参赛玩家开局，但地图、出生点、队伍绑定、职业/TACZ 资源和模式配置仍必须有效：
+
+```text
+/sfgame dev
+/sfgame start
+```
+
+测试结束后再次执行同一命令即可关闭，恢复正式的双方（或多方）参赛人数检查：
+
+```text
+/sfgame dev
 ```
 
 `rule list`、`rule get`、`rule set` 会根据当前 `/sfgame mode select <模式ID>` 隐藏并拒绝其他模式专属参数。例如当前是 TDM 时，`scoreIntervalSeconds`、`attackerTickets` 和 `ctfFlagReturnSeconds` 都不能使用。
@@ -146,10 +202,11 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `/sfgame menu` | 为执行命令的玩家打开菜单；默认按键为 `M`。 |
 | `/sfgame leave` | 退出当前比赛。比赛未开始时只离开 SFGame 参赛队伍并留在原地；比赛进行中会进入旁观并排入下一局。 |
 | `/sfgame status` | 查看当前模式、地图、阶段、队伍人数、出生点和开赛校验错误。 |
+| `/sfgame dev` | 全局切换开发模式。开启后允许一名玩家开始测试局；再次执行关闭。权限等级要求为 2。 |
 | `/sfgame start` | 手动开始当前地图。会依次校验队伍、出生点、职业、点位/旗帜配置和人数。 |
 | `/sfgame stop` | 安全停止当前比赛、清理 HUD/实体并返回大厅。 |
 | `/sfgame reset` | 清空当前地图的比赛运行状态和比分；不会删除地图点位或职业文件。 |
-| `/sfgame reload` | 重新载入 SFGame 世界数据、职业配置和 CTF 商店；正在进行的比赛不会被强制替换装备。 |
+| `/sfgame reload` | 热重载职业、当前各模式/地图规则 JSON 和 CTF 商店。规则立即影响当前局；职业重载不会强制替换存活玩家装备。 |
 | `/sfgame joinnow <玩家>` | 管理员允许一名中途玩家立即加入当前局。当前人数达到 `maxPlayers` 或玩家未选有效职业时拒绝。 |
 | `/sfgame pos1`、`/sfgame pos2` | 记录执行者当前维度和坐标，供所有 box 区域命令使用。两点的维度必须相同；`pos1`/`pos2` 是全局临时选择，不是地图坐标。 |
 | `/sfgame mode list` | 列出 `tdm`、`domination`、`breakthrough`、`ctf` 等可用模式。 |
@@ -366,7 +423,7 @@ TDM 与占点默认包含：
 
 点内没有唯一人数最多的阵营时进度暂停；唯一领先方推进，中立点更换推进方会清除原挑战进度。已有归属点被争夺后先中立化，再由新阵营占领。占点人员必须是存活且参赛玩家，旁观、排队和重生倒计时玩家不计入。
 
-规则按模式独立保存。占点模式额外支持：
+规则按模式文件和地图独立保存。占点模式额外支持：
 
 ```text
 /sfgame rule set captureTimeSeconds <秒>

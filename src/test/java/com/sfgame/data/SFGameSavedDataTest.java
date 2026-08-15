@@ -108,6 +108,23 @@ final class SFGameSavedDataTest {
     }
 
     @Test
+    void devModeAllowsAOneTeamSandboxMap() {
+        SFGameSavedData data = new SFGameSavedData();
+        data.lobby(LOBBY);
+        data.addSpawn(com.sfgame.game.TeamSide.RED, RED);
+        assertFalse(data.isArenaConfigured());
+
+        data.devMode(true);
+
+        assertTrue(data.isArenaConfigured());
+        assertEquals(List.of(com.sfgame.game.TeamSide.RED), data.enabledTeams());
+
+        SFGameSavedData restored = SFGameSavedData.load(data.save(new CompoundTag()));
+        assertTrue(restored.devMode());
+        assertTrue(restored.isArenaConfigured());
+    }
+
+    @Test
     void persistsYellowAndGreenTeamBindingsAndSpawns() {
         SFGameSavedData source = new SFGameSavedData();
         source.yellowTeam("custom_yellow");

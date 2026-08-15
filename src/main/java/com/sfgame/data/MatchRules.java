@@ -171,6 +171,12 @@ public final class MatchRules {
         if (tag.contains("CtfHomeCaptureTimeSeconds")) ctfHomeCaptureTimeSeconds(tag.getInt("CtfHomeCaptureTimeSeconds"));
     }
 
+    public MatchRules copy() {
+        MatchRules copy = new MatchRules(modeId);
+        copy.load(save());
+        return copy;
+    }
+
     private static int clamp(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }
     private static double clamp(double value, double min, double max) { return Math.max(min, Math.min(max, value)); }
 }

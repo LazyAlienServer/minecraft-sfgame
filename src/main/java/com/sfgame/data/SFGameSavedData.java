@@ -25,6 +25,7 @@ public final class SFGameSavedData extends SavedData {
     private String greenTeam = "sfgame_green";
     private String selectedMode = GameModeRegistry.TEAM_DEATHMATCH;
     private String selectedMap = DEFAULT_MAP;
+    private boolean devMode;
     private ArenaPosition defaultLobby;
     private final Map<String, LinkedHashMap<String, ArenaMap>> modeMaps = new LinkedHashMap<>();
     private final Map<String, MatchRules> modeRules = new LinkedHashMap<>();
@@ -75,6 +76,8 @@ public final class SFGameSavedData extends SavedData {
     }
     public String selectedMode() { return selectedMode; }
     public String selectedMap() { return selectedMap; }
+    public boolean devMode() { return devMode; }
+    public void devMode(boolean value) { devMode = value; setDirty(); }
     public MatchRules rules() { return rules(selectedMode); }
     public MatchRules rules(String modeId) { return modeRules.computeIfAbsent(modeId, MatchRules::new); }
 
@@ -158,6 +161,7 @@ public final class SFGameSavedData extends SavedData {
         tag.putString("GreenTeam", greenTeam);
         tag.putString("SelectedMode", selectedMode);
         tag.putString("SelectedMap", selectedMap);
+        tag.putBoolean("DevMode", devMode);
         if (defaultLobby != null) tag.put("DefaultLobby", defaultLobby.save());
         ListTag modes = new ListTag();
         modeMaps.forEach((modeId, maps) -> {
@@ -184,6 +188,7 @@ public final class SFGameSavedData extends SavedData {
         if (tag.contains("BlueTeam")) data.blueTeam = tag.getString("BlueTeam");
         if (tag.contains("YellowTeam")) data.yellowTeam = tag.getString("YellowTeam");
         if (tag.contains("GreenTeam")) data.greenTeam = tag.getString("GreenTeam");
+        if (tag.contains("DevMode")) data.devMode = tag.getBoolean("DevMode");
         if (tag.contains("DefaultLobby")) data.defaultLobby = ArenaPosition.load(tag.getCompound("DefaultLobby"));
         if (tag.contains("Modes", Tag.TAG_LIST)) {
             data.modeMaps.clear();
@@ -252,10 +257,15 @@ public final class SFGameSavedData extends SavedData {
 
     private boolean mapConfigured(ArenaMap map, String modeId) {
         if (map == null || (map.lobby() == null && defaultLobby == null)) return false;
-        if (GameModeRegistry.DOMINATION.equals(modeId)) return map.enabledTeams().size() >= 2 && map.domination().configured();
+        // Dev mode is intentionally a player-count aid, but for the simple
+        // TDM/domination maps it also permits a one-team sandbox arena.  The
+        // specialised modes keep their own topology requirements (for
+        // example breakthrough still needs an attacker and defender).
+        int minimumTeams = devMode ? 1 : 2;
+        if (GameModeRegistry.DOMINATION.equals(modeId)) return map.enabledTeams().size() >= minimumTeams && map.domination().configured();
         if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) return map.breakthrough().configured();
         if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) return map.captureTheFlag().validate(map.enabledTeams()).isEmpty();
-        return map.enabledTeams().size() >= 2;
+        return map.enabledTeams().size() >= minimumTeams;
     }
 
 }

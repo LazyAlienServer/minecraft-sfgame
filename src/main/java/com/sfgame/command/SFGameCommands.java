@@ -87,6 +87,9 @@ public final class SFGameCommands {
     private static final SuggestionProvider<CommandSourceStack> MAP_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(SFGameSavedData.get(context.getSource().getServer()).maps().stream()
                     .map(ArenaMap::id), builder);
+    private static final SuggestionProvider<CommandSourceStack> RULE_PARENT_SUGGESTIONS = (context, builder) ->
+            SharedSuggestionProvider.suggest(java.util.stream.Stream.concat(java.util.stream.Stream.of("base"),
+                    SFGameSavedData.get(context.getSource().getServer()).maps().stream().map(ArenaMap::id)), builder);
     private static final SuggestionProvider<CommandSourceStack> BREAKTHROUGH_VEHICLE_SUGGESTIONS = (context, builder) -> {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         return SharedSuggestionProvider.suggest(data.activeMap() == null ? java.util.stream.Stream.empty()
@@ -106,6 +109,7 @@ public final class SFGameCommands {
                 .then(Commands.literal("stop").requires(s -> s.hasPermission(2)).executes(SFGameCommands::stop))
                 .then(Commands.literal("reset").requires(s -> s.hasPermission(2)).executes(SFGameCommands::reset))
                 .then(Commands.literal("reload").requires(s -> s.hasPermission(2)).executes(SFGameCommands::reload))
+                .then(Commands.literal("dev").requires(s -> s.hasPermission(2)).executes(SFGameCommands::toggleDev))
                 .then(Commands.literal("joinnow").requires(s -> s.hasPermission(2))
                         .then(Commands.argument("player", EntityArgument.player()).executes(SFGameCommands::joinNow)))
                 // All map region tools share these two selection commands.  The
@@ -361,6 +365,8 @@ public final class SFGameCommands {
                 .then(ctfCommands())
                 .then(Commands.literal("list").executes(SFGameCommands::rulesList))
                 .then(Commands.literal("reset").executes(SFGameCommands::rulesReset))
+                .then(Commands.literal("inherit").then(Commands.argument("parent", StringArgumentType.word())
+                        .suggests(RULE_PARENT_SUGGESTIONS).executes(SFGameCommands::rulesInherit)))
                 .then(Commands.literal("get").then(Commands.argument("key", StringArgumentType.word())
                         .suggests(RULE_SUGGESTIONS).executes(SFGameCommands::rulesGet)))
                 .then(Commands.literal("set")
@@ -816,6 +822,7 @@ public final class SFGameCommands {
         send(context, "Phase=" + manager.phase() + ", scores=" + TeamSide.PLAYABLE.stream()
                 .map(side -> side.id() + ":" + manager.score(side)).collect(java.util.stream.Collectors.joining(","))
                 + ", mode=" + data.selectedMode() + ", map=" + data.selectedMap()
+                + ", devMode=" + data.devMode()
                 + ", arenaConfigured=" + data.isArenaConfigured());
         List<String> errors = manager.validateStart();
         errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
@@ -842,9 +849,24 @@ public final class SFGameCommands {
     }
 
     private static int reload(CommandContext<CommandSourceStack> context) {
-        int result = classReload(context);
-        MatchManager.get().refreshCommandTree();
-        return result;
+        MatchManager manager = MatchManager.get();
+        int classResult = classReload(context);
+        List<String> ruleErrors = manager.reloadRuleConfigurations();
+        List<String> shopErrors = manager.ctfShop().reload();
+        ruleErrors.forEach(error -> context.getSource().sendFailure(Component.literal("Rules: " + error)));
+        shopErrors.forEach(error -> context.getSource().sendFailure(Component.literal("CTF shop: " + error)));
+        manager.refreshCommandTree();
+        return classResult > 0 && ruleErrors.isEmpty() && shopErrors.isEmpty() ? 1 : 0;
+    }
+
+    private static int toggleDev(CommandContext<CommandSourceStack> context) {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        boolean enabled = !data.devMode();
+        data.devMode(enabled);
+        MatchManager.get().arenaSelectionChanged();
+        return success(context, enabled
+                ? "Global dev mode enabled; solo matches may now start"
+                : "Global dev mode disabled; normal team player requirements restored");
     }
 
     private static int joinNow(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -1575,7 +1597,7 @@ public final class SFGameCommands {
         long assigned = context.getSource().getServer().getPlayerList().getPlayers().stream()
                 .filter(p -> manager.teams().sideOf(p, data) != TeamSide.NONE).count();
         long newPlayers = players.stream().filter(p -> manager.teams().sideOf(p, data) == TeamSide.NONE).count();
-        if (assigned + newPlayers > data.rules().maxPlayers()) {
+        if (assigned + newPlayers > manager.rules().maxPlayers()) {
             return failure(context, "Assigning " + players.size() + " players would exceed maxPlayers");
         }
         int changed = 0;
@@ -1599,17 +1621,21 @@ public final class SFGameCommands {
     }
 
     private static int rulesList(CommandContext<CommandSourceStack> context) {
-        MatchRules rules = SFGameSavedData.get(context.getSource().getServer()).rules();
+        MatchManager manager = MatchManager.get();
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        MatchRules rules = manager.rules();
+        send(context, "mode=" + data.selectedMode() + ", map=" + data.selectedMap()
+                + ", parent=" + manager.ruleConfigs().parent(data.selectedMode(), data.selectedMap()));
         send(context, rulesText(rules));
         return 1;
     }
 
     private static int rulesGet(CommandContext<CommandSourceStack> context) {
         String key = StringArgumentType.getString(context, "key");
-        MatchRules rules = SFGameSavedData.get(context.getSource().getServer()).rules();
+        MatchRules rules = MatchManager.get().rules();
         String value;
         try { value = ruleValue(rules, key); }
-        catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
         send(context, key + "=" + value);
         return 1;
     }
@@ -1618,27 +1644,34 @@ public final class SFGameCommands {
         String key = StringArgumentType.getString(context, "key");
         int value = IntegerArgumentType.getInteger(context, "value");
         try { MatchManager.get().setRule(key, value); }
-        catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
-        return success(context, key + "=" + ruleValue(SFGameSavedData.get(context.getSource().getServer()).rules(), key));
+        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
+        return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
     }
 
     private static int rulesSetBoolean(CommandContext<CommandSourceStack> context, String key) {
         boolean value = BoolArgumentType.getBool(context, "value");
         try { MatchManager.get().setRule(key, value); }
-        catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
+        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
         return success(context, key + "=" + value);
     }
 
     private static int rulesSetDouble(CommandContext<CommandSourceStack> context, String key) {
         double value = DoubleArgumentType.getDouble(context, "value");
         try { MatchManager.get().setRule(key, value); }
-        catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
-        return success(context, key + "=" + ruleValue(SFGameSavedData.get(context.getSource().getServer()).rules(), key));
+        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
+        return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
     }
 
     private static int rulesReset(CommandContext<CommandSourceStack> context) {
         MatchManager.get().resetRules();
-        return success(context, "Rules reset to defaults");
+        return success(context, "Current map rule overrides cleared; inherited rules now apply");
+    }
+
+    private static int rulesInherit(CommandContext<CommandSourceStack> context) {
+        String parent = StringArgumentType.getString(context, "parent");
+        try { MatchManager.get().setRuleParent(parent); }
+        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
+        return success(context, "Current map rules now inherit " + parent);
     }
 
     private static int classReload(CommandContext<CommandSourceStack> context) {
@@ -1734,7 +1767,7 @@ public final class SFGameCommands {
 
     private static int captainReelect(CommandContext<CommandSourceStack> context) {
         TeamSide side = TeamSide.fromId(StringArgumentType.getString(context, "side"));
-        MatchRules rules = SFGameSavedData.get(context.getSource().getServer()).rules();
+        MatchRules rules = MatchManager.get().rules();
         return MatchManager.get().breakthrough().reelect(side, rules, MatchManager.get())
                 ? success(context, "Captain reelection started") : failure(context, "Only the current attacker elects a captain");
     }

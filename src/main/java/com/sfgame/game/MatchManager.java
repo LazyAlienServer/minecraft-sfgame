@@ -47,6 +47,7 @@ public final class MatchManager {
     private final BreakthroughRuntime breakthroughRuntime = new BreakthroughRuntime();
     private final CaptureTheFlagRuntime captureTheFlagRuntime = new CaptureTheFlagRuntime();
     private final CtfShopRegistry ctfShopRegistry = new CtfShopRegistry();
+    private final RuleConfigRegistry ruleConfigRegistry = new RuleConfigRegistry();
     private final Map<String, MatchModeRuntime> runtimes = Map.of(
             GameModeRegistry.TEAM_DEATHMATCH, teamDeathmatchRuntime,
             GameModeRegistry.DOMINATION, dominationRuntime,
@@ -73,6 +74,11 @@ public final class MatchManager {
     public BreakthroughRuntime breakthrough() { return breakthroughRuntime; }
     public CaptureTheFlagRuntime captureTheFlag() { return captureTheFlagRuntime; }
     public CtfShopRegistry ctfShop() { return ctfShopRegistry; }
+    public RuleConfigRegistry ruleConfigs() { return ruleConfigRegistry; }
+    public MatchRules rules() {
+        SFGameSavedData data = data();
+        return ruleConfigRegistry.rules(data.selectedMode(), data.selectedMap(), data.rules());
+    }
     public Collection<PlayerMatchState> playerStates() { return players.values(); }
     public int redScore() { return redScore; }
     public int blueScore() { return blueScore; }
@@ -88,7 +94,7 @@ public final class MatchManager {
         };
     }
     public int elapsedTicks() { return elapsedTicks; }
-    public int remainingSeconds() { return activeRuntime.remainingSeconds(this, data().rules()); }
+    public int remainingSeconds() { return activeRuntime.remainingSeconds(this, rules()); }
     public boolean modeBlocksCombat() { return phase == MatchPhase.RUNNING && activeRuntime.blocksCombat(); }
     public boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                  net.minecraft.world.level.block.state.BlockState state) {
@@ -99,7 +105,7 @@ public final class MatchManager {
     public boolean usesBreakthroughSurvival(ServerPlayer player) {
         return phase == MatchPhase.RUNNING && state(player).participating()
                 && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
-                && data().rules().breakthroughBlockBreaking();
+                && rules().breakthroughBlockBreaking();
     }
     public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                  net.minecraft.world.level.block.state.BlockState state) {
@@ -165,6 +171,8 @@ public final class MatchManager {
         if (!errors.isEmpty()) SFGame.LOGGER.warn("SFGame class configuration errors: {}", errors);
         List<String> shopErrors = ctfShopRegistry.reload();
         if (!shopErrors.isEmpty()) SFGame.LOGGER.warn("SFGame CTF shop configuration errors: {}", shopErrors);
+        List<String> ruleErrors = ruleConfigRegistry.reload(data);
+        if (!ruleErrors.isEmpty()) SFGame.LOGGER.warn("SFGame rule configuration errors: {}", ruleErrors);
         phase = data.isArenaConfigured() && teams.bindingsValid(server, data) ? MatchPhase.LOBBY : MatchPhase.UNCONFIGURED;
         resetRuntime();
     }
@@ -206,7 +214,8 @@ public final class MatchManager {
         List<String> errors = new ArrayList<>();
         if (server == null) return List.of("Server is not running");
         SFGameSavedData data = data();
-        if (!data.isArenaConfigured()) errors.add("Lobby and spawn points for at least two teams must be set");
+        boolean devMode = data.devMode();
+        if (!data.isArenaConfigured()) errors.add("Lobby and spawn points for the selected map must be set");
         if (!teams.bindingsValid(server, data)) errors.add("All four SFGame sides must bind different existing vanilla teams");
         boolean captainMode = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
                 && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
@@ -214,7 +223,10 @@ public final class MatchManager {
         errors.addAll(loadoutService.validate(classRegistry, data.selectedMode(), data.selectedMap(), enabledTeams, captainMode));
         if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
 
-        if (enabledTeams.size() < 2) errors.add("The selected map needs spawn points for at least two teams");
+        if (enabledTeams.size() < (devMode ? 1 : 2)) {
+            errors.add(devMode ? "The selected map needs at least one enabled team"
+                    : "The selected map needs spawn points for at least two teams");
+        }
         int total = 0;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             TeamSide side = teams.sideOf(player, data);
@@ -226,10 +238,14 @@ public final class MatchManager {
             String selected = selectedClass(state, side);
             if (!classRegistry.containsForTeam(data.selectedMode(), data.selectedMap(), side, selected)) errors.add(player.getGameProfile().getName() + " has no valid class for " + side.id());
         }
-        for (TeamSide side : enabledTeams) {
-            if (countSide(side) == 0) errors.add(side.id() + " team needs at least one player");
+        if (!devMode) {
+            for (TeamSide side : enabledTeams) {
+                if (countSide(side) == 0) errors.add(side.id() + " team needs at least one player");
+            }
+        } else if (total == 0) {
+            errors.add("At least one player is required to start in dev mode");
         }
-        if (total > data.rules().maxPlayers()) errors.add("Player count exceeds maxPlayers");
+        if (total > rules().maxPlayers()) errors.add("Player count exceeds maxPlayers");
         return errors;
     }
 
@@ -262,7 +278,7 @@ public final class MatchManager {
         activeRuntime = modeRuntime();
         if (activeRuntime.needsPreparation(data().activeMap())) {
             phase = MatchPhase.PREPARING;
-            activeRuntime.prepare(server, this, data().activeMap(), data().rules());
+            activeRuntime.prepare(server, this, data().activeMap(), rules());
         } else beginCountdown();
         syncAll();
         return true;
@@ -273,7 +289,7 @@ public final class MatchManager {
         activeRuntime.stop();
         if (showResult) {
             phase = MatchPhase.RESULT;
-            phaseTicks = data().rules().resultSeconds() * 20;
+            phaseTicks = rules().resultSeconds() * 20;
             announceResult();
         } else {
             server.getPlayerList().broadcastSystemMessage(reason, false);
@@ -294,7 +310,7 @@ public final class MatchManager {
             return true;
         }
         TeamSide currentSide = teams.sideOf(player, data());
-        if (!data().enabledTeams().contains(currentSide) && countAssignedPlayers() >= data().rules().maxPlayers()) return false;
+        if (!data().enabledTeams().contains(currentSide) && countAssignedPlayers() >= rules().maxPlayers()) return false;
         if (!data().enabledTeams().contains(currentSide)) teams.assign(player, teams.balancedSide(server, data()), data());
         if (!data().enabledTeams().contains(teams.sideOf(player, data()))) return false;
         currentSide = teams.sideOf(player, data());
@@ -358,7 +374,7 @@ public final class MatchManager {
     }
 
     public boolean joinNow(ServerPlayer player) {
-        if (phase != MatchPhase.RUNNING || participatingCount() >= data().rules().maxPlayers()) return false;
+        if (phase != MatchPhase.RUNNING || participatingCount() >= rules().maxPlayers()) return false;
         PlayerMatchState state = state(player);
         if (!data().enabledTeams().contains(teams.sideOf(player, data()))) {
             teams.assign(player, teams.balancedSide(server, data()), data());
@@ -472,7 +488,7 @@ public final class MatchManager {
         }
         victimState.respawning(true);
         victimState.awaitingRespawnSelection(false);
-        victimState.respawnTicks(data().rules().respawnSeconds() * 20);
+        victimState.respawnTicks(rules().respawnSeconds() * 20);
         loadoutService.clear(victim);
         victim.setHealth(victim.getMaxHealth());
         victim.setGameMode(GameType.SPECTATOR);
@@ -515,7 +531,6 @@ public final class MatchManager {
     }
 
     public void setRule(String key, int value) {
-        MatchRules rules = data().rules();
         boolean domination = GameModeRegistry.DOMINATION.equals(data().selectedMode());
         boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode());
         boolean ctf = GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode());
@@ -535,29 +550,8 @@ public final class MatchManager {
         if (!ctf && (key.equals("ctfFlagReturnSeconds") || key.equals("ctfHomeCaptureTimeSeconds"))) {
             throw new IllegalArgumentException(key + " is only available in CTF mode");
         }
-        switch (key) {
-            case "maxPlayers" -> rules.maxPlayers(value);
-            case "scoreLimit" -> rules.scoreLimit(value);
-            case "timeLimitSeconds" -> rules.timeLimitSeconds(value);
-            case "startCountdownSeconds" -> rules.startCountdownSeconds(value);
-            case "respawnSeconds" -> rules.respawnSeconds(value);
-            case "respawnProtectionSeconds" -> rules.respawnProtectionSeconds(value);
-            case "resultSeconds" -> rules.resultSeconds(value);
-            case "captureTimeSeconds" -> rules.captureTimeSeconds(value);
-            case "captureMaxMultiplier" -> rules.captureMaxMultiplier(value);
-            case "scoreIntervalSeconds" -> rules.scoreIntervalSeconds(value);
-            case "scorePerPoint" -> rules.scorePerPoint(value);
-            case "syncHoldSeconds" -> rules.syncHoldSeconds(value);
-            case "attackerTickets" -> rules.attackerTickets(value);
-            case "ctfFlagReturnSeconds" -> rules.ctfFlagReturnSeconds(value);
-            case "ctfHomeCaptureTimeSeconds" -> rules.ctfHomeCaptureTimeSeconds(value);
-            case "sectorTransitionSeconds" -> rules.sectorTransitionSeconds(value);
-            case "captainVoteSeconds" -> rules.captainVoteSeconds(value);
-            case "captainReplacementVoteSeconds" -> rules.captainReplacementVoteSeconds(value);
-            default -> throw new IllegalArgumentException("Unknown rule " + key);
-        }
-        data().setDirty();
-        activeRuntime.onRuleChanged(key, rules);
+        ruleConfigRegistry.setInt(data().selectedMode(), data().selectedMap(), key, value);
+        activeRuntime.onRuleChanged(key, rules());
         syncAll();
     }
 
@@ -568,20 +562,17 @@ public final class MatchManager {
         switch (key) {
             case "captureUsePlayerDifference" -> {
                 if (!domination && !breakthrough && !ctf) throw new IllegalArgumentException(key + " is only available in a capture mode");
-                data().rules().captureUsePlayerDifference(value);
             }
             case "attackerCaptainGlowing" -> {
                 if (!breakthrough) throw new IllegalArgumentException(key + " is only available in breakthrough mode");
-                data().rules().attackerCaptainGlowing(value);
             }
             case "breakthroughBlockBreaking" -> {
                 if (!breakthrough) throw new IllegalArgumentException(key + " is only available in breakthrough mode");
-                data().rules().breakthroughBlockBreaking(value);
             }
             default -> throw new IllegalArgumentException("Unknown boolean rule " + key);
         }
-        data().setDirty();
-        activeRuntime.onRuleChanged(key, data().rules());
+        ruleConfigRegistry.setBoolean(data().selectedMode(), data().selectedMap(), key, value);
+        activeRuntime.onRuleChanged(key, rules());
         if ("breakthroughBlockBreaking".equals(key)) refreshParticipantGameModes();
         syncAll();
     }
@@ -593,27 +584,44 @@ public final class MatchManager {
         boolean ctf = GameModeRegistry.CAPTURE_THE_FLAG.equals(mode);
         if (!domination && !breakthrough && !ctf) throw new IllegalArgumentException(key + " is only available in a capture mode");
         switch (key) {
-            case "captureDifferenceCoefficient" -> data().rules().captureDifferenceCoefficient(value);
+            case "captureDifferenceCoefficient" -> { }
             case "attackerCaptainCaptureWeight", "defenderCaptureWeight" -> {
                 if (!breakthrough) throw new IllegalArgumentException(key + " is only available in breakthrough mode");
-                if (key.equals("attackerCaptainCaptureWeight")) data().rules().attackerCaptainCaptureWeight(value);
-                else data().rules().defenderCaptureWeight(value);
             }
             default -> throw new IllegalArgumentException("Unknown decimal rule " + key);
         }
-        data().setDirty(); activeRuntime.onRuleChanged(key, data().rules()); syncAll();
+        ruleConfigRegistry.setDouble(mode, data().selectedMap(), key, value);
+        activeRuntime.onRuleChanged(key, rules());
+        syncAll();
     }
 
     public void resetRules() {
-        data().rules().reset();
-        data().setDirty();
-        activeRuntime.onRuleChanged("attackerTickets", data().rules());
+        ruleConfigRegistry.resetMap(data().selectedMode(), data().selectedMap());
+        activeRuntime.onRuleChanged("attackerTickets", rules());
         refreshParticipantGameModes();
         syncAll();
     }
 
+    public void setRuleParent(String parent) {
+        ruleConfigRegistry.setParent(data().selectedMode(), data().selectedMap(), parent);
+        activeRuntime.onRuleChanged("attackerTickets", rules());
+        refreshParticipantGameModes();
+        syncAll();
+    }
+
+    public List<String> reloadRuleConfigurations() {
+        List<String> errors = ruleConfigRegistry.reload(data());
+        if (errors.isEmpty()) {
+            activeRuntime.onRuleChanged("attackerTickets", rules());
+            refreshParticipantGameModes();
+            arenaSelectionChanged();
+            syncAll();
+        }
+        return errors;
+    }
+
     public MatchSnapshot snapshot(ServerPlayer viewer) {
-        MatchRules rules = data().rules();
+        MatchRules rules = rules();
         PlayerMatchState state = state(viewer);
         TeamSide side = teams.sideOf(viewer, data());
         TeamSide classSide = side == TeamSide.NONE ? state.cachedSide() : side;
@@ -714,14 +722,14 @@ public final class MatchManager {
     }
 
     private void tickPreparing() {
-        if (activeRuntime.tickPreparation(server, this, data().activeMap(), data().rules())) beginCountdown();
+        if (activeRuntime.tickPreparation(server, this, data().activeMap(), rules())) beginCountdown();
     }
 
     private void beginCountdown() {
         phase = MatchPhase.COUNTDOWN;
-        phaseTicks = data().rules().startCountdownSeconds() * 20;
+        phaseTicks = rules().startCountdownSeconds() * 20;
         if (phaseTicks == 0) { beginRunning(); return; }
-        Component title = Component.literal(Integer.toString(data().rules().startCountdownSeconds())).withStyle(ChatFormatting.GOLD);
+        Component title = Component.literal(Integer.toString(rules().startCountdownSeconds())).withStyle(ChatFormatting.GOLD);
         forParticipants(player -> {
             sendTitle(player, title, Component.translatable("sfgame.match.starting"), 24);
             playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.0F);
@@ -732,7 +740,7 @@ public final class MatchManager {
         phase = MatchPhase.RUNNING;
         elapsedTicks = 0;
         activeRuntime = modeRuntime();
-        activeRuntime.start(server, this, data().activeMap(), data().rules());
+        activeRuntime.start(server, this, data().activeMap(), rules());
         forParticipants(player -> deploy(player, state(player), false));
         forParticipants(player -> {
             sendTitle(player, Component.translatable("sfgame.match.start").withStyle(ChatFormatting.GREEN),
@@ -745,7 +753,7 @@ public final class MatchManager {
 
     private void tickRunning() {
         elapsedTicks++;
-        MatchRules rules = data().rules();
+        MatchRules rules = rules();
         ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
         if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && elapsedTicks >= rules.timeLimitSeconds() * 20) {
             result = modeResult.finished() ? modeResult.winner() : determineWinner();
@@ -862,7 +870,7 @@ public final class MatchManager {
         state.respawning(false);
         state.awaitingRespawnSelection(false);
         state.respawnTicks(0);
-        state.protectionTicks(data().rules().respawnProtectionSeconds() * 20);
+        state.protectionTicks(rules().respawnProtectionSeconds() * 20);
         state.participating(true);
         state.queued(false);
         player.setGameMode(participantGameType());
@@ -887,7 +895,7 @@ public final class MatchManager {
 
     private GameType participantGameType() {
         return phase == MatchPhase.RUNNING && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
-                && data().rules().breakthroughBlockBreaking() ? GameType.SURVIVAL : GameType.ADVENTURE;
+                && rules().breakthroughBlockBreaking() ? GameType.SURVIVAL : GameType.ADVENTURE;
     }
 
     private void refreshParticipantGameModes() {
@@ -922,10 +930,10 @@ public final class MatchManager {
         Component title = result == TeamSide.NONE ? Component.translatable("sfgame.result.draw").withStyle(ChatFormatting.GOLD)
                 : Component.translatable("sfgame.result." + result.id()).withStyle(result.color());
         server.getPlayerList().broadcastSystemMessage(title, false);
-        Component returning = Component.translatable("sfgame.result.returning", data().rules().resultSeconds())
+        Component returning = Component.translatable("sfgame.result.returning", rules().resultSeconds())
                 .withStyle(ChatFormatting.YELLOW);
         server.getPlayerList().getPlayers().forEach(player -> {
-            sendTitle(player, title, Component.empty(), data().rules().resultSeconds() * 20);
+            sendTitle(player, title, Component.empty(), rules().resultSeconds() * 20);
             player.sendSystemMessage(returning, true);
             playSound(player, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0F);
         });

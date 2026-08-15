@@ -186,13 +186,13 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         // placing while the active sector is running.  Captain elections and
         // sector transitions stay protected so the map cannot be altered
         // during deployments.
-        return runtimeState == RuntimeState.ACTIVE && manager.savedData().rules().breakthroughBlockBreaking();
+        return runtimeState == RuntimeState.ACTIVE && manager.rules().breakthroughBlockBreaking();
     }
 
     @Override
     public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                   net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        return runtimeState == RuntimeState.ACTIVE && manager.savedData().rules().breakthroughBlockBreaking();
+        return runtimeState == RuntimeState.ACTIVE && manager.rules().breakthroughBlockBreaking();
     }
 
     public TeamSide attacker() { return attacker; }
