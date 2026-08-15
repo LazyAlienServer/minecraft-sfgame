@@ -797,7 +797,9 @@ public final class SFGameCommands {
     }
 
     private static int reload(CommandContext<CommandSourceStack> context) {
-        return classReload(context);
+        int result = classReload(context);
+        MatchManager.get().refreshCommandTree();
+        return result;
     }
 
     private static int joinNow(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -1347,6 +1349,7 @@ public final class SFGameCommands {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!data.selectMode(modeId)) return failure(context, "Unknown game mode: " + modeId);
         MatchManager.get().arenaSelectionChanged();
+        MatchManager.get().refreshCommandTree();
         return success(context, "Selected mode " + modeId + " with map " + data.selectedMap());
     }
 

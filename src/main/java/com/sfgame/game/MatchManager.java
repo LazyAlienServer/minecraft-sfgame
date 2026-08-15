@@ -139,6 +139,18 @@ public final class MatchManager {
         syncAll();
     }
 
+    /**
+     * Re-send the vanilla Brigadier command tree after a mode change.  The
+     * mode-specific rule branches use source predicates, and the client only
+     * evaluates those predicates when the server sends this tree.
+     */
+    public void refreshCommandTree() {
+        if (server == null) return;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            server.getCommands().sendCommands(player);
+        }
+    }
+
     public void serverStarted(MinecraftServer server) {
         this.server = server;
         SFGameSavedData data = data();
