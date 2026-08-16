@@ -67,8 +67,7 @@ public final class BreakthroughVehicleDefinition {
         this.id = SFGameId.normalize(id);
         this.entityId = SFGameId.normalizeResource(entityId);
         this.role = role == null ? Role.ATTACKER : role;
-        if (spawn == null) throw new IllegalArgumentException("Vehicle spawn position is required");
-        this.spawn = spawn;
+        spawn(spawn);
         respawnSeconds(respawnSeconds);
         ammo.add(new AmmoEntry(DEFAULT_AMMO_ITEM, 1));
     }
@@ -86,7 +85,7 @@ public final class BreakthroughVehicleDefinition {
     public void role(Role value) { role = value == null ? Role.ATTACKER : value; }
     public void spawn(ArenaPosition value) {
         if (value == null) throw new IllegalArgumentException("Vehicle spawn position is required");
-        spawn = value;
+        spawn = new ArenaPosition(value.dimension(), value.x(), value.y(), value.z(), value.yaw(), 0.0F);
     }
     public void respawnSeconds(int value) {
         if (value < 1 || value > 3600) throw new IllegalArgumentException("Vehicle respawn seconds must be between 1 and 3600");

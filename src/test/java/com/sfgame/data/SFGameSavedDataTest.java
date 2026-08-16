@@ -324,11 +324,14 @@ final class SFGameSavedDataTest {
 
     @Test
     void breakthroughVehicleDefaultsToRaisedSpawnFullEnergyAndCreativeAmmo() {
+        ArenaPosition tiltedPlacement = new ArenaPosition("minecraft:overworld", 1, 64, 2, 135, 82);
         BreakthroughVehicleDefinition vehicle = new BreakthroughVehicleDefinition("1", "minecraft:minecart",
-                BreakthroughVehicleDefinition.Role.ATTACKER, RED, 20);
+                BreakthroughVehicleDefinition.Role.ATTACKER, tiltedPlacement, 20);
 
         assertEquals(0.2D, vehicle.spawnYOffset());
         assertEquals(100, vehicle.energyPercent());
+        assertEquals(135.0F, vehicle.spawn().yaw());
+        assertEquals(0.0F, vehicle.spawn().pitch());
         assertEquals(List.of(new BreakthroughVehicleDefinition.AmmoEntry(
                 "superbwarfare:creative_ammo_box", 1)), vehicle.ammo());
     }

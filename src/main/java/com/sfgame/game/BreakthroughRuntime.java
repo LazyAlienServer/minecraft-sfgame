@@ -34,7 +34,9 @@ import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
 
 import javax.annotation.Nullable;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +46,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.Optional;
 
 public final class BreakthroughRuntime implements MatchModeRuntime {
     private static final String CAPTAIN_FLAG_TAG = "SFGameCaptainFlag";
@@ -71,6 +74,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private int electionTicks;
     private int tickets;
     private LegResult firstLeg;
+    private static final Map<Class<?>, Optional<Method>> VEHICLE_WRECK_METHODS = new ConcurrentHashMap<>();
 
     @Override
     public List<String> validate(MinecraftServer server, ArenaMap map) {
@@ -527,7 +531,11 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         for (BreakthroughVehicleDefinition definition : map.breakthrough().vehicles()) {
             Entity existing = spawnedVehicles.get(definition.id());
             if (existing != null) {
-                if (!existing.isRemoved() && existing.isAlive()) continue;
+                if (!isDestroyedVehicle(existing)) continue;
+                if (!existing.isRemoved()) {
+                    existing.ejectPassengers();
+                    existing.discard();
+                }
                 spawnedVehicles.remove(definition.id());
                 vehicleCooldowns.put(definition.id(), definition.respawnSeconds() * 20);
             }
@@ -538,6 +546,32 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             }
             Entity spawned = spawnVehicle(server, definition);
             if (spawned != null) spawnedVehicles.put(definition.id(), spawned);
+        }
+    }
+
+    /**
+     * Superb Warfare keeps a destroyed vehicle entity alive as a burning wreck.
+     * Detect its public Kotlin {@code isWreck()} property without making the
+     * optional vehicle mod a compile-time dependency.
+     */
+    private boolean isDestroyedVehicle(Entity entity) {
+        if (entity.isRemoved() || !entity.isAlive()) return true;
+        Optional<Method> wreckMethod = VEHICLE_WRECK_METHODS.computeIfAbsent(entity.getClass(), type -> {
+            try {
+                Method method = type.getMethod("isWreck");
+                return method.getReturnType() == boolean.class || method.getReturnType() == Boolean.class
+                        ? Optional.of(method) : Optional.empty();
+            } catch (NoSuchMethodException exception) {
+                return Optional.empty();
+            }
+        });
+        if (wreckMethod.isEmpty()) return false;
+        try {
+            return Boolean.TRUE.equals(wreckMethod.get().invoke(entity));
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            SFGame.LOGGER.warn("Could not read wreck state from vehicle entity {}", entity.getType(), exception);
+            VEHICLE_WRECK_METHODS.put(entity.getClass(), Optional.empty());
+            return false;
         }
     }
 
@@ -554,7 +588,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         Entity entity = type.create(level);
         if (entity == null) return null;
         ArenaPosition spawn = definition.spawn();
-        entity.moveTo(spawn.x(), spawn.y() + definition.spawnYOffset(), spawn.z(), spawn.yaw(), spawn.pitch());
+        entity.moveTo(spawn.x(), spawn.y() + definition.spawnYOffset(), spawn.z(), spawn.yaw(), 0.0F);
         entity.getPersistentData().putString("SFGameVehicleSlot", definition.id());
         entity.getPersistentData().putString("SFGameVehicleRole", definition.role().id());
         entity.addTag("sfgame_vehicle");
