@@ -13,7 +13,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -33,12 +32,13 @@ import java.util.Map;
 /** Server-side CTF shop registry. The registry is deliberately mode-scoped. */
 public final class CtfShopRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private final Path path = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("shop").resolve("ctf.json");
+    private Path path;
     private volatile Map<String, ShopItem> items = Map.of();
     private volatile List<String> errors = List.of();
 
     public synchronized List<String> reload() {
         List<String> problems = new ArrayList<>();
+        if (path == null) return List.of("SFGame shop config root is not initialized");
         try {
             createDefaultIfMissing();
             JsonObject root;
@@ -71,6 +71,10 @@ public final class CtfShopRegistry {
     public ShopItem item(String id) { return items.get(id == null ? "" : id.toLowerCase(Locale.ROOT)); }
     public List<String> errors() { return errors; }
     public Path path() { return path; }
+
+    public synchronized void useConfigRoot(Path root) {
+        path = root.resolve("shop").resolve("ctf.json");
+    }
 
     private void createDefaultIfMissing() throws IOException {
         if (Files.exists(path)) return;

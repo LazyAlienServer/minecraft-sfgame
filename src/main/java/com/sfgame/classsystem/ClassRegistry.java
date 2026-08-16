@@ -11,7 +11,6 @@ import com.sfgame.SFGame;
 import com.sfgame.data.SFGameId;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.TeamSide;
-import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,13 +40,14 @@ public final class ClassRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final int BREAKTHROUGH_CONFIG_VERSION = 4;
 
-    private final Path legacyPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes.json");
-    private final Path profilesPath = FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("classes");
+    private Path legacyPath;
+    private Path profilesPath;
     private volatile Map<String, Profile> profiles = Map.of();
     private volatile List<String> loadErrors = List.of();
 
     public synchronized List<String> reload() {
         List<String> errors = new ArrayList<>();
+        if (profilesPath == null) return List.of("SFGame class config root is not initialized");
         try {
             createLegacyFileIfMissing();
             createModeProfilesIfMissing();
@@ -113,6 +113,11 @@ public final class ClassRegistry {
     public Optional<ClassDefinition> defaultClass() { return defaultClass(GameModeRegistry.TEAM_DEATHMATCH); }
     public List<String> loadErrors() { return loadErrors; }
     public Path configPath() { return profilesPath; }
+
+    public synchronized void useConfigRoot(Path root) {
+        legacyPath = root.resolve("classes.json");
+        profilesPath = root.resolve("classes");
+    }
 
     private Scope scope(String modeId, String mapId, TeamSide side) {
         Profile profile = profiles.get(profileIdForMode(modeId));

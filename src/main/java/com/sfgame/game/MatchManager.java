@@ -4,6 +4,7 @@ import com.sfgame.SFGame;
 import com.sfgame.classsystem.ClassDefinition;
 import com.sfgame.classsystem.ClassRegistry;
 import com.sfgame.classsystem.LoadoutService;
+import com.sfgame.config.SFGameServerConfigPaths;
 import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.MatchRules;
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.nio.file.Path;
 
 public final class MatchManager {
     private static final MatchManager INSTANCE = new MatchManager();
@@ -166,6 +168,10 @@ public final class MatchManager {
     public void serverStarted(MinecraftServer server) {
         this.server = server;
         SFGameSavedData data = data();
+        Path configRoot = SFGameServerConfigPaths.root(server);
+        classRegistry.useConfigRoot(configRoot);
+        ctfShopRegistry.useConfigRoot(configRoot);
+        ruleConfigRegistry.useConfigRoot(configRoot);
         teams.ensureDefaultTeams(server, data);
         List<String> errors = classRegistry.reload();
         if (!errors.isEmpty()) SFGame.LOGGER.warn("SFGame class configuration errors: {}", errors);

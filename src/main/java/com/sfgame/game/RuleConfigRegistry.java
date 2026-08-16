@@ -10,7 +10,6 @@ import com.sfgame.SFGame;
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.SFGameId;
 import com.sfgame.data.SFGameSavedData;
-import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
 import java.io.Reader;
@@ -47,20 +46,25 @@ public final class RuleConfigRegistry {
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
             "breakthroughBlockBreaking");
 
-    private final Path directory;
+    private Path directory;
     private volatile Map<String, Profile> profiles = Map.of();
     private volatile List<String> errors = List.of();
 
     public RuleConfigRegistry() {
-        this(FMLPaths.CONFIGDIR.get().resolve("sfgame").resolve("rules"));
+        this.directory = null;
     }
 
     RuleConfigRegistry(Path directory) {
         this.directory = directory;
     }
 
+    public synchronized void useConfigRoot(Path root) {
+        directory = root.resolve("rules");
+    }
+
     public synchronized List<String> reload(SFGameSavedData legacyData) {
         List<String> problems = new ArrayList<>();
+        if (directory == null) return List.of("SFGame rule config root is not initialized");
         Map<String, Profile> loaded = new LinkedHashMap<>();
         try {
             Files.createDirectories(directory);

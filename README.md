@@ -144,10 +144,10 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 规则配置文件位于：
 
 ```text
-config/sfgame/rules/tdm.json
-config/sfgame/rules/domination.json
-config/sfgame/rules/breakthrough.json
-config/sfgame/rules/ctf.json
+<存档>/serverconfig/sfgame/rules/tdm.json
+<存档>/serverconfig/sfgame/rules/domination.json
+<存档>/serverconfig/sfgame/rules/breakthrough.json
+<存档>/serverconfig/sfgame/rules/ctf.json
 ```
 
 文件结构如下。`rules` 是该模式基础规则；`maps` 中只需填写地图需要覆盖的参数。`parent: "base"` 表示继承基础规则，也可以填写同文件内另一个地图 ID。父级缺失或形成循环时，`/sfgame reload` 会报告错误并继续使用上一次有效配置。
@@ -176,7 +176,7 @@ config/sfgame/rules/ctf.json
 }
 ```
 
-管理员手动编辑 JSON 后执行 `/sfgame reload` 热重载；重载在对局中也会立即替换当前地图的有效规则。首次生成文件时，SFGame 会把旧世界中按模式保存的规则写成各模式基础规则，已有参数不会直接丢失。
+管理员手动编辑 JSON 后执行 `/sfgame reload` 热重载；重载在对局中也会立即替换当前地图的有效规则。配置按存档隔离，缺失时会从模组内置默认值生成。旧版全局 `config/sfgame/` 下的 JSON 不会读取或迁移，需要时请管理员手动复制。
 
 单人开发测试使用全局命令 `/sfgame dev`。每次执行会切换开启/关闭状态；状态写入当前世界，切换模式或地图后仍然保持。开启后允许只有一名参赛玩家开局，但地图、出生点、队伍绑定、职业/TACZ 资源和模式配置仍必须有效：
 
@@ -252,16 +252,16 @@ SFGame 自有 ID（地图、模式、sector、点位、职业及职业配置继�
 
 ## 职业配置
 
-首次运行会保留旧的 `config/sfgame/classes.json`，并为每个模式生成独立职业配置：
+首次加载存档时会在该存档的 `serverconfig/sfgame/` 下生成职业配置：
 
 ```text
-config/sfgame/classes/tdm.json
-config/sfgame/classes/domination.json
-config/sfgame/classes/breakthrough.json
-config/sfgame/classes/ctf.json
+<存档>/serverconfig/sfgame/classes/tdm.json
+<存档>/serverconfig/sfgame/classes/domination.json
+<存档>/serverconfig/sfgame/classes/breakthrough.json
+<存档>/serverconfig/sfgame/classes/ctf.json
 ```
 
-第一次迁移会为四个模式建立独立文件，不默认建立继承关系。TDM 与占点的内置来源位于 `src/main/resources/defaults/classes.json`；突破模式的完整默认来源位于 `src/main/resources/defaults/classes/breakthrough.json`；CTF 默认继承 TDM。已有的突破配置会执行一次增量升级：保留管理员已填写的字段，补入缺失的内置职业，并为内置职业补齐为空的 `inventory` 与 `armor`。
+首次生成时会为四个模式建立独立文件，不默认建立继承关系。TDM 与占点的内置来源位于 `src/main/resources/defaults/classes.json`；突破模式的完整默认来源位于 `src/main/resources/defaults/classes/breakthrough.json`；CTF 默认继承 TDM。已有的突破配置会执行一次增量升级：保留管理员已填写的字段，补入缺失的内置职业，并为内置职业补齐为空的 `inventory` 与 `armor`。
 
 TDM 与占点默认包含：
 
@@ -367,7 +367,7 @@ TDM 与占点默认包含：
 
 职业配置中的 `reserveAmmo` 会装入一个 TACZ 钻石级弹药箱，不再发放散装弹药；弹药箱固定放在背包三行区域左上角（物品栏槽位 `9`）。
 
-通用配置文件 `config/sfgame-common.toml` 中的 `globalHungerLock` 默认为 `true`。启用后，SFGame 模式运行期间所有在线玩家的饥饿值和饱和度均固定为 20。
+存档服务端配置文件 `<存档>/serverconfig/sfgame-server.toml` 中的 `globalHungerLock` 默认为 `true`。启用后，SFGame 模式运行期间所有在线玩家的饥饿值和饱和度均固定为 20。
 
 ## 已实现的比赛规则
 
@@ -628,7 +628,7 @@ TDM 与占点默认包含：
 
 ## 夺旗（CTF）模式
 
-使用 `/sfgame mode select ctf` 选择夺旗模式。CTF 包含三个子模式：`classic`（多队经典夺旗）、`assault`（固定进攻/防守的一攻一守）和 `territory`（前线旗先占点解锁，再夺旗）。CTF 地图沿用当前地图的大厅、队伍出生点和原版 `/team` 绑定；职业配置独立保存在 `config/sfgame/classes/ctf.json`，默认继承 TDM 配置。
+使用 `/sfgame mode select ctf` 选择夺旗模式。CTF 包含三个子模式：`classic`（多队经典夺旗）、`assault`（固定进攻/防守的一攻一守）和 `territory`（前线旗先占点解锁，再夺旗）。CTF 地图沿用当前地图的大厅、队伍出生点和原版 `/team` 绑定；职业配置独立保存在 `<存档>/serverconfig/sfgame/classes/ctf.json`，默认继承 TDM 配置。
 
 ### 模式与队伍
 
@@ -729,7 +729,7 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 /sfgame shop reload
 ```
 
-击杀默认奖励 25，带旗回家 100，前线旗插回 50，前线点首次解锁 10；货币只在本局有效。商店配置位于 `config/sfgame/shop/ctf.json`，商品会在服务端检查参赛状态、死亡状态、价格、物品有效性和背包空间。
+击杀默认奖励 25，带旗回家 100，前线旗插回 50，前线点首次解锁 10；货币只在本局有效。商店配置位于 `<存档>/serverconfig/sfgame/shop/ctf.json`，商品会在服务端检查参赛状态、死亡状态、价格、物品有效性和背包空间。
 
 ```text
 /sfgame shop list

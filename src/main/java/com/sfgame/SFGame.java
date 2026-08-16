@@ -19,7 +19,7 @@ public final class SFGame {
     public SFGame(FMLJavaModLoadingContext loadingContext) {
         IEventBus modBus = loadingContext.getModEventBus();
         modBus.addListener(this::commonSetup);
-        loadingContext.registerConfig(ModConfig.Type.COMMON, SFGameConfig.SPEC);
+        loadingContext.registerConfig(ModConfig.Type.SERVER, SFGameConfig.SPEC);
         MinecraftForge.EVENT_BUS.register(this);
     }
 
