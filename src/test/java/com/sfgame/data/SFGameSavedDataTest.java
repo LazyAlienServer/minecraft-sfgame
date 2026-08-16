@@ -299,8 +299,14 @@ final class SFGameSavedDataTest {
     @Test
     void persistsBreakthroughVehicleSlots() {
         BreakthroughMapConfig config = new BreakthroughMapConfig();
-        config.addVehicle(new BreakthroughVehicleDefinition("1", "minecraft:minecart",
-                BreakthroughVehicleDefinition.Role.DEFENDER, RED, 30));
+        BreakthroughVehicleDefinition source = new BreakthroughVehicleDefinition("1", "minecraft:minecart",
+                BreakthroughVehicleDefinition.Role.DEFENDER, RED, 30);
+        source.spawnYOffset(1.25D);
+        source.energyPercent(75);
+        source.clearAmmo();
+        source.setAmmo("minecraft:arrow", 128);
+        source.setAmmo("minecraft:firework_rocket", 32);
+        config.addVehicle(source);
 
         BreakthroughMapConfig restored = BreakthroughMapConfig.load(config.save());
 
@@ -310,6 +316,21 @@ final class SFGameSavedDataTest {
         assertEquals(BreakthroughVehicleDefinition.Role.DEFENDER, vehicle.role());
         assertEquals(30, vehicle.respawnSeconds());
         assertEquals(RED, vehicle.spawn());
+        assertEquals(1.25D, vehicle.spawnYOffset());
+        assertEquals(75, vehicle.energyPercent());
+        assertEquals(List.of(new BreakthroughVehicleDefinition.AmmoEntry("minecraft:arrow", 128),
+                new BreakthroughVehicleDefinition.AmmoEntry("minecraft:firework_rocket", 32)), vehicle.ammo());
+    }
+
+    @Test
+    void breakthroughVehicleDefaultsToRaisedSpawnFullEnergyAndCreativeAmmo() {
+        BreakthroughVehicleDefinition vehicle = new BreakthroughVehicleDefinition("1", "minecraft:minecart",
+                BreakthroughVehicleDefinition.Role.ATTACKER, RED, 20);
+
+        assertEquals(0.2D, vehicle.spawnYOffset());
+        assertEquals(100, vehicle.energyPercent());
+        assertEquals(List.of(new BreakthroughVehicleDefinition.AmmoEntry(
+                "superbwarfare:creative_ammo_box", 1)), vehicle.ammo());
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.sfgame.game;
 
+import com.sfgame.SFGame;
 import com.sfgame.data.ArenaMap;
 import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.BreakthroughMapConfig;
@@ -27,6 +28,10 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraftforge.common.capabilities.ForgeCapabilities;
+import net.minecraftforge.energy.IEnergyStorage;
+import net.minecraftforge.items.IItemHandler;
+import net.minecraftforge.items.ItemHandlerHelper;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -86,6 +91,12 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             ResourceLocation entityId = ResourceLocation.tryParse(vehicle.entityId());
             if (entityId == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(entityId)) {
                 errors.add("Vehicle " + vehicle.id() + " uses unavailable entity type " + vehicle.entityId());
+            }
+            for (BreakthroughVehicleDefinition.AmmoEntry ammo : vehicle.ammo()) {
+                ResourceLocation ammoId = ResourceLocation.tryParse(ammo.itemId());
+                if (ammoId == null || !BuiltInRegistries.ITEM.containsKey(ammoId)) {
+                    errors.add("Vehicle " + vehicle.id() + " uses unavailable ammo item " + ammo.itemId());
+                }
             }
             ResourceLocation dimensionId = ResourceLocation.tryParse(vehicle.spawn().dimension());
             ServerLevel level = dimensionId == null ? null
@@ -543,12 +554,52 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         Entity entity = type.create(level);
         if (entity == null) return null;
         ArenaPosition spawn = definition.spawn();
-        entity.moveTo(spawn.x(), spawn.y(), spawn.z(), spawn.yaw(), spawn.pitch());
+        entity.moveTo(spawn.x(), spawn.y() + definition.spawnYOffset(), spawn.z(), spawn.yaw(), spawn.pitch());
         entity.getPersistentData().putString("SFGameVehicleSlot", definition.id());
         entity.getPersistentData().putString("SFGameVehicleRole", definition.role().id());
         entity.addTag("sfgame_vehicle");
         level.addFreshEntity(entity);
+        fillVehicleEnergy(entity, definition);
+        fillVehicleAmmo(entity, definition);
         return entity;
+    }
+
+    private void fillVehicleEnergy(Entity entity, BreakthroughVehicleDefinition definition) {
+        IEnergyStorage storage = entity.getCapability(ForgeCapabilities.ENERGY).resolve().orElse(null);
+        if (storage == null || storage.getMaxEnergyStored() <= 0) return;
+        int target = (int) Math.round(storage.getMaxEnergyStored() * (definition.energyPercent() / 100.0D));
+        int current = storage.getEnergyStored();
+        if (current < target) storage.receiveEnergy(target - current, false);
+        else if (current > target && storage.canExtract()) storage.extractEnergy(current - target, false);
+    }
+
+    private void fillVehicleAmmo(Entity entity, BreakthroughVehicleDefinition definition) {
+        if (definition.ammo().isEmpty()) return;
+        IItemHandler inventory = entity.getCapability(ForgeCapabilities.ITEM_HANDLER).resolve().orElse(null);
+        if (inventory == null) {
+            SFGame.LOGGER.warn("Vehicle slot {} entity {} has no item inventory; configured ammo was not inserted",
+                    definition.id(), definition.entityId());
+            return;
+        }
+        for (BreakthroughVehicleDefinition.AmmoEntry ammo : definition.ammo()) {
+            ResourceLocation itemId = ResourceLocation.tryParse(ammo.itemId());
+            if (itemId == null || !BuiltInRegistries.ITEM.containsKey(itemId)) continue;
+            net.minecraft.world.item.Item item = BuiltInRegistries.ITEM.get(itemId);
+            int remaining = ammo.count();
+            int stackLimit = Math.max(1, new ItemStack(item).getMaxStackSize());
+            while (remaining > 0) {
+                int requested = Math.min(remaining, stackLimit);
+                ItemStack leftover = ItemHandlerHelper.insertItemStacked(inventory,
+                        new ItemStack(item, requested), false);
+                int inserted = requested - leftover.getCount();
+                if (inserted <= 0) {
+                    SFGame.LOGGER.warn("Vehicle slot {} inventory is full; {} of {} could not be inserted",
+                            definition.id(), remaining, ammo.itemId());
+                    break;
+                }
+                remaining -= inserted;
+            }
+        }
     }
 
     private void clearVehicles() {

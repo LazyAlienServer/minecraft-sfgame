@@ -70,6 +70,8 @@ public final class SFGameCommands {
             SharedSuggestionProvider.suggest(context.getSource().getServer().getScoreboard().getTeamNames(), builder);
     private static final SuggestionProvider<CommandSourceStack> ENTITY_TYPE_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(BuiltInRegistries.ENTITY_TYPE.keySet().stream().map(Object::toString), builder);
+    private static final SuggestionProvider<CommandSourceStack> ITEM_SUGGESTIONS = (context, builder) ->
+            SharedSuggestionProvider.suggest(BuiltInRegistries.ITEM.keySet().stream().map(Object::toString), builder);
     private static final SuggestionProvider<CommandSourceStack> VEHICLE_ROLE_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(List.of("attacker", "defender"), builder);
     private static final SuggestionProvider<CommandSourceStack> CLASS_SUGGESTIONS = (context, builder) ->
@@ -279,7 +281,39 @@ public final class SFGameCommands {
                 .then(Commands.literal("interval")
                         .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
                                 .then(Commands.argument("respawnSeconds", IntegerArgumentType.integer(1, 3600))
-                                        .executes(SFGameCommands::breakthroughVehicleSetInterval)))));
+                                        .executes(SFGameCommands::breakthroughVehicleSetInterval))))
+                .then(Commands.literal("offset")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.argument("yOffset", DoubleArgumentType.doubleArg(-64.0D, 64.0D))
+                                        .executes(SFGameCommands::breakthroughVehicleSetOffset))))
+                .then(Commands.literal("energy")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.argument("percent", IntegerArgumentType.integer(0, 100))
+                                        .executes(SFGameCommands::breakthroughVehicleSetEnergy))))
+                .then(Commands.literal("ammo")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.literal("none").executes(SFGameCommands::breakthroughVehicleClearAmmo))
+                                .then(Commands.argument("item", ResourceLocationArgument.id()).suggests(ITEM_SUGGESTIONS)
+                                        .then(Commands.argument("count", IntegerArgumentType.integer(1,
+                                                        BreakthroughVehicleDefinition.MAX_AMMO_COUNT))
+                                                .executes(SFGameCommands::breakthroughVehicleReplaceAmmo))))));
+        root.then(Commands.literal("ammo")
+                .then(Commands.literal("add")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.argument("item", ResourceLocationArgument.id()).suggests(ITEM_SUGGESTIONS)
+                                        .then(Commands.argument("count", IntegerArgumentType.integer(1,
+                                                        BreakthroughVehicleDefinition.MAX_AMMO_COUNT))
+                                                .executes(SFGameCommands::breakthroughVehicleAddAmmo)))))
+                .then(Commands.literal("remove")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .then(Commands.argument("item", ResourceLocationArgument.id()).suggests(ITEM_SUGGESTIONS)
+                                        .executes(SFGameCommands::breakthroughVehicleRemoveAmmo))))
+                .then(Commands.literal("clear")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .executes(SFGameCommands::breakthroughVehicleClearAmmo)))
+                .then(Commands.literal("list")
+                        .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
+                                .executes(SFGameCommands::breakthroughVehicleListAmmo))));
         root.then(Commands.literal("list").executes(SFGameCommands::breakthroughVehicleList));
         root.then(Commands.literal("status").then(Commands.argument("id", StringArgumentType.word())
                 .suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS).executes(SFGameCommands::breakthroughVehicleStatus)));
@@ -1250,6 +1284,84 @@ public final class SFGameCommands {
         vehicle.respawnSeconds(IntegerArgumentType.getInteger(context, "respawnSeconds"));
         dirty(context);
         return success(context, "Updated vehicle respawn interval for " + vehicle.id());
+    }
+
+    private static int breakthroughVehicleSetOffset(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        vehicle.spawnYOffset(DoubleArgumentType.getDouble(context, "yOffset"));
+        dirty(context);
+        return success(context, "Updated vehicle spawn Y offset for " + vehicle.id() + " to " + vehicle.spawnYOffset());
+    }
+
+    private static int breakthroughVehicleSetEnergy(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        vehicle.energyPercent(IntegerArgumentType.getInteger(context, "percent"));
+        dirty(context);
+        return success(context, "Updated vehicle spawn energy for " + vehicle.id() + " to "
+                + vehicle.energyPercent() + "%");
+    }
+
+    private static int breakthroughVehicleReplaceAmmo(CommandContext<CommandSourceStack> context) {
+        BreakthroughVehicleDefinition vehicle = checkedVehicleForAmmo(context);
+        if (vehicle == null) return 0;
+        String item = ResourceLocationArgument.getId(context, "item").toString();
+        if (!BuiltInRegistries.ITEM.containsKey(ResourceLocationArgument.getId(context, "item"))) {
+            return failure(context, "Unavailable ammo item: " + item);
+        }
+        vehicle.clearAmmo();
+        vehicle.setAmmo(item, IntegerArgumentType.getInteger(context, "count"));
+        dirty(context);
+        return success(context, "Replaced vehicle ammo for " + vehicle.id() + " with " + vehicle.ammo());
+    }
+
+    private static int breakthroughVehicleAddAmmo(CommandContext<CommandSourceStack> context) {
+        BreakthroughVehicleDefinition vehicle = checkedVehicleForAmmo(context);
+        if (vehicle == null) return 0;
+        var itemId = ResourceLocationArgument.getId(context, "item");
+        if (!BuiltInRegistries.ITEM.containsKey(itemId)) return failure(context, "Unavailable ammo item: " + itemId);
+        try {
+            vehicle.setAmmo(itemId.toString(), IntegerArgumentType.getInteger(context, "count"));
+            dirty(context);
+            return success(context, "Updated vehicle ammo for " + vehicle.id() + ": " + vehicle.ammo());
+        } catch (IllegalArgumentException exception) {
+            return failure(context, exception.getMessage());
+        }
+    }
+
+    private static int breakthroughVehicleRemoveAmmo(CommandContext<CommandSourceStack> context) {
+        BreakthroughVehicleDefinition vehicle = checkedVehicleForAmmo(context);
+        if (vehicle == null) return 0;
+        String item = ResourceLocationArgument.getId(context, "item").toString();
+        if (!vehicle.removeAmmo(item)) return failure(context, "Vehicle ammo entry not found: " + item);
+        dirty(context);
+        return success(context, "Removed " + item + " from vehicle " + vehicle.id());
+    }
+
+    private static int breakthroughVehicleClearAmmo(CommandContext<CommandSourceStack> context) {
+        BreakthroughVehicleDefinition vehicle = checkedVehicleForAmmo(context);
+        if (vehicle == null) return 0;
+        vehicle.clearAmmo();
+        dirty(context);
+        return success(context, "Disabled spawn ammo for vehicle " + vehicle.id());
+    }
+
+    private static int breakthroughVehicleListAmmo(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthrough(context)) return 0;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        send(context, "Vehicle " + vehicle.id() + " spawn ammo: " + vehicle.ammo());
+        return vehicle.ammo().size();
+    }
+
+    private static BreakthroughVehicleDefinition checkedVehicleForAmmo(CommandContext<CommandSourceStack> context) {
+        if (!checkBreakthroughEdit(context)) return null;
+        BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
+        if (vehicle == null) failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
+        return vehicle;
     }
 
     private static int breakthroughVehicleList(CommandContext<CommandSourceStack> context) {

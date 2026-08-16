@@ -557,13 +557,25 @@ TDM 与占点默认包含：
 /sfgame rule breakthrough vehicle set entity <槽位ID> <实体资源ID>
 /sfgame rule breakthrough vehicle set role <槽位ID> <attacker|defender>
 /sfgame rule breakthrough vehicle set interval <槽位ID> <重生秒数>
+/sfgame rule breakthrough vehicle set offset <槽位ID> <Y轴偏移>
+/sfgame rule breakthrough vehicle set energy <槽位ID> <0-100>
+/sfgame rule breakthrough vehicle set ammo <槽位ID> <弹药物品ID> <数量>
+/sfgame rule breakthrough vehicle set ammo <槽位ID> none
+/sfgame rule breakthrough vehicle ammo add <槽位ID> <弹药物品ID> <数量>
+/sfgame rule breakthrough vehicle ammo remove <槽位ID> <弹药物品ID>
+/sfgame rule breakthrough vehicle ammo clear <槽位ID>
+/sfgame rule breakthrough vehicle ammo list <槽位ID>
 /sfgame rule breakthrough vehicle list
 /sfgame rule breakthrough vehicle status <槽位ID>
 /sfgame rule breakthrough vehicle remove <槽位ID>
 /sfgame rule breakthrough vehicle clear
 ```
 
-`vehicle add` 使用管理员当前位置作为生成点；`vehicle set` 将已有槽位移动到当前位置。重生秒数范围为 1～3600，地图最多配置 16 个槽位。`attacker`/`defender` 用于标记该槽位服务的当前角色，双赛段交换攻守时角色含义随赛段变化；生成位置不会自动移动。阶段推进和赛段切换不会因为计时而重复生成或清理仍存活的载具；只有载具被摧毁/移除后才开始该槽位的重生计时。停止比赛和返回大厅时会清理全部载具。
+`vehicle add` 使用管理员当前位置作为基准生成点；`vehicle set` 将已有槽位移动到当前位置。生成时还会应用槽位的 Y 轴偏移，默认 `+0.2` 格，可用 `set offset` 在 `-64～64` 之间修改。重生秒数范围为 1～3600，地图最多配置 16 个槽位。`attacker`/`defender` 用于标记该槽位服务的当前角色，双赛段交换攻守时角色含义随赛段变化；生成位置不会自动移动。
+
+每个新槽位默认携带 `1` 个 `superbwarfare:creative_ammo_box`，即卓越前线载具可使用无限弹药。`set ammo` 会用一种弹药物品替换整个出生弹药配置；`none` 或 `ammo clear` 会禁用自动装填；`ammo add` 可为同时使用多种弹药的载具追加或更新物品，单项数量范围为 `1～4096`，每个槽位最多 16 项。弹药通过 Forge 实体物品栏能力放入载具自身仓库，错误或未安装的物品 ID 会阻止开赛。
+
+载具能源使用 Forge Energy 兼容层处理，因此卓越前线中表现为燃油或电量的载具都适用。新槽位默认以 `100%` 能源生成，`set energy` 可配置为 `0～100%`；不具有能源能力的实体会忽略此配置。阶段推进和赛段切换不会因为计时而重复生成或清理仍存活的载具；只有载具被摧毁/移除后才开始该槽位的重生计时。停止比赛和返回大厅时会清理全部载具。
 
 ### 票数、时间与胜负
 
