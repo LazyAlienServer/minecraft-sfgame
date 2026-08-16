@@ -36,6 +36,8 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.scores.PlayerTeam;
@@ -66,6 +68,10 @@ public final class SFGameCommands {
 
     private static final SuggestionProvider<CommandSourceStack> TEAM_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(context.getSource().getServer().getScoreboard().getTeamNames(), builder);
+    private static final SuggestionProvider<CommandSourceStack> ENTITY_TYPE_SUGGESTIONS = (context, builder) ->
+            SharedSuggestionProvider.suggest(BuiltInRegistries.ENTITY_TYPE.keySet().stream().map(Object::toString), builder);
+    private static final SuggestionProvider<CommandSourceStack> VEHICLE_ROLE_SUGGESTIONS = (context, builder) ->
+            SharedSuggestionProvider.suggest(List.of("attacker", "defender"), builder);
     private static final SuggestionProvider<CommandSourceStack> CLASS_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(MatchManager.get().classes().allForMode(
                     SFGameSavedData.get(context.getSource().getServer()).selectedMode(),
@@ -255,8 +261,8 @@ public final class SFGameCommands {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("vehicle");
         root.then(Commands.literal("add")
                 .then(Commands.argument("id", StringArgumentType.word())
-                        .then(Commands.argument("entity", StringArgumentType.word())
-                                .then(Commands.argument("role", StringArgumentType.word())
+                        .then(Commands.argument("entity", ResourceLocationArgument.id()).suggests(ENTITY_TYPE_SUGGESTIONS)
+                                .then(Commands.argument("role", StringArgumentType.word()).suggests(VEHICLE_ROLE_SUGGESTIONS)
                                         .then(Commands.argument("respawnSeconds", IntegerArgumentType.integer(1, 3600))
                                                 .executes(SFGameCommands::breakthroughVehicleAdd))))));
         root.then(Commands.literal("set")
@@ -264,11 +270,11 @@ public final class SFGameCommands {
                         .executes(SFGameCommands::breakthroughVehicleSetPosition))
                 .then(Commands.literal("entity")
                         .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
-                                .then(Commands.argument("entity", StringArgumentType.word())
+                                .then(Commands.argument("entity", ResourceLocationArgument.id()).suggests(ENTITY_TYPE_SUGGESTIONS)
                                         .executes(SFGameCommands::breakthroughVehicleSetEntity))))
                 .then(Commands.literal("role")
                         .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
-                                .then(Commands.argument("role", StringArgumentType.word())
+                                .then(Commands.argument("role", StringArgumentType.word()).suggests(VEHICLE_ROLE_SUGGESTIONS)
                                         .executes(SFGameCommands::breakthroughVehicleSetRole))))
                 .then(Commands.literal("interval")
                         .then(Commands.argument("id", StringArgumentType.word()).suggests(BREAKTHROUGH_VEHICLE_SUGGESTIONS)
@@ -1188,7 +1194,7 @@ public final class SFGameCommands {
         if (!checkBreakthroughEdit(context)) return 0;
         ServerPlayer player = context.getSource().getPlayerOrException();
         String id = StringArgumentType.getString(context, "id");
-        String entity = StringArgumentType.getString(context, "entity");
+        String entity = ResourceLocationArgument.getId(context, "entity").toString();
         BreakthroughVehicleDefinition.Role role = BreakthroughVehicleDefinition.Role.fromId(
                 StringArgumentType.getString(context, "role"));
         if (role == null) return failure(context, "Vehicle role must be attacker or defender");
@@ -1220,7 +1226,7 @@ public final class SFGameCommands {
         BreakthroughVehicleDefinition vehicle = breakthroughVehicle(context);
         if (vehicle == null) return failure(context, "Unknown vehicle: " + StringArgumentType.getString(context, "id"));
         try {
-            vehicle.entityId(StringArgumentType.getString(context, "entity"));
+            vehicle.entityId(ResourceLocationArgument.getId(context, "entity").toString());
             dirty(context);
             return success(context, "Updated vehicle entity for " + vehicle.id());
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
