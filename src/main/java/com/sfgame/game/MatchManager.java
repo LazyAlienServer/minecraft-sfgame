@@ -18,6 +18,7 @@ import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerBossEvent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
@@ -26,6 +27,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.GameType;
+import net.minecraft.world.BossEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
 import javax.annotation.Nullable;
@@ -36,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.Locale;
 import java.nio.file.Path;
 
 public final class MatchManager {
@@ -68,6 +71,12 @@ public final class MatchManager {
     private int greenScore;
     private int syncTicker;
     private TeamSide result = TeamSide.NONE;
+    private MapBuildSnapshotService.RestoreSession mapRestoreSession;
+    private ServerBossEvent mapRestoreBar;
+    private int mapRestoreCooldownTicks;
+    private int mapRestoreAdaptiveSkips;
+    private double mapRestorePartitionMillisEstimate;
+    private boolean modePreparationStarted;
 
     public static MatchManager get() { return INSTANCE; }
     public MatchPhase phase() { return phase; }
@@ -98,6 +107,11 @@ public final class MatchManager {
     }
     public int elapsedTicks() { return elapsedTicks; }
     public int remainingSeconds() { return activeRuntime.remainingSeconds(this, rules()); }
+    public boolean restoringMap() { return mapRestoreSession != null; }
+    public float mapRestoreProgress() { return mapRestoreSession == null ? 0.0F : mapRestoreSession.progress(); }
+    public long mapRestoreElapsedMillis() { return mapRestoreSession == null ? 0L : mapRestoreSession.elapsedMillis(); }
+    public int restoredPartitions() { return mapRestoreSession == null ? 0 : mapRestoreSession.completedPartitions(); }
+    public int totalRestorePartitions() { return mapRestoreSession == null ? 0 : mapRestoreSession.totalPartitions(); }
     public boolean modeBlocksCombat() { return phase == MatchPhase.RUNNING && activeRuntime.blocksCombat(); }
     public boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                  net.minecraft.world.level.block.state.BlockState state) {
@@ -118,6 +132,7 @@ public final class MatchManager {
     /** Used by explosions, TACZ projectiles and Superb Warfare vehicle/projectile destruction. */
     public boolean canExternalDestroyBlock(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos,
                                            net.minecraft.world.level.block.state.BlockState state) {
+        if (mapRestoreSession != null && isInsideBuildRegion(level, pos)) return false;
         return phase != MatchPhase.RUNNING || canEditMapBlock(level, pos, state);
     }
 
@@ -125,12 +140,17 @@ public final class MatchManager {
                                     net.minecraft.world.level.block.state.BlockState state) {
         if (!rules().mapBlockBreaking() || !activeRuntime.allowsMapEditing()) return false;
         ArenaMap map = data().activeMap();
+        if (map == null || !isInsideBuildRegion(level, pos)) return false;
+        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+        return map.build().allowedBlocks().contains(id);
+    }
+
+    private boolean isInsideBuildRegion(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos) {
+        ArenaMap map = data().activeMap();
         if (map == null || map.build().region() == null) return false;
         com.sfgame.data.ArenaPosition location = new com.sfgame.data.ArenaPosition(
                 level.dimension().location().toString(), pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0, 0);
-        if (!map.build().region().contains(location)) return false;
-        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-        return map.build().allowedBlocks().contains(id);
+        return map.build().region().contains(location);
     }
     public boolean ctfCarrierCannotUseWeapons(ServerPlayer player) {
         return isCtfCarrier(player) && ctfCarrierRestriction() == com.sfgame.data.CarrierRestriction.NO_WEAPONS;
@@ -202,7 +222,7 @@ public final class MatchManager {
     }
 
     public void serverStopped() {
-        if (server != null) restoreActiveMapSnapshot();
+        clearMapRestoreState();
         activeRuntime.stop();
         players.clear();
         server = null;
@@ -249,7 +269,7 @@ public final class MatchManager {
         if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
         if (rules().mapBlockBreaking() && data.activeMap() != null) {
             if (data.activeMap().build().region() == null) errors.add("Map build box must be set while mapBlockBreaking is enabled");
-            else if (!MapBuildSnapshotService.exists(server, data.activeMap())) errors.add("Map snapshot must be saved while mapBlockBreaking is enabled");
+            else if (!MapBuildSnapshotService.exists(server, data.selectedMode(), data.activeMap())) errors.add("Map snapshot must be saved while mapBlockBreaking is enabled");
         }
 
         if (enabledTeams.size() < (devMode ? 1 : 2)) {
@@ -281,9 +301,10 @@ public final class MatchManager {
     public boolean start() {
         if (server == null || (phase != MatchPhase.LOBBY && phase != MatchPhase.UNCONFIGURED)) return false;
         if (!validateStart().isEmpty()) return false;
-        if (MapBuildSnapshotService.exists(server, data().activeMap())) {
+        MapBuildSnapshotService.RestoreSession pendingRestore = null;
+        if (rules().mapBlockBreaking()) {
             try {
-                MapBuildSnapshotService.restore(server, data().activeMap());
+                pendingRestore = MapBuildSnapshotService.beginRestore(server, data().selectedMode(), data().activeMap());
             } catch (Exception exception) {
                 server.getPlayerList().broadcastSystemMessage(Component.literal(
                         "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
@@ -314,18 +335,31 @@ public final class MatchManager {
             }
         }
         activeRuntime = modeRuntime();
-        if (activeRuntime.needsPreparation(data().activeMap())) {
+        if (pendingRestore != null) {
+            mapRestoreSession = pendingRestore;
+            mapRestoreCooldownTicks = 0;
+            mapRestoreAdaptiveSkips = 0;
+            mapRestorePartitionMillisEstimate = 0.0;
+            modePreparationStarted = false;
             phase = MatchPhase.PREPARING;
-            activeRuntime.prepare(server, this, data().activeMap(), rules());
-        } else beginCountdown();
+            ArenaPosition safeLobby = data().lobby();
+            if (safeLobby != null) forParticipants(player -> {
+                safeLobby.teleport(player);
+                player.fallDistance = 0.0F;
+            });
+            mapRestoreBar = new ServerBossEvent(Component.translatable("sfgame.map_restore.progress", 0,
+                    pendingRestore.totalPartitions(), 0), BossEvent.BossBarColor.YELLOW, BossEvent.BossBarOverlay.PROGRESS);
+            mapRestoreBar.setProgress(0);
+            forParticipants(mapRestoreBar::addPlayer);
+        } else beginModePreparationOrCountdown();
         syncAll();
         return true;
     }
 
     public void stop(boolean showResult, Component reason) {
         if (server == null) return;
+        clearMapRestoreState();
         activeRuntime.stop();
-        restoreActiveMapSnapshot();
         if (showResult) {
             phase = MatchPhase.RESULT;
             phaseTicks = rules().resultSeconds() * 20;
@@ -570,6 +604,7 @@ public final class MatchManager {
     }
 
     public void setRule(String key, int value) {
+        ensureRuleChangeAllowed(key);
         boolean domination = GameModeRegistry.DOMINATION.equals(data().selectedMode());
         boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode());
         boolean ctf = GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode());
@@ -595,6 +630,7 @@ public final class MatchManager {
     }
 
     public void setRule(String key, boolean value) {
+        ensureRuleChangeAllowed(key);
         boolean domination = GameModeRegistry.DOMINATION.equals(data().selectedMode());
         boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode());
         boolean ctf = GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode());
@@ -607,10 +643,11 @@ public final class MatchManager {
             }
             case "mapBlockBreaking" -> {
                 if (value && (data().activeMap() == null || data().activeMap().build().region() == null
-                        || !MapBuildSnapshotService.exists(server, data().activeMap()))) {
+                        || !MapBuildSnapshotService.exists(server, data().selectedMode(), data().activeMap()))) {
                     throw new IllegalArgumentException("Set the map build box and save its snapshot before enabling mapBlockBreaking");
                 }
             }
+            case "mapRestoreAdaptiveThrottling" -> { }
             default -> throw new IllegalArgumentException("Unknown boolean rule " + key);
         }
         ruleConfigRegistry.setBoolean(data().selectedMode(), data().selectedMap(), key, value);
@@ -620,6 +657,7 @@ public final class MatchManager {
     }
 
     public void setRule(String key, double value) {
+        ensureRuleChangeAllowed(key);
         String mode = data().selectedMode();
         boolean domination = GameModeRegistry.DOMINATION.equals(mode);
         boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(mode);
@@ -638,6 +676,7 @@ public final class MatchManager {
     }
 
     public void resetRules() {
+        if (isActiveMatchPhase()) throw new IllegalStateException("Rules can only be reset in the lobby");
         ruleConfigRegistry.resetMap(data().selectedMode(), data().selectedMap());
         activeRuntime.onRuleChanged("attackerTickets", rules());
         refreshParticipantGameModes();
@@ -645,6 +684,7 @@ public final class MatchManager {
     }
 
     public void setRuleParent(String parent) {
+        if (isActiveMatchPhase()) throw new IllegalStateException("Rule inheritance can only change in the lobby");
         ruleConfigRegistry.setParent(data().selectedMode(), data().selectedMap(), parent);
         activeRuntime.onRuleChanged("attackerTickets", rules());
         refreshParticipantGameModes();
@@ -652,6 +692,9 @@ public final class MatchManager {
     }
 
     public List<String> reloadRuleConfigurations() {
+        if (isActiveMatchPhase()) {
+            return List.of("Rule files can only be reloaded in the lobby; use /sfgame rule set for live rules");
+        }
         List<String> errors = ruleConfigRegistry.reload(data());
         if (errors.isEmpty()) {
             activeRuntime.onRuleChanged("attackerTickets", rules());
@@ -660,6 +703,14 @@ public final class MatchManager {
             syncAll();
         }
         return errors;
+    }
+
+    private void ensureRuleChangeAllowed(String key) {
+        AdminRuleCatalog.find(data().selectedMode(), key).ifPresent(definition -> {
+            if (!definition.hotReload() && isActiveMatchPhase()) {
+                throw new IllegalStateException(key + " can only be changed in the lobby");
+            }
+        });
     }
 
     public MatchSnapshot snapshot(ServerPlayer viewer) {
@@ -764,7 +815,106 @@ public final class MatchManager {
     }
 
     private void tickPreparing() {
-        if (activeRuntime.tickPreparation(server, this, data().activeMap(), rules())) beginCountdown();
+        if (mapRestoreSession != null) {
+            tickMapRestore();
+            return;
+        }
+        if (modePreparationStarted && activeRuntime.tickPreparation(server, this, data().activeMap(), rules())) {
+            modePreparationStarted = false;
+            beginCountdown();
+        }
+    }
+
+    private void tickMapRestore() {
+        MatchRules rules = rules();
+        if (mapRestoreCooldownTicks > 0) {
+            mapRestoreCooldownTicks--;
+            return;
+        }
+
+        float averageTickMillis = server.getAverageTickTime();
+        boolean overloaded = rules.mapRestoreAdaptiveThrottling()
+                && averageTickMillis > rules.mapRestoreTargetTickMillis();
+        if (overloaded && ++mapRestoreAdaptiveSkips < 4) {
+            double overload = averageTickMillis - rules.mapRestoreTargetTickMillis();
+            mapRestoreCooldownTicks = Math.max(rules.mapRestorePartitionDelayTicks(),
+                    Math.min(10, 1 + (int) Math.ceil(overload / 5.0)));
+            return;
+        }
+        mapRestoreAdaptiveSkips = 0;
+
+        double availableMillis = Math.max(1.0, rules.mapRestoreTargetTickMillis() - averageTickMillis);
+        int adaptiveLimit = mapRestorePartitionMillisEstimate <= 0.0 ? 1
+                : Math.max(1, (int) Math.floor(availableMillis / mapRestorePartitionMillisEstimate));
+        int limit = rules.mapRestoreAdaptiveThrottling()
+                ? Math.min(rules.mapRestoreMaxPartitionsPerTick(), adaptiveLimit)
+                : rules.mapRestoreMaxPartitionsPerTick();
+        if (overloaded || rules.mapRestorePartitionDelayTicks() > 0) limit = 1;
+        long budgetNanos = (long) (availableMillis * 1_000_000.0);
+        long started = System.nanoTime();
+        try {
+            for (int i = 0; i < limit && !mapRestoreSession.complete(); i++) {
+                mapRestoreSession.restoreNext();
+                double sample = mapRestoreSession.lastPartitionMillis();
+                mapRestorePartitionMillisEstimate = mapRestorePartitionMillisEstimate <= 0.0 ? sample
+                        : mapRestorePartitionMillisEstimate * 0.75 + sample * 0.25;
+                if (rules.mapRestoreAdaptiveThrottling() && System.nanoTime() - started >= budgetNanos) break;
+            }
+        } catch (Exception exception) {
+            SFGame.LOGGER.error("Map snapshot restore failed", exception);
+            server.getPlayerList().broadcastSystemMessage(Component.literal(
+                    "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
+            stop(false, Component.literal("Map snapshot restore failed"));
+            return;
+        }
+
+        updateMapRestoreBar();
+        mapRestoreCooldownTicks = rules.mapRestorePartitionDelayTicks();
+        if (!mapRestoreSession.complete()) return;
+
+        long elapsedMillis = mapRestoreSession.elapsedMillis();
+        String seconds = String.format(Locale.ROOT, "%.2f", elapsedMillis / 1000.0);
+        Component complete = Component.translatable("sfgame.map_restore.complete", seconds).withStyle(ChatFormatting.GREEN);
+        forParticipants(player -> {
+            player.sendSystemMessage(complete, true);
+            playSound(player, SoundEvents.PLAYER_LEVELUP, 1.15F);
+        });
+        server.getPlayerList().broadcastSystemMessage(complete, false);
+        clearMapRestoreState();
+        beginModePreparationOrCountdown();
+    }
+
+    private void updateMapRestoreBar() {
+        if (mapRestoreBar == null || mapRestoreSession == null) return;
+        int percent = Math.round(mapRestoreSession.progress() * 100);
+        mapRestoreBar.setProgress(mapRestoreSession.progress());
+        mapRestoreBar.setName(Component.translatable("sfgame.map_restore.progress",
+                mapRestoreSession.completedPartitions(), mapRestoreSession.totalPartitions(), percent));
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            PlayerMatchState state = state(player);
+            if (state.participating() || state.queued()) mapRestoreBar.addPlayer(player);
+            else mapRestoreBar.removePlayer(player);
+        }
+    }
+
+    private void beginModePreparationOrCountdown() {
+        if (activeRuntime.needsPreparation(data().activeMap())) {
+            phase = MatchPhase.PREPARING;
+            modePreparationStarted = true;
+            activeRuntime.prepare(server, this, data().activeMap(), rules());
+        } else {
+            modePreparationStarted = false;
+            beginCountdown();
+        }
+    }
+
+    private void clearMapRestoreState() {
+        if (mapRestoreBar != null) mapRestoreBar.removeAllPlayers();
+        mapRestoreBar = null;
+        mapRestoreSession = null;
+        mapRestoreCooldownTicks = 0;
+        mapRestoreAdaptiveSkips = 0;
+        mapRestorePartitionMillisEstimate = 0.0;
     }
 
     private void beginCountdown() {
@@ -940,18 +1090,6 @@ public final class MatchManager {
                 ? GameType.SURVIVAL : GameType.ADVENTURE;
     }
 
-    private void restoreActiveMapSnapshot() {
-        ArenaMap map = data().activeMap();
-        if (map == null || !MapBuildSnapshotService.exists(server, map)) return;
-        try {
-            MapBuildSnapshotService.restore(server, map);
-        } catch (Exception exception) {
-            SFGame.LOGGER.error("Could not restore map snapshot for {}", map.id(), exception);
-            server.getPlayerList().broadcastSystemMessage(Component.literal(
-                    "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
-        }
-    }
-
     private void refreshParticipantGameModes() {
         if (server == null) return;
         GameType gameType = participantGameType();
@@ -1008,6 +1146,8 @@ public final class MatchManager {
     }
 
     private void resetRuntime() {
+        clearMapRestoreState();
+        modePreparationStarted = false;
         resetRuntimeScores();
         players.clear();
     }

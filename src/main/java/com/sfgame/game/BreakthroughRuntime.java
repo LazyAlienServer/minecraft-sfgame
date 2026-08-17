@@ -478,7 +478,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     private void refreshDisplays(MinecraftServer server, MatchManager manager, ArenaMap map) {
         List<CapturePointDefinition> points = runtimeState == RuntimeState.ACTIVE ? currentSector(map).points() : List.of();
-        pointMarkers.refresh(server, points);
+        pointMarkers.refresh(server, points, pointStates);
         List<String> ids = points.stream().map(CapturePointDefinition::id).toList();
         bossBars.entrySet().removeIf(entry -> {
             if (ids.contains(entry.getKey())) return false;
@@ -490,10 +490,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
                     Component.literal(displayId(point.id())), BossEvent.BossBarColor.WHITE, BossEvent.BossBarOverlay.PROGRESS));
             TeamSide colorSide = state.owner() != TeamSide.NONE ? state.owner() : state.contender();
             bar.setColor(color(colorSide)); bar.setProgress((float) Math.max(0.0, Math.min(1.0, state.progress())));
-            Component status = state.contested() ? Component.translatable("sfgame.point.contested")
-                    : state.owner() != TeamSide.NONE ? teamName(state.owner())
-                    : state.contender() != TeamSide.NONE ? teamName(state.contender()) : Component.translatable("sfgame.point.neutral");
-            bar.setName(Component.translatable("sfgame.point.bossbar", displayId(point.id()), status));
+            bar.setName(Component.translatable("sfgame.point.label", displayId(point.id())));
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 PlayerMatchState playerState = manager.state(player);
                 if (playerState.participating() || playerState.queued()) bar.addPlayer(player); else bar.removePlayer(player);

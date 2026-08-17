@@ -36,6 +36,10 @@ final class MatchRulesTest {
         source.scoreLimit(75);
         source.timeLimitSeconds(900);
         source.respawnSeconds(3);
+        source.mapRestorePartitionDelayTicks(4);
+        source.mapRestoreAdaptiveThrottling(false);
+        source.mapRestoreTargetTickMillis(35);
+        source.mapRestoreMaxPartitionsPerTick(12);
 
         CompoundTag saved = source.save();
         MatchRules restored = new MatchRules();
@@ -45,6 +49,10 @@ final class MatchRulesTest {
         assertEquals(75, restored.scoreLimit());
         assertEquals(900, restored.timeLimitSeconds());
         assertEquals(3, restored.respawnSeconds());
+        assertEquals(4, restored.mapRestorePartitionDelayTicks());
+        assertEquals(false, restored.mapRestoreAdaptiveThrottling());
+        assertEquals(35, restored.mapRestoreTargetTickMillis());
+        assertEquals(12, restored.mapRestoreMaxPartitionsPerTick());
     }
 
     @Test
@@ -64,6 +72,10 @@ final class MatchRulesTest {
         assertEquals(MatchRules.DEFAULT_RESPAWN_PROTECTION_SECONDS, rules.respawnProtectionSeconds());
         assertEquals(MatchRules.DEFAULT_RESULT_SECONDS, rules.resultSeconds());
         assertTrue(rules.mapBlockBreaking());
+        assertEquals(0, rules.mapRestorePartitionDelayTicks());
+        assertTrue(rules.mapRestoreAdaptiveThrottling());
+        assertEquals(40, rules.mapRestoreTargetTickMillis());
+        assertEquals(8, rules.mapRestoreMaxPartitionsPerTick());
     }
 
     @Test

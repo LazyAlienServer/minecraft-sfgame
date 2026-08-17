@@ -63,6 +63,9 @@ public final class SFGameScreen extends Screen {
     @Override
     protected void init() {
         rebuild();
+        // The server only answers this request for permission level 2.  A
+        // normal player never receives administrator state or mutation access.
+        SFGameNetwork.sendToServer(com.sfgame.network.AdminActionPacket.request(false));
     }
 
     public void refresh() {
@@ -83,6 +86,12 @@ public final class SFGameScreen extends Screen {
                     button -> requestRefresh()));
             rebuilding = false;
             return;
+        }
+
+        if (ClientAdminState.snapshot() != null) {
+            addRenderableWidget(new DarkButton(width - 88, 18, 72, 20,
+                    Component.translatable("sfgame.admin.open"),
+                    button -> SFGameNetwork.sendToServer(com.sfgame.network.AdminActionPacket.request(true))));
         }
 
         boolean activeMatch = snapshot.phase() == MatchPhase.PREPARING

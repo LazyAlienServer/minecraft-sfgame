@@ -60,7 +60,7 @@ public final class DominationRuntime implements MatchModeRuntime {
             Collections.shuffle(syncPointOrder);
         }
         refreshBossBars(server, manager, map);
-        pointMarkers.refresh(server, activePoints(map));
+        pointMarkers.refresh(server, activePoints(map), states);
         if (!syncPointOrder.isEmpty()) announceActivePoint(server, manager, syncPointOrder.get(0));
     }
 
@@ -90,7 +90,7 @@ public final class DominationRuntime implements MatchModeRuntime {
             }
         }
         refreshBossBars(server, manager, map);
-        pointMarkers.refresh(server, activePoints(map));
+        pointMarkers.refresh(server, activePoints(map), states);
         return map.enabledTeams().stream().anyMatch(side -> manager.score(side) >= rules.scoreLimit())
                 ? ModeTickResult.finish(manager.determineWinner()) : ModeTickResult.CONTINUE;
     }
@@ -158,11 +158,7 @@ public final class DominationRuntime implements MatchModeRuntime {
             TeamSide colorSide = state.owner() != TeamSide.NONE ? state.owner() : state.contender();
             bar.setColor(color(colorSide));
             bar.setProgress((float) Math.max(0.0, Math.min(1.0, state.progress())));
-            Component status = state.contested() ? Component.translatable("sfgame.point.contested")
-                    : state.owner() != TeamSide.NONE ? Component.translatable("sfgame.team." + state.owner().id())
-                    : state.contender() != TeamSide.NONE ? Component.translatable("sfgame.team." + state.contender().id())
-                    : Component.translatable("sfgame.point.neutral");
-            bar.setName(Component.translatable("sfgame.point.bossbar", displayPointId(point.id()), status));
+            bar.setName(Component.translatable("sfgame.point.label", displayPointId(point.id())));
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 PlayerMatchState playerState = manager.state(player);
                 if (playerState.participating() || playerState.queued()) bar.addPlayer(player); else bar.removePlayer(player);

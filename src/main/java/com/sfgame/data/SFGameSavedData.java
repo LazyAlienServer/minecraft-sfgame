@@ -13,6 +13,7 @@ import javax.annotation.Nullable;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class SFGameSavedData extends SavedData {
@@ -122,6 +123,12 @@ public final class SFGameSavedData extends SavedData {
 
     public Collection<ArenaMap> maps() {
         return Collections.unmodifiableCollection(mapsFor(selectedMode).values());
+    }
+
+    /** Read-only map list for an arbitrary mode, used by the administrator UI. */
+    public Collection<ArenaMap> maps(String modeId) {
+        if (GameModeRegistry.get(modeId).isEmpty()) return List.of();
+        return Collections.unmodifiableCollection(mapsFor(modeId).values());
     }
 
     @Nullable public ArenaMap activeMap() {
@@ -255,7 +262,7 @@ public final class SFGameSavedData extends SavedData {
         return map;
     }
 
-    private boolean mapConfigured(ArenaMap map, String modeId) {
+    public boolean mapConfigured(ArenaMap map, String modeId) {
         if (map == null || (map.lobby() == null && defaultLobby == null)) return false;
         // Dev mode is intentionally a player-count aid, but for the simple
         // TDM/domination maps it also permits a one-team sandbox arena.  The

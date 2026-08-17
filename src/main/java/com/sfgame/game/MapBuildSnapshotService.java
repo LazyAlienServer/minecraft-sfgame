@@ -2,125 +2,278 @@ package com.sfgame.game;
 
 import com.sfgame.data.ArenaMap;
 import com.sfgame.data.BoxCaptureRegion;
+import com.sfgame.data.SFGameId;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
 
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
- * Stores a map baseline as chunk-sized structure files.  Splitting X/Z into
- * 16x16 partitions keeps a large arena from becoming one huge in-memory NBT.
- * Block entities are retained; normal entities are deliberately excluded.
+ * Stores a map baseline as compressed 16x16 columns. Each column contains
+ * independent 16-block-high restore partitions, so one server-tick step is
+ * bounded while a tall arena does not create one file per vertical section.
+ * Ordinary air is omitted from the structure payload and reconstructed by
+ * clearing only cells that are absent from the saved partition.
  */
 public final class MapBuildSnapshotService {
-    private static final int FORMAT = 1;
+    private static final int FORMAT = 3;
     private static final int PARTITION_SIZE = 16;
+    private static final int RESTORE_FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE
+            | Block.UPDATE_SUPPRESS_DROPS;
     private static final String MANIFEST = "manifest.nbt";
 
-    public static int save(MinecraftServer server, ArenaMap map) throws IOException {
+    public static int save(MinecraftServer server, String modeId, ArenaMap map) throws IOException {
         BoxCaptureRegion region = map.build().region();
         if (region == null) throw new IOException("Map build box is not set");
         ServerLevel level = level(server, region.dimension());
         if (level == null) throw new IOException("Build box dimension is unavailable");
         Bounds bounds = bounds(level, region);
-        Path target = snapshotPath(server, map);
+        Path target = snapshotPath(server, modeId, map);
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
+        Files.createDirectories(target.getParent());
         deleteTree(temporary);
         Files.createDirectories(temporary);
 
         CompoundTag manifest = new CompoundTag();
         manifest.putInt("Format", FORMAT);
+        manifest.putInt("PartitionSize", PARTITION_SIZE);
         manifest.putString("Dimension", region.dimension());
-        manifest.putInt("MinX", bounds.origin().getX()); manifest.putInt("MinY", bounds.origin().getY());
-        manifest.putInt("MinZ", bounds.origin().getZ()); manifest.putInt("SizeX", bounds.size().getX());
-        manifest.putInt("SizeY", bounds.size().getY()); manifest.putInt("SizeZ", bounds.size().getZ());
-        ListTag parts = new ListTag();
-        int index = 0;
-        int maxX = bounds.origin().getX() + bounds.size().getX() - 1;
-        int maxZ = bounds.origin().getZ() + bounds.size().getZ() - 1;
+        putBounds(manifest, bounds);
+        ListTag columns = new ListTag();
+        int totalPartitions = 0;
+        int columnIndex = 0;
+        int maxX = bounds.maxX();
+        int maxY = bounds.maxY();
+        int maxZ = bounds.maxZ();
+
         for (int x = bounds.origin().getX(); x <= maxX; x += PARTITION_SIZE) {
             for (int z = bounds.origin().getZ(); z <= maxZ; z += PARTITION_SIZE) {
                 int sizeX = Math.min(PARTITION_SIZE, maxX - x + 1);
                 int sizeZ = Math.min(PARTITION_SIZE, maxZ - z + 1);
-                BlockPos origin = new BlockPos(x, bounds.origin().getY(), z);
-                Vec3i size = new Vec3i(sizeX, bounds.size().getY(), sizeZ);
-                StructureTemplate template = new StructureTemplate();
-                template.fillFromWorld(level, origin, size, false, null);
-                String file = String.format("part_%06d.nbt", index++);
-                NbtIo.writeCompressed(template.save(new CompoundTag()), temporary.resolve(file).toFile());
-                CompoundTag part = new CompoundTag();
-                part.putString("File", file); part.putInt("X", x); part.putInt("Y", origin.getY()); part.putInt("Z", z);
-                part.putInt("SizeX", sizeX); part.putInt("SizeY", size.getY()); part.putInt("SizeZ", sizeZ);
-                parts.add(part);
+                ListTag parts = new ListTag();
+                for (int y = bounds.origin().getY(); y <= maxY; y += PARTITION_SIZE) {
+                    int sizeY = Math.min(PARTITION_SIZE, maxY - y + 1);
+                    BlockPos origin = new BlockPos(x, y, z);
+                    Vec3i size = new Vec3i(sizeX, sizeY, sizeZ);
+                    StructureTemplate template = new StructureTemplate();
+                    // The overwhelmingly common air state is reconstructed at
+                    // restore time instead of being serialized block-by-block.
+                    template.fillFromWorld(level, origin, size, false, Blocks.AIR);
+                    CompoundTag part = new CompoundTag();
+                    putPartition(part, origin, size);
+                    part.put("Template", template.save(new CompoundTag()));
+                    parts.add(part);
+                    totalPartitions++;
+                }
+
+                String file = String.format("column_%07d.nbt", columnIndex++);
+                CompoundTag columnFile = new CompoundTag();
+                columnFile.putInt("Format", FORMAT);
+                columnFile.putInt("X", x);
+                columnFile.putInt("Z", z);
+                columnFile.putInt("SizeX", sizeX);
+                columnFile.putInt("SizeZ", sizeZ);
+                columnFile.put("Parts", parts);
+                NbtIo.writeCompressed(columnFile, temporary.resolve(file).toFile());
+
+                CompoundTag column = new CompoundTag();
+                column.putString("File", file);
+                column.putInt("X", x);
+                column.putInt("Z", z);
+                column.putInt("SizeX", sizeX);
+                column.putInt("SizeZ", sizeZ);
+                column.putInt("PartCount", parts.size());
+                columns.add(column);
             }
         }
-        manifest.put("Parts", parts);
+        manifest.putInt("TotalPartitions", totalPartitions);
+        manifest.put("Columns", columns);
         NbtIo.writeCompressed(manifest, temporary.resolve(MANIFEST).toFile());
-        deleteTree(target);
-        Files.createDirectories(target.getParent());
-        Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
+        replaceDirectory(temporary, target);
         map.build().snapshotSaved(true);
-        return parts.size();
+        return totalPartitions;
     }
 
-    public static int restore(MinecraftServer server, ArenaMap map) throws IOException {
-        Path directory = snapshotPath(server, map);
+    /** Synchronous restore retained for the explicit administrator command. */
+    public static int restore(MinecraftServer server, String modeId, ArenaMap map) throws IOException {
+        RestoreSession session = beginRestore(server, modeId, map);
+        while (!session.complete()) session.restoreNext();
+        return session.totalPartitions();
+    }
+
+    /** Creates a tick-driven restore session used during match preparation. */
+    public static RestoreSession beginRestore(MinecraftServer server, String modeId, ArenaMap map) throws IOException {
+        Path directory = snapshotPath(server, modeId, map).normalize();
         Path manifestPath = directory.resolve(MANIFEST);
-        if (!Files.exists(manifestPath)) throw new IOException("Map snapshot does not exist");
+        if (!Files.isRegularFile(manifestPath)) throw new IOException("Map snapshot does not exist");
         CompoundTag manifest = NbtIo.readCompressed(manifestPath.toFile());
-        if (!compatible(server, map, manifest)) throw new IOException("Map snapshot does not match the current build box; save it again");
+        if (!compatible(server, map, manifest)) {
+            throw new IOException("Map snapshot does not match the current build box; save it again");
+        }
         ServerLevel level = level(server, manifest.getString("Dimension"));
         if (level == null) throw new IOException("Snapshot dimension is unavailable");
-        ListTag parts = manifest.getList("Parts", net.minecraft.nbt.Tag.TAG_COMPOUND);
-        for (int i = 0; i < parts.size(); i++) {
-            CompoundTag part = parts.getCompound(i);
-            Path partPath = directory.resolve(part.getString("File")).normalize();
-            if (!partPath.getParent().equals(directory.normalize()) || !Files.exists(partPath)) {
-                throw new IOException("Snapshot partition is missing: " + part.getString("File"));
-            }
-            BlockPos origin = new BlockPos(part.getInt("X"), part.getInt("Y"), part.getInt("Z"));
-            Vec3i size = new Vec3i(part.getInt("SizeX"), part.getInt("SizeY"), part.getInt("SizeZ"));
-            clear(level, new Bounds(origin, size));
-            CompoundTag templateTag = NbtIo.readCompressed(partPath.toFile());
-            StructureTemplate template = new StructureTemplate();
-            template.load(level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK), templateTag);
-            template.placeInWorld(level, origin, origin, new StructurePlaceSettings(), RandomSource.create(), 3);
+        Bounds bounds = bounds(level, map.build().region());
+        ListTag columns = manifest.getList("Columns", Tag.TAG_COMPOUND);
+        int totalPartitions = validateManifest(directory, bounds, manifest, columns);
+        return new RestoreSession(level, directory, bounds, columns.copy(), totalPartitions);
+    }
+
+    public static boolean exists(MinecraftServer server, String modeId, ArenaMap map) {
+        Path manifest = snapshotPath(server, modeId, map).resolve(MANIFEST);
+        if (!map.build().snapshotSaved() || !Files.isRegularFile(manifest)) return false;
+        try {
+            CompoundTag tag = NbtIo.readCompressed(manifest.toFile());
+            if (!compatible(server, map, tag)) return false;
+            ServerLevel level = level(server, tag.getString("Dimension"));
+            if (level == null) return false;
+            Bounds bounds = bounds(level, map.build().region());
+            validateManifest(manifest.getParent(), bounds, tag, tag.getList("Columns", Tag.TAG_COMPOUND));
+            return true;
+        } catch (IOException | RuntimeException exception) {
+            return false;
         }
-        map.build().snapshotSaved(true);
-        return parts.size();
     }
 
-    public static boolean exists(MinecraftServer server, ArenaMap map) {
-        Path manifest = snapshotPath(server, map).resolve(MANIFEST);
-        if (!map.build().snapshotSaved() || !Files.exists(manifest)) return false;
-        try { return compatible(server, map, NbtIo.readCompressed(manifest.toFile())); }
-        catch (IOException exception) { return false; }
-    }
-
-    public static void clear(MinecraftServer server, ArenaMap map) throws IOException {
-        deleteTree(snapshotPath(server, map));
+    public static void clear(MinecraftServer server, String modeId, ArenaMap map) throws IOException {
+        deleteTree(snapshotPath(server, modeId, map));
         map.build().snapshotSaved(false);
     }
 
-    public static Path snapshotPath(MinecraftServer server, ArenaMap map) {
+    public static Path snapshotPath(MinecraftServer server, String modeId, ArenaMap map) {
+        String safeMode = SFGameId.normalize(modeId);
+        String safeMap = SFGameId.normalize(map.id());
         return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-                .resolve("data").resolve("sfgame").resolve("maps").resolve(map.id());
+                .resolve("data").resolve("sfgame").resolve("maps").resolve(safeMode).resolve(safeMap);
+    }
+
+    private static int validateManifest(Path directory, Bounds bounds, CompoundTag manifest,
+                                        ListTag columns) throws IOException {
+        int expectedColumnsX = Mth.ceil((double) bounds.size().getX() / PARTITION_SIZE);
+        int expectedColumnsZ = Mth.ceil((double) bounds.size().getZ() / PARTITION_SIZE);
+        int expectedPartsPerColumn = Mth.ceil((double) bounds.size().getY() / PARTITION_SIZE);
+        int expectedColumns = expectedColumnsX * expectedColumnsZ;
+        int expectedTotal = expectedColumns * expectedPartsPerColumn;
+        if (columns.size() != expectedColumns || manifest.getInt("TotalPartitions") != expectedTotal) {
+            throw new IOException("Snapshot partition manifest is incomplete");
+        }
+
+        Set<String> files = new HashSet<>();
+        Set<Long> origins = new HashSet<>();
+        int declaredTotal = 0;
+        for (int i = 0; i < columns.size(); i++) {
+            CompoundTag column = columns.getCompound(i);
+            String file = column.getString("File");
+            if (!file.matches("column_[0-9]{7}\\.nbt") || !files.add(file)) {
+                throw new IOException("Snapshot contains an invalid or duplicate column file");
+            }
+            Path columnPath = resolveColumn(directory, file);
+            if (!Files.isRegularFile(columnPath) || Files.size(columnPath) == 0L) {
+                throw new IOException("Snapshot column is missing: " + file);
+            }
+            int x = column.getInt("X");
+            int z = column.getInt("Z");
+            long originKey = ((long) x << 32) ^ (z & 0xffffffffL);
+            if (!origins.add(originKey) || x < bounds.origin().getX() || z < bounds.origin().getZ()
+                    || (x - bounds.origin().getX()) % PARTITION_SIZE != 0
+                    || (z - bounds.origin().getZ()) % PARTITION_SIZE != 0) {
+                throw new IOException("Snapshot contains a duplicate or misaligned column");
+            }
+            int expectedSizeX = Math.min(PARTITION_SIZE, bounds.maxX() - x + 1);
+            int expectedSizeZ = Math.min(PARTITION_SIZE, bounds.maxZ() - z + 1);
+            if (expectedSizeX <= 0 || expectedSizeZ <= 0 || column.getInt("SizeX") != expectedSizeX
+                    || column.getInt("SizeZ") != expectedSizeZ
+                    || column.getInt("PartCount") != expectedPartsPerColumn) {
+                throw new IOException("Snapshot column bounds do not match the build box");
+            }
+            declaredTotal += column.getInt("PartCount");
+        }
+        if (declaredTotal != expectedTotal) throw new IOException("Snapshot partition count is invalid");
+        return expectedTotal;
+    }
+
+    private static void validateColumn(CompoundTag fileTag, CompoundTag metadata, Bounds bounds) throws IOException {
+        if (fileTag.getInt("Format") != FORMAT || fileTag.getInt("X") != metadata.getInt("X")
+                || fileTag.getInt("Z") != metadata.getInt("Z")
+                || fileTag.getInt("SizeX") != metadata.getInt("SizeX")
+                || fileTag.getInt("SizeZ") != metadata.getInt("SizeZ")) {
+            throw new IOException("Snapshot column metadata does not match its manifest");
+        }
+        ListTag parts = fileTag.getList("Parts", Tag.TAG_COMPOUND);
+        if (parts.size() != metadata.getInt("PartCount")) {
+            throw new IOException("Snapshot column has an invalid partition count");
+        }
+        for (int i = 0; i < parts.size(); i++) validatePartitionMetadata(parts.getCompound(i), metadata, bounds, i);
+    }
+
+    private static void validatePartitionMetadata(CompoundTag part, CompoundTag column, Bounds bounds,
+                                                  int verticalIndex) throws IOException {
+        int expectedY = bounds.origin().getY() + verticalIndex * PARTITION_SIZE;
+        int expectedSizeY = Math.min(PARTITION_SIZE, bounds.maxY() - expectedY + 1);
+        if (part.getInt("X") != column.getInt("X") || part.getInt("Z") != column.getInt("Z")
+                || part.getInt("Y") != expectedY || part.getInt("SizeX") != column.getInt("SizeX")
+                || part.getInt("SizeZ") != column.getInt("SizeZ") || part.getInt("SizeY") != expectedSizeY
+                || !part.contains("Template", Tag.TAG_COMPOUND)) {
+            throw new IOException("Snapshot partition metadata is invalid");
+        }
+        CompoundTag template = part.getCompound("Template");
+        ListTag size = template.getList("size", Tag.TAG_INT);
+        if (size.size() != 3 || size.getInt(0) != part.getInt("SizeX")
+                || size.getInt(1) != part.getInt("SizeY") || size.getInt(2) != part.getInt("SizeZ")) {
+            throw new IOException("Snapshot structure size does not match its partition");
+        }
+    }
+
+    private static void clearUnsavedCells(ServerLevel level, BlockPos origin, Vec3i size,
+                                          boolean[] occupied) {
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        int index = 0;
+        for (int y = 0; y < size.getY(); y++) {
+            for (int z = 0; z < size.getZ(); z++) {
+                for (int x = 0; x < size.getX(); x++, index++) {
+                    if (occupied[index]) continue;
+                    cursor.set(origin.getX() + x, origin.getY() + y, origin.getZ() + z);
+                    if (!level.getBlockState(cursor).isAir()) {
+                        level.setBlock(cursor, Blocks.AIR.defaultBlockState(), RESTORE_FLAGS);
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean[] occupiedCells(CompoundTag template, Vec3i size) throws IOException {
+        boolean[] occupied = new boolean[size.getX() * size.getY() * size.getZ()];
+        ListTag blocks = template.getList("blocks", Tag.TAG_COMPOUND);
+        for (int i = 0; i < blocks.size(); i++) {
+            ListTag position = blocks.getCompound(i).getList("pos", Tag.TAG_INT);
+            if (position.size() != 3) throw new IOException("Snapshot block position is invalid");
+            int x = position.getInt(0), y = position.getInt(1), z = position.getInt(2);
+            if (x < 0 || y < 0 || z < 0 || x >= size.getX() || y >= size.getY() || z >= size.getZ()) {
+                throw new IOException("Snapshot block position is outside its partition");
+            }
+            occupied[(y * size.getZ() + z) * size.getX() + x] = true;
+        }
+        return occupied;
     }
 
     private static ServerLevel level(MinecraftServer server, String dimension) {
@@ -133,12 +286,14 @@ public final class MapBuildSnapshotService {
         int minZ = Mth.floor(region.minZ()), maxZ = Mth.floor(region.maxZ());
         int minY = region.minY() == null ? level.getMinBuildHeight() : region.minY();
         int maxY = region.maxY() == null ? level.getMaxBuildHeight() - 1 : region.maxY();
-        return new Bounds(new BlockPos(minX, minY, minZ), new Vec3i(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1));
+        return new Bounds(new BlockPos(minX, minY, minZ),
+                new Vec3i(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1));
     }
 
     private static boolean compatible(MinecraftServer server, ArenaMap map, CompoundTag manifest) {
         BoxCaptureRegion region = map.build().region();
-        if (region == null || !region.dimension().equals(manifest.getString("Dimension"))) return false;
+        if (manifest.getInt("Format") != FORMAT || manifest.getInt("PartitionSize") != PARTITION_SIZE
+                || region == null || !region.dimension().equals(manifest.getString("Dimension"))) return false;
         ServerLevel level = level(server, region.dimension());
         if (level == null) return false;
         Bounds expected = bounds(level, region);
@@ -150,12 +305,51 @@ public final class MapBuildSnapshotService {
                 && expected.size().getZ() == manifest.getInt("SizeZ");
     }
 
-    private static void clear(ServerLevel level, Bounds bounds) {
-        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
-        BlockPos origin = bounds.origin(); Vec3i size = bounds.size();
-        for (int x = 0; x < size.getX(); x++) for (int y = 0; y < size.getY(); y++) for (int z = 0; z < size.getZ(); z++) {
-            cursor.set(origin.getX() + x, origin.getY() + y, origin.getZ() + z);
-            if (!level.getBlockState(cursor).isAir()) level.setBlock(cursor, Blocks.AIR.defaultBlockState(), 3);
+    private static void putBounds(CompoundTag tag, Bounds bounds) {
+        tag.putInt("MinX", bounds.origin().getX());
+        tag.putInt("MinY", bounds.origin().getY());
+        tag.putInt("MinZ", bounds.origin().getZ());
+        tag.putInt("SizeX", bounds.size().getX());
+        tag.putInt("SizeY", bounds.size().getY());
+        tag.putInt("SizeZ", bounds.size().getZ());
+    }
+
+    private static void putPartition(CompoundTag tag, BlockPos origin, Vec3i size) {
+        tag.putInt("X", origin.getX());
+        tag.putInt("Y", origin.getY());
+        tag.putInt("Z", origin.getZ());
+        tag.putInt("SizeX", size.getX());
+        tag.putInt("SizeY", size.getY());
+        tag.putInt("SizeZ", size.getZ());
+    }
+
+    private static Path resolveColumn(Path directory, String file) throws IOException {
+        Path result = directory.resolve(file).normalize();
+        if (result.getParent() == null || !result.getParent().equals(directory)) {
+            throw new IOException("Snapshot column path escapes its map directory");
+        }
+        return result;
+    }
+
+    private static void replaceDirectory(Path source, Path target) throws IOException {
+        Path backup = target.resolveSibling(target.getFileName() + ".backup");
+        deleteTree(backup);
+        boolean hadTarget = Files.exists(target);
+        if (hadTarget) move(target, backup);
+        try {
+            move(source, target);
+        } catch (IOException exception) {
+            if (hadTarget && !Files.exists(target) && Files.exists(backup)) move(backup, target);
+            throw exception;
+        }
+        deleteTree(backup);
+    }
+
+    private static void move(Path source, Path target) throws IOException {
+        try {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ignored) {
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -166,6 +360,87 @@ public final class MapBuildSnapshotService {
         }
     }
 
-    private record Bounds(BlockPos origin, Vec3i size) { }
-    private MapBuildSnapshotService() { }
+    public static final class RestoreSession {
+        private final ServerLevel level;
+        private final Path directory;
+        private final Bounds bounds;
+        private final ListTag columns;
+        private final int totalPartitions;
+        private final long startedNanos = System.nanoTime();
+        private int nextColumn;
+        private ListTag currentParts;
+        private int nextPartInColumn;
+        private int completedPartitions;
+        private double lastPartitionMillis;
+
+        private RestoreSession(ServerLevel level, Path directory, Bounds bounds, ListTag columns,
+                               int totalPartitions) {
+            this.level = level;
+            this.directory = directory;
+            this.bounds = bounds;
+            this.columns = columns;
+            this.totalPartitions = totalPartitions;
+        }
+
+        public void restoreNext() throws IOException {
+            if (complete()) return;
+            long started = System.nanoTime();
+            ensureColumnLoaded();
+            CompoundTag part = currentParts.getCompound(nextPartInColumn);
+            BlockPos origin = new BlockPos(part.getInt("X"), part.getInt("Y"), part.getInt("Z"));
+            Vec3i size = new Vec3i(part.getInt("SizeX"), part.getInt("SizeY"), part.getInt("SizeZ"));
+            CompoundTag templateTag = part.getCompound("Template");
+            boolean[] occupied = occupiedCells(templateTag, size);
+            StructureTemplate template = new StructureTemplate();
+            template.load(level.registryAccess().lookupOrThrow(net.minecraft.core.registries.Registries.BLOCK), templateTag);
+            if (!template.getSize().equals(size)) throw new IOException("Snapshot template size changed while loading");
+
+            clearUnsavedCells(level, origin, size, occupied);
+            if (templateTag.getList("blocks", Tag.TAG_COMPOUND).size() > 0) {
+                StructurePlaceSettings settings = new StructurePlaceSettings()
+                        .setIgnoreEntities(true).setKnownShape(true);
+                if (!template.placeInWorld(level, origin, origin, settings, RandomSource.create(), RESTORE_FLAGS)) {
+                    throw new IOException("Could not place snapshot partition at " + origin.toShortString());
+                }
+            }
+
+            completedPartitions++;
+            nextPartInColumn++;
+            if (nextPartInColumn >= currentParts.size()) {
+                currentParts = null;
+                nextPartInColumn = 0;
+                nextColumn++;
+            }
+            lastPartitionMillis = (System.nanoTime() - started) / 1_000_000.0;
+        }
+
+        private void ensureColumnLoaded() throws IOException {
+            if (currentParts != null) return;
+            if (nextColumn >= columns.size()) throw new IOException("Snapshot ended before all partitions were restored");
+            CompoundTag metadata = columns.getCompound(nextColumn);
+            Path path = resolveColumn(directory, metadata.getString("File"));
+            CompoundTag fileTag = NbtIo.readCompressed(path.toFile());
+            validateColumn(fileTag, metadata, bounds);
+            currentParts = fileTag.getList("Parts", Tag.TAG_COMPOUND);
+        }
+
+        public boolean complete() { return completedPartitions >= totalPartitions; }
+        public int completedPartitions() { return completedPartitions; }
+        public int totalPartitions() { return totalPartitions; }
+        public float progress() {
+            return totalPartitions == 0 ? 1.0F
+                    : Mth.clamp((float) completedPartitions / totalPartitions, 0.0F, 1.0F);
+        }
+        public long elapsedMillis() { return (System.nanoTime() - startedNanos) / 1_000_000L; }
+        public double lastPartitionMillis() { return lastPartitionMillis; }
+    }
+
+    private record Bounds(BlockPos origin, Vec3i size) {
+        int maxX() { return origin.getX() + size.getX() - 1; }
+        int maxY() { return origin.getY() + size.getY() - 1; }
+        int maxZ() { return origin.getZ() + size.getZ() - 1; }
+    }
+
+    private MapBuildSnapshotService() {
+    }
 }

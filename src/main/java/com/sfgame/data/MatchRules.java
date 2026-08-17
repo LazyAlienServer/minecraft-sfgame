@@ -14,6 +14,9 @@ public final class MatchRules {
     public static final int DEFAULT_BREAKTHROUGH_RESPAWN_SECONDS = 10;
     public static final int DEFAULT_RESPAWN_PROTECTION_SECONDS = 3;
     public static final int DEFAULT_RESULT_SECONDS = 20;
+    public static final int DEFAULT_MAP_RESTORE_DELAY_TICKS = 0;
+    public static final int DEFAULT_MAP_RESTORE_TARGET_TICK_MILLIS = 40;
+    public static final int DEFAULT_MAP_RESTORE_MAX_PARTITIONS_PER_TICK = 8;
 
     private final String modeId;
     private int maxPlayers;
@@ -36,6 +39,10 @@ public final class MatchRules {
     private int captainReplacementVoteSeconds;
     private boolean attackerCaptainGlowing;
     private boolean mapBlockBreaking;
+    private int mapRestorePartitionDelayTicks;
+    private boolean mapRestoreAdaptiveThrottling;
+    private int mapRestoreTargetTickMillis;
+    private int mapRestoreMaxPartitionsPerTick;
     private double attackerCaptainCaptureWeight;
     private double defenderCaptureWeight;
     private int ctfFlagReturnSeconds;
@@ -64,6 +71,10 @@ public final class MatchRules {
     public int captainReplacementVoteSeconds() { return captainReplacementVoteSeconds; }
     public boolean attackerCaptainGlowing() { return attackerCaptainGlowing; }
     public boolean mapBlockBreaking() { return mapBlockBreaking; }
+    public int mapRestorePartitionDelayTicks() { return mapRestorePartitionDelayTicks; }
+    public boolean mapRestoreAdaptiveThrottling() { return mapRestoreAdaptiveThrottling; }
+    public int mapRestoreTargetTickMillis() { return mapRestoreTargetTickMillis; }
+    public int mapRestoreMaxPartitionsPerTick() { return mapRestoreMaxPartitionsPerTick; }
     public double attackerCaptainCaptureWeight() { return attackerCaptainCaptureWeight; }
     public double defenderCaptureWeight() { return defenderCaptureWeight; }
     public int ctfFlagReturnSeconds() { return ctfFlagReturnSeconds; }
@@ -89,6 +100,10 @@ public final class MatchRules {
     public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
     public void attackerCaptainGlowing(boolean value) { attackerCaptainGlowing = value; }
     public void mapBlockBreaking(boolean value) { mapBlockBreaking = value; }
+    public void mapRestorePartitionDelayTicks(int value) { mapRestorePartitionDelayTicks = clamp(value, 0, 200); }
+    public void mapRestoreAdaptiveThrottling(boolean value) { mapRestoreAdaptiveThrottling = value; }
+    public void mapRestoreTargetTickMillis(int value) { mapRestoreTargetTickMillis = clamp(value, 10, 50); }
+    public void mapRestoreMaxPartitionsPerTick(int value) { mapRestoreMaxPartitionsPerTick = clamp(value, 1, 64); }
     public void attackerCaptainCaptureWeight(double value) { attackerCaptainCaptureWeight = clamp(value, 1.0, 10.0); }
     public void defenderCaptureWeight(double value) { defenderCaptureWeight = clamp(value, 0.1, 10.0); }
     public void ctfFlagReturnSeconds(int value) { ctfFlagReturnSeconds = clamp(value, 5, 600); }
@@ -117,6 +132,10 @@ public final class MatchRules {
         captainReplacementVoteSeconds = 10;
         attackerCaptainGlowing = true;
         mapBlockBreaking = true;
+        mapRestorePartitionDelayTicks = DEFAULT_MAP_RESTORE_DELAY_TICKS;
+        mapRestoreAdaptiveThrottling = true;
+        mapRestoreTargetTickMillis = DEFAULT_MAP_RESTORE_TARGET_TICK_MILLIS;
+        mapRestoreMaxPartitionsPerTick = DEFAULT_MAP_RESTORE_MAX_PARTITIONS_PER_TICK;
         attackerCaptainCaptureWeight = 2.0;
         defenderCaptureWeight = 1.4;
         ctfFlagReturnSeconds = 30;
@@ -137,6 +156,10 @@ public final class MatchRules {
         tag.putInt("CaptainVoteSeconds", captainVoteSeconds); tag.putInt("CaptainReplacementVoteSeconds", captainReplacementVoteSeconds);
         tag.putBoolean("AttackerCaptainGlowing", attackerCaptainGlowing);
         tag.putBoolean("MapBlockBreaking", mapBlockBreaking);
+        tag.putInt("MapRestorePartitionDelayTicks", mapRestorePartitionDelayTicks);
+        tag.putBoolean("MapRestoreAdaptiveThrottling", mapRestoreAdaptiveThrottling);
+        tag.putInt("MapRestoreTargetTickMillis", mapRestoreTargetTickMillis);
+        tag.putInt("MapRestoreMaxPartitionsPerTick", mapRestoreMaxPartitionsPerTick);
         tag.putDouble("AttackerCaptainCaptureWeight", attackerCaptainCaptureWeight);
         tag.putDouble("DefenderCaptureWeight", defenderCaptureWeight);
         tag.putInt("CtfFlagReturnSeconds", ctfFlagReturnSeconds);
@@ -165,6 +188,10 @@ public final class MatchRules {
         if (tag.contains("CaptainReplacementVoteSeconds")) captainReplacementVoteSeconds(tag.getInt("CaptainReplacementVoteSeconds"));
         if (tag.contains("AttackerCaptainGlowing")) attackerCaptainGlowing(tag.getBoolean("AttackerCaptainGlowing"));
         if (tag.contains("MapBlockBreaking")) mapBlockBreaking(tag.getBoolean("MapBlockBreaking"));
+        if (tag.contains("MapRestorePartitionDelayTicks")) mapRestorePartitionDelayTicks(tag.getInt("MapRestorePartitionDelayTicks"));
+        if (tag.contains("MapRestoreAdaptiveThrottling")) mapRestoreAdaptiveThrottling(tag.getBoolean("MapRestoreAdaptiveThrottling"));
+        if (tag.contains("MapRestoreTargetTickMillis")) mapRestoreTargetTickMillis(tag.getInt("MapRestoreTargetTickMillis"));
+        if (tag.contains("MapRestoreMaxPartitionsPerTick")) mapRestoreMaxPartitionsPerTick(tag.getInt("MapRestoreMaxPartitionsPerTick"));
         if (tag.contains("AttackerCaptainCaptureWeight")) attackerCaptainCaptureWeight(tag.getDouble("AttackerCaptainCaptureWeight"));
         if (tag.contains("DefenderCaptureWeight")) defenderCaptureWeight(tag.getDouble("DefenderCaptureWeight"));
         if (tag.contains("CtfFlagReturnSeconds")) ctfFlagReturnSeconds(tag.getInt("CtfFlagReturnSeconds"));

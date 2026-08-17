@@ -8,7 +8,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class SFGameNetwork {
-    private static final String PROTOCOL = "5";
+    private static final String PROTOCOL = "6";
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             ResourceLocation.tryParse(SFGame.MOD_ID + ":main"),
             () -> PROTOCOL, PROTOCOL::equals, PROTOCOL::equals);
@@ -21,8 +21,12 @@ public final class SFGameNetwork {
                 ClientActionPacket::handle);
         CHANNEL.registerMessage(id++, SnapshotPacket.class, SnapshotPacket::encode, SnapshotPacket::decode,
                 SnapshotPacket::handle);
-        CHANNEL.registerMessage(id, OpenMenuPacket.class, OpenMenuPacket::encode, OpenMenuPacket::decode,
+        CHANNEL.registerMessage(id++, OpenMenuPacket.class, OpenMenuPacket::encode, OpenMenuPacket::decode,
                 OpenMenuPacket::handle);
+        CHANNEL.registerMessage(id++, AdminActionPacket.class, AdminActionPacket::encode, AdminActionPacket::decode,
+                AdminActionPacket::handle);
+        CHANNEL.registerMessage(id, AdminSnapshotPacket.class, AdminSnapshotPacket::encode, AdminSnapshotPacket::decode,
+                AdminSnapshotPacket::handle);
     }
 
     public static void sendSnapshot(ServerPlayer player, MatchSnapshot snapshot) {
@@ -36,5 +40,15 @@ public final class SFGameNetwork {
 
     public static void sendToServer(ClientActionPacket packet) {
         CHANNEL.sendToServer(packet);
+    }
+
+    public static void sendToServer(AdminActionPacket packet) {
+        CHANNEL.sendToServer(packet);
+    }
+
+    public static void sendAdminSnapshot(ServerPlayer player, boolean openScreen) {
+        if (!player.hasPermissions(2)) return;
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+                new AdminSnapshotPacket(AdminSnapshot.create(player), openScreen));
     }
 }
