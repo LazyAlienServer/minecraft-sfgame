@@ -385,9 +385,9 @@ public final class SFGameCommands {
         return Commands.literal("build")
                 .then(Commands.literal("setbox").executes(SFGameCommands::ctfBuildSetBox))
                 .then(Commands.literal("clear").executes(SFGameCommands::ctfBuildClear))
-                .then(Commands.literal("allow").then(Commands.argument("block", StringArgumentType.word())
+                .then(Commands.literal("allow").then(Commands.argument("block", ResourceLocationArgument.id())
                         .suggests(BLOCK_SUGGESTIONS).executes(SFGameCommands::ctfBuildAllow)))
-                .then(Commands.literal("disallow").then(Commands.argument("block", StringArgumentType.word())
+                .then(Commands.literal("disallow").then(Commands.argument("block", ResourceLocationArgument.id())
                         .suggests(BLOCK_SUGGESTIONS).executes(SFGameCommands::ctfBuildDisallow)))
                 .then(Commands.literal("allowlist").executes(SFGameCommands::ctfBuildAllowList))
                 .then(Commands.literal("snapshot").then(Commands.literal("save").executes(SFGameCommands::ctfSnapshotSave))
@@ -698,9 +698,9 @@ public final class SFGameCommands {
     private static int ctfBuildAllow(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuildEdit(context)) return 0;
         try {
-            String id = StringArgumentType.getString(context, "block");
-            net.minecraft.resources.ResourceLocation resource = net.minecraft.resources.ResourceLocation.tryParse(id);
-            if (resource == null || !BuiltInRegistries.BLOCK.containsKey(resource)) return failure(context, "Unknown block: " + id);
+            net.minecraft.resources.ResourceLocation resource = ResourceLocationArgument.getId(context, "block");
+            String id = resource.toString();
+            if (!BuiltInRegistries.BLOCK.containsKey(resource)) return failure(context, "Unknown block: " + id);
             SFGameSavedData.get(context.getSource().getServer()).activeMap().build().allow(id); dirty(context);
             return success(context, "Allowed block " + id);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
@@ -709,7 +709,7 @@ public final class SFGameCommands {
     private static int ctfBuildDisallow(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuildEdit(context)) return 0;
         try {
-            String id = StringArgumentType.getString(context, "block");
+            String id = ResourceLocationArgument.getId(context, "block").toString();
             var build = SFGameSavedData.get(context.getSource().getServer()).activeMap().build();
             if (!build.disallow(id)) return failure(context, "Block was not in the allowlist: " + id);
             dirty(context); return success(context, "Disallowed block " + id);
