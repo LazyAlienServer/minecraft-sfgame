@@ -56,6 +56,20 @@ final class SFGameSavedDataTest {
     }
 
     @Test
+    void persistsMapWideBuildRegionAndAllowlist() {
+        SFGameSavedData source = new SFGameSavedData();
+        source.activeMap().build().region(new BoxCaptureRegion("minecraft:overworld", 0, 31, 0, 31, null, null));
+        source.activeMap().build().allow("minecraft:white_wool");
+        source.activeMap().build().snapshotSaved(true);
+
+        SFGameSavedData restored = SFGameSavedData.load(source.save(new CompoundTag()));
+
+        assertNotNull(restored.activeMap().build().region());
+        assertTrue(restored.activeMap().build().allowedBlocks().contains("minecraft:white_wool"));
+        assertTrue(restored.activeMap().build().snapshotSaved());
+    }
+
+    @Test
     void acceptsSingleDigitMapIdsAndPersistsThem() {
         SFGameSavedData source = new SFGameSavedData();
         assertTrue(source.createMap("1"));

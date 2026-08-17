@@ -22,10 +22,8 @@ public interface MatchModeRuntime {
     default void onPlayerDeath(ServerPlayer victim, TeamSide side, MatchManager manager) { onPlayerDeath(side, manager); }
     default void onPlayerTeamChanged(ServerPlayer player, TeamSide oldSide, TeamSide newSide, MatchManager manager) { }
     default void onPlayerLoggedOut(ServerPlayer player, MatchManager manager) { }
-    default boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state,
-                                   MatchManager manager) { return false; }
-    default boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos, net.minecraft.world.level.block.state.BlockState state,
-                                  MatchManager manager) { return false; }
+    /** Mode sub-states may temporarily suspend the common map editing system. */
+    default boolean allowsMapEditing() { return true; }
     default void onRuleChanged(String key, MatchRules rules) { }
     default ArenaPosition spawnFor(TeamSide side, ArenaMap map) { return map.randomSpawn(side); }
     default int remainingSeconds(MatchManager manager, MatchRules rules) {

@@ -195,20 +195,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     @Override public boolean usesCommonTimeLimit() { return false; }
     @Override public boolean blocksCombat() { return runtimeState != RuntimeState.ACTIVE; }
     @Override
-    public boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
-                                  net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        // The breakthrough block-editing rule enables both breaking and
-        // placing while the active sector is running.  Captain elections and
-        // sector transitions stay protected so the map cannot be altered
-        // during deployments.
-        return runtimeState == RuntimeState.ACTIVE && manager.rules().breakthroughBlockBreaking();
-    }
-
-    @Override
-    public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
-                                  net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        return runtimeState == RuntimeState.ACTIVE && manager.rules().breakthroughBlockBreaking();
-    }
+    public boolean allowsMapEditing() { return runtimeState == RuntimeState.ACTIVE; }
 
     public TeamSide attacker() { return attacker; }
     public TeamSide defender() { return defender; }

@@ -5,6 +5,7 @@ import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class MatchRulesTest {
     @Test
@@ -62,6 +63,7 @@ final class MatchRulesTest {
         assertEquals(MatchRules.DEFAULT_RESPAWN_SECONDS, rules.respawnSeconds());
         assertEquals(MatchRules.DEFAULT_RESPAWN_PROTECTION_SECONDS, rules.respawnProtectionSeconds());
         assertEquals(MatchRules.DEFAULT_RESULT_SECONDS, rules.resultSeconds());
+        assertTrue(rules.mapBlockBreaking());
     }
 
     @Test
@@ -91,6 +93,7 @@ final class MatchRulesTest {
         rules.captainVoteSeconds(20);
         rules.captainReplacementVoteSeconds(8);
         rules.attackerCaptainGlowing(false);
+        rules.mapBlockBreaking(false);
         rules.attackerCaptainCaptureWeight(2.5);
         rules.defenderCaptureWeight(1.6);
 
@@ -102,6 +105,7 @@ final class MatchRulesTest {
         assertEquals(20, restored.captainVoteSeconds());
         assertEquals(8, restored.captainReplacementVoteSeconds());
         assertEquals(false, restored.attackerCaptainGlowing());
+        assertEquals(false, restored.mapBlockBreaking());
         assertEquals(2.5, restored.attackerCaptainCaptureWeight());
         assertEquals(1.6, restored.defenderCaptureWeight());
     }

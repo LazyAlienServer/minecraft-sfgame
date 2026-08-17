@@ -6,6 +6,7 @@ import com.sfgame.classsystem.ClassRegistry;
 import com.sfgame.classsystem.LoadoutService;
 import com.sfgame.config.SFGameServerConfigPaths;
 import com.sfgame.data.ArenaPosition;
+import com.sfgame.data.ArenaMap;
 import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.SFGameSavedData;
@@ -101,18 +102,35 @@ public final class MatchManager {
     public boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                  net.minecraft.world.level.block.state.BlockState state) {
         return phase == MatchPhase.RUNNING && state(player).participating()
-                && activeRuntime.canBreakBlock(player, pos, state, this);
+                && canEditMapBlock(player.serverLevel(), pos, state);
     }
-    /** Breakthrough uses Survival only while its block-breaking rule is active. */
-    public boolean usesBreakthroughSurvival(ServerPlayer player) {
+    /** Participants use Survival while the common allowlisted build system is active. */
+    public boolean usesMapEditingSurvival(ServerPlayer player) {
         return phase == MatchPhase.RUNNING && state(player).participating()
-                && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
-                && rules().breakthroughBlockBreaking();
+                && rules().mapBlockBreaking() && activeRuntime.allowsMapEditing();
     }
     public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                  net.minecraft.world.level.block.state.BlockState state) {
         return phase == MatchPhase.RUNNING && state(player).participating()
-                && activeRuntime.canPlaceBlock(player, pos, state, this);
+                && canEditMapBlock(player.serverLevel(), pos, state);
+    }
+
+    /** Used by explosions, TACZ projectiles and Superb Warfare vehicle/projectile destruction. */
+    public boolean canExternalDestroyBlock(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos,
+                                           net.minecraft.world.level.block.state.BlockState state) {
+        return phase != MatchPhase.RUNNING || canEditMapBlock(level, pos, state);
+    }
+
+    private boolean canEditMapBlock(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos,
+                                    net.minecraft.world.level.block.state.BlockState state) {
+        if (!rules().mapBlockBreaking() || !activeRuntime.allowsMapEditing()) return false;
+        ArenaMap map = data().activeMap();
+        if (map == null || map.build().region() == null) return false;
+        com.sfgame.data.ArenaPosition location = new com.sfgame.data.ArenaPosition(
+                level.dimension().location().toString(), pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0, 0);
+        if (!map.build().region().contains(location)) return false;
+        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+        return map.build().allowedBlocks().contains(id);
     }
     public boolean ctfCarrierCannotUseWeapons(ServerPlayer player) {
         return isCtfCarrier(player) && ctfCarrierRestriction() == com.sfgame.data.CarrierRestriction.NO_WEAPONS;
@@ -184,6 +202,7 @@ public final class MatchManager {
     }
 
     public void serverStopped() {
+        if (server != null) restoreActiveMapSnapshot();
         activeRuntime.stop();
         players.clear();
         server = null;
@@ -228,6 +247,10 @@ public final class MatchManager {
         List<TeamSide> enabledTeams = data.enabledTeams();
         errors.addAll(loadoutService.validate(classRegistry, data.selectedMode(), data.selectedMap(), enabledTeams, captainMode));
         if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
+        if (rules().mapBlockBreaking() && data.activeMap() != null) {
+            if (data.activeMap().build().region() == null) errors.add("Map build box must be set while mapBlockBreaking is enabled");
+            else if (!MapBuildSnapshotService.exists(server, data.activeMap())) errors.add("Map snapshot must be saved while mapBlockBreaking is enabled");
+        }
 
         if (enabledTeams.size() < (devMode ? 1 : 2)) {
             errors.add(devMode ? "The selected map needs at least one enabled team"
@@ -258,6 +281,15 @@ public final class MatchManager {
     public boolean start() {
         if (server == null || (phase != MatchPhase.LOBBY && phase != MatchPhase.UNCONFIGURED)) return false;
         if (!validateStart().isEmpty()) return false;
+        if (MapBuildSnapshotService.exists(server, data().activeMap())) {
+            try {
+                MapBuildSnapshotService.restore(server, data().activeMap());
+            } catch (Exception exception) {
+                server.getPlayerList().broadcastSystemMessage(Component.literal(
+                        "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
+                return false;
+            }
+        }
         redScore = 0;
         blueScore = 0;
         yellowScore = 0;
@@ -293,6 +325,7 @@ public final class MatchManager {
     public void stop(boolean showResult, Component reason) {
         if (server == null) return;
         activeRuntime.stop();
+        restoreActiveMapSnapshot();
         if (showResult) {
             phase = MatchPhase.RESULT;
             phaseTicks = rules().resultSeconds() * 20;
@@ -572,14 +605,17 @@ public final class MatchManager {
             case "attackerCaptainGlowing" -> {
                 if (!breakthrough) throw new IllegalArgumentException(key + " is only available in breakthrough mode");
             }
-            case "breakthroughBlockBreaking" -> {
-                if (!breakthrough) throw new IllegalArgumentException(key + " is only available in breakthrough mode");
+            case "mapBlockBreaking" -> {
+                if (value && (data().activeMap() == null || data().activeMap().build().region() == null
+                        || !MapBuildSnapshotService.exists(server, data().activeMap()))) {
+                    throw new IllegalArgumentException("Set the map build box and save its snapshot before enabling mapBlockBreaking");
+                }
             }
             default -> throw new IllegalArgumentException("Unknown boolean rule " + key);
         }
         ruleConfigRegistry.setBoolean(data().selectedMode(), data().selectedMap(), key, value);
         activeRuntime.onRuleChanged(key, rules());
-        if ("breakthroughBlockBreaking".equals(key)) refreshParticipantGameModes();
+        if ("mapBlockBreaking".equals(key)) refreshParticipantGameModes();
         syncAll();
     }
 
@@ -900,8 +936,20 @@ public final class MatchManager {
     }
 
     private GameType participantGameType() {
-        return phase == MatchPhase.RUNNING && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
-                && rules().breakthroughBlockBreaking() ? GameType.SURVIVAL : GameType.ADVENTURE;
+        return phase == MatchPhase.RUNNING && rules().mapBlockBreaking() && activeRuntime.allowsMapEditing()
+                ? GameType.SURVIVAL : GameType.ADVENTURE;
+    }
+
+    private void restoreActiveMapSnapshot() {
+        ArenaMap map = data().activeMap();
+        if (map == null || !MapBuildSnapshotService.exists(server, map)) return;
+        try {
+            MapBuildSnapshotService.restore(server, map);
+        } catch (Exception exception) {
+            SFGame.LOGGER.error("Could not restore map snapshot for {}", map.id(), exception);
+            server.getPlayerList().broadcastSystemMessage(Component.literal(
+                    "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
+        }
     }
 
     private void refreshParticipantGameModes() {

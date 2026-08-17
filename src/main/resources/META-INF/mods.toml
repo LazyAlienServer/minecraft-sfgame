@@ -9,6 +9,9 @@ displayName="${mod_name}"
 authors="${mod_authors}"
 description='''${mod_description}'''
 
+[[mixins]]
+config="sfgame.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId="forge"
 mandatory=true
@@ -29,4 +32,3 @@ mandatory=true
 versionRange="[1.1.8-hotfix,1.1.9)"
 ordering="AFTER"
 side="BOTH"
-

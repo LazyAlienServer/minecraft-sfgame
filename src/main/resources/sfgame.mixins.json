@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.sfgame.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "sfgame.refmap.json",
+  "mixins": [
+    "LevelBlockProtectionMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

@@ -123,7 +123,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `captainVoteSeconds` | 15 | 1～120 | 突破 captain | 首次队长投票时长。 |
 | `captainReplacementVoteSeconds` | 10 | 1～120 | 突破 captain | 队长掉线、离队或换队后的补选时长。 |
 | `attackerCaptainGlowing` | true | true/false | 突破 captain | 是否让进攻方队长使用发光轮廓；队长不占用头盔栏。 |
-| `breakthroughBlockBreaking` | false | true/false | 突破模式 | 是否允许参赛玩家在正式进行阶段破坏和放置方块；准备、倒计时和阶段整备期间仍然禁止编辑方块。为兼容旧配置，规则名保留 `Breaking`。 |
+| `mapBlockBreaking` | true | true/false | 全部 | 是否启用当前地图的白名单方块破坏与放置。仅 build box 内、allowlist 中的方块可编辑；爆炸、TACZ 枪械、卓越前线枪械与载具同样受此规则限制。 |
 | `attackerCaptainCaptureWeight` | 2.0 | 1.0～10.0 | 突破 captain | 进攻队长在点内的占领权重。 |
 | `defenderCaptureWeight` | 1.4 | 0.1～10.0 | 突破 captain | 每名防守玩家在点内的占领权重；防守方不选举队长。 |
 | `ctfFlagReturnSeconds` | 30 | 5～600 | CTF | 掉落旗帜无人回收时自动返回旗座的秒数。 |
@@ -585,7 +585,7 @@ TDM 与占点默认包含：
 - 单赛段中，攻陷最后 sector 则进攻方获胜；票数归零或超时则防守方获胜。
 - 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
 - 阶段整备期间全员无敌，不能通过开火提前解除保护。
-- `breakthroughBlockBreaking` 默认关闭；开启后仅在正式进行阶段允许参赛玩家破坏和放置方块，准备、倒计时和阶段整备期间仍禁止编辑。规则可在比赛中修改并立即生效。
+- `mapBlockBreaking` 默认开启；实际只能编辑地图 build box 内的白名单方块。突破模式的投票、倒计时和 sector 整备期间仍暂停编辑。规则可在比赛中修改并立即生效。
 - 突破模式默认死亡重生倒计时为 10 秒。倒计时结束后自动打开位置选择，可选择当前 sector 的队伍出生点，或当前由本队占领的点位；安全点位使用 `inside` 坐标，人数并列或敌方正在中立化/夺取时使用 `nearby` 坐标。按钮点击时会再次校验归属，已经失守的点不能重生。
 
 突破模式规则：
@@ -601,7 +601,7 @@ TDM 与占点默认包含：
 /sfgame rule set captainVoteSeconds <秒>
 /sfgame rule set captainReplacementVoteSeconds <秒>
 /sfgame rule set attackerCaptainGlowing <true|false>
-/sfgame rule set breakthroughBlockBreaking <true|false>
+/sfgame rule set mapBlockBreaking <true|false>
 /sfgame rule set attackerCaptainCaptureWeight <小数>
 /sfgame rule set defenderCaptureWeight <小数>
 ```
@@ -704,25 +704,25 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 
 `classic` 中每队需要家旗、交旗区域和 depot；己方家旗离开旗座时不能交旗得分。旗帜会在死亡、掉线、离队或换队时掉落，默认 30 秒后自动返回。`territory` 的前线旗初始锁定，敌方先在其点位完成占领才可拾取；带到己方 depot 得 1 分，原归属队伍可在该 depot 回收并插回原点再得 1 分。旗帜在旗座、掉落点和 depot 使用服务端不可见盔甲架承载并直接放置在配置坐标的地面位置，不显示盔甲架轮廓；玩家持旗时旗帜改为装备在头盔栏并使持旗者高亮，交付或掉落后恢复原头盔装备。
 
-### 地图复原与方块白名单
+### 所有模式共用的地图复原与方块白名单
 
 ```text
 /sfgame pos1
 /sfgame pos2
-/sfgame rule ctf build setbox
-/sfgame rule ctf build clear
-/sfgame rule ctf build allow <方块ID>
-/sfgame rule ctf build disallow <方块ID>
-/sfgame rule ctf build allowlist
-/sfgame rule ctf build snapshot save
-/sfgame rule ctf build snapshot restore
-/sfgame rule ctf build snapshot status
-/sfgame rule ctf build snapshot clear
+/sfgame rule build setbox
+/sfgame rule build clear
+/sfgame rule build allow <方块ID>
+/sfgame rule build disallow <方块ID>
+/sfgame rule build allowlist
+/sfgame rule build snapshot save
+/sfgame rule build snapshot restore
+/sfgame rule build snapshot status
+/sfgame rule build snapshot clear
 ```
 
-快照以 NBT 保存到世界 `data/sfgame/ctf/<地图ID>.nbt`，开赛前、结算和异常停止时自动恢复。只有 build box 内且在 allowlist 中的方块允许比赛中破坏或放置；默认白名单为空。
+地图复原属于地图本身，不再属于 CTF，因此 TDM、占点、突破和夺旗都使用同一套配置。快照保存到世界 `data/sfgame/maps/<地图ID>/`。系统会按 X/Z 方向自动拆成 16×16 的分区 NBT；大型地图不会构造单个超大结构 NBT。开赛前、结算、管理员停止和服务器关闭时自动恢复全部分区。
 
-`ctf build setbox` 使用最近一次 `pos1`/`pos2` 设置复原区域；`allow <方块ID>` 和 `disallow <方块ID>` 使用完整资源 ID（例如 `minecraft:stone`），只影响比赛内该 box 中的方块。`snapshot save` 保存母版，`restore` 立即清空 box 并写回母版，`status` 查看是否存在母版，`clear` 删除母版。启用了可破坏方块但没有母版时，`/sfgame start` 会拒绝开赛。
+先站在两个对角执行 `/sfgame pos1` 与 `/sfgame pos2`，再执行 `rule build setbox`。`allow`/`disallow` 使用完整方块资源 ID（例如 `minecraft:white_wool`）。默认 `mapBlockBreaking=true`、白名单为空，所以默认不会误伤地图；加入白名单后，该方块才可由玩家挖掘/放置，也可被原版爆炸、TACZ 枪械、卓越前线枪械或载具破坏。`snapshot save` 保存母版，`restore` 立即清空各分区并写回母版，`status` 查看状态，`clear` 删除母版。规则开启但未设置 build box 或未保存母版时，`/sfgame start` 会拒绝开赛。
 
 ### 规则与商店
 

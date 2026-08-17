@@ -21,6 +21,7 @@ import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.level.ExplosionEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -167,11 +168,19 @@ public final class SFGameEvents {
                 && !MatchManager.get().canPlaceBlock(player, event.getPos(), event.getPlacedBlock())) event.setCanceled(true);
     }
 
+    /** Covers vanilla explosions plus TACZ/Superb Warfare explosions that use Forge's explosion pipeline. */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void explosionDetonate(ExplosionEvent.Detonate event) {
+        if (!(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) return;
+        event.getAffectedBlocks().removeIf(pos -> !MatchManager.get().canExternalDestroyBlock(
+                level, pos, level.getBlockState(pos)));
+    }
+
     @SubscribeEvent
     public static void useBlock(PlayerInteractEvent.RightClickBlock event) {
         if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
                 && player.gameMode.getGameModeForPlayer() != GameType.ADVENTURE
-                && !MatchManager.get().usesBreakthroughSurvival(player)) {
+                && !MatchManager.get().usesMapEditingSurvival(player)) {
             player.setGameMode(GameType.ADVENTURE);
         }
     }

@@ -53,7 +53,6 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     private MinecraftServer server;
     private ArenaMap activeMap;
     private int attackerTickets;
-    private boolean preparationFailed;
 
     @Override
     public List<String> validate(MinecraftServer server, ArenaMap map) {
@@ -68,44 +67,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
             checkPosition(server, flag.stand(), "Forward flag " + flag.id(), errors);
             checkRegion(server, flag.region(), "Forward flag " + flag.id(), errors);
         }
-        if (config.build().region() != null) checkRegion(server, config.build().region(), "CTF build region", errors);
-        if (config.build().region() != null && !config.build().allowedBlocks().isEmpty()
-                && !CtfBuildSnapshotService.exists(server, map)) {
-            errors.add("CTF build snapshot is required when block editing is enabled");
-        }
         return errors;
-    }
-
-    @Override
-    public boolean needsPreparation(ArenaMap map) {
-        MinecraftServer current = serverForPreparation();
-        return current != null && map.captureTheFlag().build().region() != null
-                && CtfBuildSnapshotService.exists(current, map);
-    }
-
-    @Override
-    public void prepare(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
-        this.server = server;
-        this.activeMap = map;
-        preparationFailed = false;
-        try {
-            CtfBuildSnapshotService.restore(server, map);
-            manager.forParticipants(player -> player.sendSystemMessage(
-                    Component.translatable("sfgame.ctf.map_restored").withStyle(ChatFormatting.GREEN), true));
-        } catch (Exception exception) {
-            preparationFailed = true;
-            manager.forParticipants(player -> player.sendSystemMessage(
-                    Component.literal("CTF map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), true));
-        }
-    }
-
-    @Override
-    public boolean tickPreparation(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
-        if (preparationFailed) {
-            manager.stop(false, Component.literal("CTF map snapshot restore failed"));
-            return false;
-        }
-        return true;
     }
 
     @Override
@@ -180,18 +142,6 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     }
 
     @Override
-    public boolean canBreakBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
-                                 net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        return canEditBlock(player, pos, state, manager);
-    }
-
-    @Override
-    public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
-                                 net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        return canEditBlock(player, pos, state, manager);
-    }
-
-    @Override
     public ArenaPosition spawnFor(TeamSide side, ArenaMap map) { return map.randomSpawn(side); }
 
     public int attackerTickets() { return attackerTickets; }
@@ -223,17 +173,9 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     public void stop() {
         flags.values().forEach(this::clearCarrierAppearance);
         if (server != null) removeOrphanedDisplays(server);
-        if (server != null && activeMap != null && activeMap.captureTheFlag().build().region() != null
-                && CtfBuildSnapshotService.exists(server, activeMap)) {
-            try {
-                CtfBuildSnapshotService.restore(server, activeMap);
-            } catch (Exception exception) {
-                SFGame.LOGGER.warn("Could not restore CTF map snapshot", exception);
-            }
-        }
         displays.values().forEach(ArmorStand::discard); displays.clear();
         bossBars.values().forEach(ServerBossEvent::removeAllPlayers); bossBars.clear();
-        flags.clear(); homeCapture.clear(); server = null; activeMap = null; attackerTickets = 0; preparationFailed = false;
+        flags.clear(); homeCapture.clear(); server = null; activeMap = null; attackerTickets = 0;
     }
 
     private static void removeOrphanedDisplays(MinecraftServer server) {
@@ -248,10 +190,6 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
                 stand.discard();
             }
         }
-    }
-
-    private MinecraftServer serverForPreparation() {
-        return server == null ? net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer() : server;
     }
 
     private void tickTerritory(MatchManager manager, ArenaMap map, MatchRules rules) {
@@ -505,21 +443,6 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
             }
             for (ServerPlayer player : manager.onlineMatchViewers()) bar.addPlayer(player);
         }
-    }
-
-    private boolean canEditBlock(ServerPlayer player, net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        return canEditBlock(player, player.blockPosition(), state, manager);
-    }
-
-    private boolean canEditBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
-                                 net.minecraft.world.level.block.state.BlockState state, MatchManager manager) {
-        if (activeMap == null || activeMap.captureTheFlag().build().region() == null) return false;
-        BoxCaptureRegion box = activeMap.captureTheFlag().build().region();
-        ArenaPosition blockPosition = new ArenaPosition(player.level().dimension().location().toString(),
-                pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0, 0);
-        if (!box.contains(blockPosition)) return false;
-        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-        return activeMap.captureTheFlag().build().allowedBlocks().contains(id);
     }
 
     private void awardUnlock(TeamSide side, MatchManager manager) { manager.addCurrencyToTeamPlayers(side, 10); }

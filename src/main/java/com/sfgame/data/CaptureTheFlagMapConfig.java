@@ -21,7 +21,6 @@ public final class CaptureTheFlagMapConfig {
     private TeamSide defender = TeamSide.BLUE;
     private final Map<TeamSide, CtfHomeFlagDefinition> homes = new EnumMap<>(TeamSide.class);
     private final List<CtfForwardFlagDefinition> forwardFlags = new ArrayList<>();
-    private final CtfBuildConfig build = new CtfBuildConfig();
 
     public CtfVariant variant() { return variant; }
     public void variant(CtfVariant value) { variant = value == null ? CtfVariant.CLASSIC : value; }
@@ -35,7 +34,6 @@ public final class CaptureTheFlagMapConfig {
         }
         attacker = attack; defender = defend;
     }
-    public CtfBuildConfig build() { return build; }
     public CtfHomeFlagDefinition home(TeamSide side) { return homes.computeIfAbsent(side, CtfHomeFlagDefinition::new); }
     public Optional<CtfHomeFlagDefinition> homeOptional(TeamSide side) { return Optional.ofNullable(homes.get(side)); }
     public List<CtfHomeFlagDefinition> homes() { return homes.values().stream().toList(); }
@@ -112,7 +110,7 @@ public final class CaptureTheFlagMapConfig {
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
         tag.putString("Variant", variant.id()); tag.putString("CarrierRestriction", carrierRestriction.id());
-        tag.putString("Attacker", attacker.id()); tag.putString("Defender", defender.id()); tag.put("Build", build.save());
+        tag.putString("Attacker", attacker.id()); tag.putString("Defender", defender.id());
         ListTag homeList = new ListTag(); homes.values().forEach(home -> homeList.add(home.save())); tag.put("Homes", homeList);
         ListTag forwardList = new ListTag(); forwardFlags().forEach(flag -> forwardList.add(flag.save())); tag.put("ForwardFlags", forwardList);
         return tag;
@@ -124,11 +122,6 @@ public final class CaptureTheFlagMapConfig {
         config.carrierRestriction = CarrierRestriction.fromId(tag.getString("CarrierRestriction"));
         TeamSide attack = TeamSide.fromId(tag.getString("Attacker")), defend = TeamSide.fromId(tag.getString("Defender"));
         if (attack != TeamSide.NONE && defend != TeamSide.NONE && attack != defend) config.roles(attack, defend);
-        if (tag.contains("Build")) {
-            CtfBuildConfig loaded = CtfBuildConfig.load(tag.getCompound("Build"));
-            config.build.region(loaded.region()); config.build.snapshotSaved(loaded.snapshotSaved());
-            loaded.allowedBlocks().forEach(config.build::allow);
-        }
         if (tag.contains("Homes", Tag.TAG_LIST)) {
             ListTag list = tag.getList("Homes", Tag.TAG_COMPOUND);
             for (int i = 0; i < list.size(); i++) {

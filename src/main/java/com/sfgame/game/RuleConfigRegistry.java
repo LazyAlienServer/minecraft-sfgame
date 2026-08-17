@@ -35,16 +35,16 @@ import java.util.Set;
 public final class RuleConfigRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Set<String> COMMON = Set.of("maxPlayers", "scoreLimit", "timeLimitSeconds",
-            "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds");
+            "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds", "mapBlockBreaking");
     private static final Set<String> CAPTURE = Set.of("captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier");
     private static final Set<String> DOMINATION = Set.of("scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds");
     private static final Set<String> BREAKTHROUGH = Set.of("attackerTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
-            "breakthroughBlockBreaking", "attackerCaptainCaptureWeight", "defenderCaptureWeight");
+            "attackerCaptainCaptureWeight", "defenderCaptureWeight");
     private static final Set<String> CTF = Set.of("attackerTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds");
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
-            "breakthroughBlockBreaking");
+            "mapBlockBreaking");
 
     private Path directory;
     private volatile Map<String, Profile> profiles = Map.of();
@@ -274,7 +274,7 @@ public final class RuleConfigRegistry {
                     case "captainVoteSeconds" -> rules.captainVoteSeconds(value.getAsInt());
                     case "captainReplacementVoteSeconds" -> rules.captainReplacementVoteSeconds(value.getAsInt());
                     case "attackerCaptainGlowing" -> rules.attackerCaptainGlowing(value.getAsBoolean());
-                    case "breakthroughBlockBreaking" -> rules.breakthroughBlockBreaking(value.getAsBoolean());
+                    case "mapBlockBreaking" -> rules.mapBlockBreaking(value.getAsBoolean());
                     case "attackerCaptainCaptureWeight" -> rules.attackerCaptainCaptureWeight(value.getAsDouble());
                     case "defenderCaptureWeight" -> rules.defenderCaptureWeight(value.getAsDouble());
                     case "ctfFlagReturnSeconds" -> rules.ctfFlagReturnSeconds(value.getAsInt());
@@ -311,6 +311,7 @@ public final class RuleConfigRegistry {
         object.addProperty("respawnSeconds", r.respawnSeconds());
         object.addProperty("respawnProtectionSeconds", r.respawnProtectionSeconds());
         object.addProperty("resultSeconds", r.resultSeconds());
+        object.addProperty("mapBlockBreaking", r.mapBlockBreaking());
         if (GameModeRegistry.DOMINATION.equals(modeId) || GameModeRegistry.BREAKTHROUGH.equals(modeId)
                 || GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) {
             object.addProperty("captureTimeSeconds", r.captureTimeSeconds());
@@ -329,7 +330,6 @@ public final class RuleConfigRegistry {
             object.addProperty("captainVoteSeconds", r.captainVoteSeconds());
             object.addProperty("captainReplacementVoteSeconds", r.captainReplacementVoteSeconds());
             object.addProperty("attackerCaptainGlowing", r.attackerCaptainGlowing());
-            object.addProperty("breakthroughBlockBreaking", r.breakthroughBlockBreaking());
             object.addProperty("attackerCaptainCaptureWeight", r.attackerCaptainCaptureWeight());
             object.addProperty("defenderCaptureWeight", r.defenderCaptureWeight());
         }
