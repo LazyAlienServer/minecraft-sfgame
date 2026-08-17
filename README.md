@@ -724,6 +724,71 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 
 先站在两个对角执行 `/sfgame pos1` 与 `/sfgame pos2`，再执行 `rule build setbox`。`allow`/`disallow` 使用完整方块资源 ID（例如 `minecraft:white_wool`）。默认 `mapBlockBreaking=true`、白名单为空，所以默认不会误伤地图；加入白名单后，该方块才可由玩家挖掘/放置，也可被原版爆炸、TACZ 枪械、卓越前线枪械或载具破坏。`snapshot save` 保存母版，`restore` 立即清空各分区并写回母版，`status` 查看状态，`clear` 删除母版。规则开启但未设置 build box 或未保存母版时，`/sfgame start` 会拒绝开赛。
 
+#### `setbox` 是什么
+
+`/sfgame rule build setbox` 用最近一次 `/sfgame pos1` 和 `/sfgame pos2` 选择当前地图的 build box，也就是允许方块变化并参与母版保存、清空和复原的地图范围。两个位置必须位于同一维度；X/Z 使用两个位置形成的长方形边界，目前 Y 轴默认覆盖该维度从最低建筑高度到最高建筑高度的全部高度。
+
+`setbox` 只记录区域，不会立即保存、复制、清空或修改任何方块。设置后还必须执行 `/sfgame rule build snapshot save` 才会生成母版。build box 按当前地图 ID 独立保存，因此切换地图后需要为新地图单独设置。
+
+完整操作：
+
+```text
+# 站在地图范围的第一个水平对角
+/sfgame pos1
+
+# 站在另一个水平对角
+/sfgame pos2
+
+# 把两个位置之间的区域设为当前地图的 build box
+/sfgame rule build setbox
+
+# 保存该区域目前的方块状态
+/sfgame rule build snapshot save
+```
+
+相关命令的区别：
+
+| 命令 | 是否修改世界方块 | 作用 |
+| --- | --- | --- |
+| `/sfgame rule build setbox` | 否 | 设置或替换当前地图的复原区域。替换区域后旧母版会失效。 |
+| `/sfgame rule build clear` | 否 | 清除当前地图的 build box 配置。它不负责恢复地图，也不等同于删除母版。 |
+| `/sfgame rule build snapshot save` | 否 | 读取 build box 内的方块并保存成母版。 |
+| `/sfgame rule build snapshot restore` | 是 | 清空 build box，并将母版方块写回世界。 |
+| `/sfgame rule build snapshot clear` | 否 | 删除当前地图保存的母版文件。 |
+
+#### `snapshot` 是什么
+
+`/sfgame rule build snapshot` 是地图“母版快照”命令组，本身不能单独执行，后面必须添加 `save`、`restore`、`status` 或 `clear`。母版快照是比赛开始前地图应有状态的完整备份，包含 build box 内的方块状态及方块实体数据，例如箱子内容。它不保存玩家、载具、掉落物或其他普通实体。
+
+| 命令 | 作用 |
+| --- | --- |
+| `/sfgame rule build snapshot save` | 把 build box 当前状态保存为母版。建好地图并清理临时方块、载具和测试痕迹后执行。再次执行会覆盖当前地图原有母版。 |
+| `/sfgame rule build snapshot restore` | 立即清空 build box，并按照母版恢复所有分区。用于管理员手动测试复原结果。 |
+| `/sfgame rule build snapshot status` | 查看当前地图是否设置了 build box，以及是否存在与当前区域匹配的有效母版。 |
+| `/sfgame rule build snapshot clear` | 删除当前地图的母版文件，不会立即删除或修改世界中的方块。删除后必须重新 `save` 才能在 `mapBlockBreaking=true` 时开赛。 |
+
+推荐配置顺序：
+
+```text
+# 1. 选择需要保存的地图范围
+/sfgame pos1
+/sfgame pos2
+/sfgame rule build setbox
+
+# 2. 配置允许比赛期间改变的方块
+/sfgame rule build allow minecraft:grass_block
+/sfgame rule build allow minecraft:glass
+
+# 3. 确认地图处于正确的初始状态，然后保存母版
+/sfgame rule build snapshot save
+
+# 4. 检查配置；需要时可以手动测试恢复
+/sfgame rule build snapshot status
+/sfgame rule build snapshot restore
+```
+
+保存母版后，如果重新执行 `build setbox` 修改了区域，原母版会被判定为不匹配，必须再次执行 `snapshot save`。比赛开赛前会自动恢复一次母版；比赛结算、管理员停止比赛和服务器关闭时还会再次恢复，因此玩家破坏或放置的白名单方块不会永久留在地图中。
+
 ### 规则与商店
 
 ```text
