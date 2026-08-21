@@ -39,7 +39,7 @@ public final class SFGameAdminScreen extends Screen {
     private static final int DANGER = 0xFFE06C75;
     private static final int RULE_ROW_HEIGHT = 38;
     private static final int TOP_ACTION_MARGIN = 16;
-    private static final int TOP_ACTION_TOP = 18;
+    private static final int TOP_ACTION_TOP = 6;
     private static final int TOP_ACTION_WIDTH = 72;
     private static final int TOP_ACTION_HEIGHT = 20;
 

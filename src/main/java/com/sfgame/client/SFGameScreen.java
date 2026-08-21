@@ -89,7 +89,7 @@ public final class SFGameScreen extends Screen {
         }
 
         if (ClientAdminState.snapshot() != null) {
-            addRenderableWidget(new DarkButton(width - 88, 18, 72, 20,
+            addRenderableWidget(new DarkButton(width - 88, 6, 72, 20,
                     Component.translatable("sfgame.admin.open"),
                     button -> SFGameNetwork.sendToServer(com.sfgame.network.AdminActionPacket.request(true))));
         }
