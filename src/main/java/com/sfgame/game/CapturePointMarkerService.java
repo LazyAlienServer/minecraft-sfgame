@@ -35,6 +35,7 @@ import java.util.Set;
  */
 final class CapturePointMarkerService {
     private static final float LABEL_SCALE = 4.0F;
+    private static final double LABEL_VERTICAL_OFFSET = -0.65D;
     private static final String MARKER_TAG = "sfgame_capture_point_marker";
 
     private final Map<String, MarkerEntry> markers = new HashMap<>();
@@ -82,7 +83,10 @@ final class CapturePointMarkerService {
             Display.TextDisplay label = EntityType.TEXT_DISPLAY.create(level);
             if (background == null || label == null) continue;
             prepare(background, region.centerX(), y, region.centerZ());
-            prepare(label, region.centerX(), y, region.centerZ());
+            // BlockDisplay and TextDisplay use different visual origins. With
+            // the same entity position the text sits on the square's top edge.
+            // Offset the text entity itself so the glyph is visually centred.
+            prepare(label, region.centerX(), y + LABEL_VERTICAL_OFFSET, region.centerZ());
             configureBackground(background);
             configureLabel(label, point.id(), visual);
             if (level.addFreshEntity(background) && level.addFreshEntity(label)) {
