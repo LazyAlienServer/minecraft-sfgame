@@ -111,6 +111,11 @@ public final class MapBuildSnapshotService {
         manifest.put("Columns", columns);
         NbtIo.writeCompressed(manifest, temporary.resolve(MANIFEST).toFile());
         replaceDirectory(temporary, target);
+        SnapshotStatus validation = status(server, modeId, map);
+        if (!validation.exists()) {
+            map.build().snapshotSaved(false);
+            throw new IOException("Saved snapshot failed validation: " + validation.detail());
+        }
         map.build().snapshotSaved(true);
         return totalPartitions;
     }
@@ -140,18 +145,32 @@ public final class MapBuildSnapshotService {
     }
 
     public static boolean exists(MinecraftServer server, String modeId, ArenaMap map) {
+        return status(server, modeId, map).exists();
+    }
+
+    /**
+     * The files and manifest are authoritative. SnapshotSaved is retained in
+     * map NBT for compatibility and UI hints, but it must not hide a valid
+     * snapshot after an integrated-server save or an interrupted data flush.
+     */
+    public static SnapshotStatus status(MinecraftServer server, String modeId, ArenaMap map) {
         Path manifest = snapshotPath(server, modeId, map).resolve(MANIFEST);
-        if (!map.build().snapshotSaved() || !Files.isRegularFile(manifest)) return false;
+        if (map.build().region() == null) return new SnapshotStatus(false, "map build box is not set");
+        if (!Files.isRegularFile(manifest)) return new SnapshotStatus(false, "manifest is missing");
         try {
             CompoundTag tag = NbtIo.readCompressed(manifest.toFile());
-            if (!compatible(server, map, tag)) return false;
+            if (!compatible(server, map, tag)) {
+                return new SnapshotStatus(false, "manifest does not match the current build box");
+            }
             ServerLevel level = level(server, tag.getString("Dimension"));
-            if (level == null) return false;
+            if (level == null) return new SnapshotStatus(false, "snapshot dimension is unavailable");
             Bounds bounds = bounds(level, map.build().region());
-            validateManifest(manifest.getParent(), bounds, tag, tag.getList("Columns", Tag.TAG_COMPOUND));
-            return true;
+            int partitions = validateManifest(manifest.getParent(), bounds, tag,
+                    tag.getList("Columns", Tag.TAG_COMPOUND));
+            return new SnapshotStatus(true, partitions + " partition(s) ready");
         } catch (IOException | RuntimeException exception) {
-            return false;
+            String message = exception.getMessage();
+            return new SnapshotStatus(false, message == null ? exception.getClass().getSimpleName() : message);
         }
     }
 
@@ -440,6 +459,8 @@ public final class MapBuildSnapshotService {
         int maxY() { return origin.getY() + size.getY() - 1; }
         int maxZ() { return origin.getZ() + size.getZ() - 1; }
     }
+
+    public record SnapshotStatus(boolean exists, String detail) { }
 
     private MapBuildSnapshotService() {
     }

@@ -750,8 +750,10 @@ public final class SFGameCommands {
 
     private static int ctfSnapshotStatus(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuild(context)) return 0; SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        var snapshot = com.sfgame.game.MapBuildSnapshotService.status(
+                context.getSource().getServer(), data.selectedMode(), data.activeMap());
         send(context, "buildBox=" + (data.activeMap().build().region() != null)
-                + ", snapshot=" + com.sfgame.game.MapBuildSnapshotService.exists(context.getSource().getServer(), data.selectedMode(), data.activeMap())); return 1;
+                + ", snapshot=" + snapshot.exists() + " (" + snapshot.detail() + ")"); return 1;
     }
 
     private static int ctfSnapshotClear(CommandContext<CommandSourceStack> context) {
