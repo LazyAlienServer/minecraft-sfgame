@@ -4,9 +4,11 @@ import com.sfgame.data.SFGameSavedData;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -62,5 +64,33 @@ final class RuleConfigRegistryTest {
 
         assertThrows(IllegalArgumentException.class,
                 () -> registry.setParent(GameModeRegistry.TEAM_DEATHMATCH, "a", "b"));
+    }
+
+    @Test
+    void lazilyLoadsCurrentModeWhenGuiMutatesBeforeExplicitReload() {
+        SFGameSavedData data = new SFGameSavedData();
+        RuleConfigRegistry seed = new RuleConfigRegistry(directory);
+        assertTrue(seed.reload(data).isEmpty());
+
+        RuleConfigRegistry lazy = new RuleConfigRegistry(directory);
+        lazy.setInt(GameModeRegistry.TEAM_DEATHMATCH, "default", "scoreLimit", 77);
+
+        assertEquals(77, lazy.rules(GameModeRegistry.TEAM_DEATHMATCH, "default",
+                data.rules(GameModeRegistry.TEAM_DEATHMATCH)).scoreLimit());
+    }
+
+    @Test
+    void malformedModeDoesNotUnloadOtherValidProfiles() throws Exception {
+        SFGameSavedData data = new SFGameSavedData();
+        RuleConfigRegistry seed = new RuleConfigRegistry(directory);
+        assertTrue(seed.reload(data).isEmpty());
+        Files.writeString(directory.resolve(GameModeRegistry.DOMINATION + ".json"), "{ broken json");
+
+        RuleConfigRegistry registry = new RuleConfigRegistry(directory);
+        assertFalse(registry.reload(data).isEmpty());
+        registry.setInt(GameModeRegistry.TEAM_DEATHMATCH, "default", "scoreLimit", 88);
+
+        assertEquals(88, registry.rules(GameModeRegistry.TEAM_DEATHMATCH, "default",
+                data.rules(GameModeRegistry.TEAM_DEATHMATCH)).scoreLimit());
     }
 }

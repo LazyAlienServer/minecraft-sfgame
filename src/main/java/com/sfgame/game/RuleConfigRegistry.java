@@ -67,7 +67,11 @@ public final class RuleConfigRegistry {
     public synchronized List<String> reload(SFGameSavedData legacyData) {
         List<String> problems = new ArrayList<>();
         if (directory == null) return List.of("SFGame rule config root is not initialized");
-        Map<String, Profile> loaded = new LinkedHashMap<>();
+        // Reload each mode independently. One malformed mode file must not
+        // make every otherwise valid profile unavailable to commands or the
+        // administrator GUI. Existing valid profiles remain the last-known-
+        // good value for a mode whose edited file fails validation.
+        Map<String, Profile> loaded = new LinkedHashMap<>(profiles);
         try {
             Files.createDirectories(directory);
             for (GameModeDefinition mode : GameModeRegistry.all()) {
@@ -86,7 +90,7 @@ public final class RuleConfigRegistry {
             problems.add(message(exception));
             SFGame.LOGGER.error("Could not load rule profiles from {}", directory, exception);
         }
-        if (problems.isEmpty()) profiles = Collections.unmodifiableMap(loaded);
+        profiles = Collections.unmodifiableMap(loaded);
         errors = List.copyOf(problems);
         return errors;
     }
@@ -163,7 +167,7 @@ public final class RuleConfigRegistry {
 
     private void mutate(String modeId, java.util.function.Consumer<JsonObject> mutation) {
         Profile current = profiles.get(modeId);
-        if (current == null) throw new IllegalStateException("Rule profile is not loaded for " + modeId);
+        if (current == null) current = loadProfile(modeId);
         JsonObject candidate = current.document().deepCopy();
         mutation.accept(candidate);
         List<String> problems = new ArrayList<>();
@@ -178,6 +182,41 @@ public final class RuleConfigRegistry {
         updated.put(modeId, rebuilt);
         profiles = Collections.unmodifiableMap(updated);
         errors = List.of();
+    }
+
+    /**
+     * Recover a single missing profile on demand. This covers integrated
+     * server timing and partial reload failures without requiring a match to
+     * start or an explicit /sfgame reload before the GUI can edit rules.
+     */
+    private Profile loadProfile(String modeId) {
+        if (directory == null) throw new IllegalStateException("SFGame rule config root is not initialized");
+        if (GameModeRegistry.get(modeId).isEmpty()) {
+            throw new IllegalArgumentException("Unknown game mode: " + modeId);
+        }
+        Path target = path(modeId);
+        List<String> problems = new ArrayList<>();
+        try {
+            Files.createDirectories(directory);
+            if (!Files.exists(target)) writeDocument(target, defaultDocument(modeId, new MatchRules(modeId)));
+            Profile loaded;
+            try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
+                JsonElement parsed = JsonParser.parseReader(reader);
+                if (!parsed.isJsonObject()) throw new JsonParseException("root must be a JSON object");
+                loaded = parse(modeId, parsed.getAsJsonObject(), problems);
+            }
+            if (loaded == null || !problems.isEmpty()) {
+                throw new IllegalStateException("Could not load rule profile for " + modeId + ": "
+                        + String.join("; ", problems));
+            }
+            Map<String, Profile> updated = new LinkedHashMap<>(profiles);
+            updated.put(modeId, loaded);
+            profiles = Collections.unmodifiableMap(updated);
+            return loaded;
+        } catch (IOException | JsonParseException exception) {
+            throw new IllegalStateException("Could not load rule profile for " + modeId + ": "
+                    + message(exception), exception);
+        }
     }
 
     private Profile parse(String modeId, JsonObject document, List<String> problems) {
