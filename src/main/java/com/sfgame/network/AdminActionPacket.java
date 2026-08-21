@@ -52,6 +52,7 @@ public record AdminActionPacket(Action action, String modeId, String mapId, Stri
             MatchManager manager = MatchManager.get();
             SFGameSavedData data = SFGameSavedData.get(player.server);
             boolean open = packet.action == Action.OPEN;
+            Component feedback = null;
             try {
                 switch (packet.action) {
                     case REQUEST, OPEN -> { }
@@ -62,6 +63,8 @@ public record AdminActionPacket(Action action, String modeId, String mapId, Stri
                         }
                         manager.arenaSelectionChanged();
                         manager.refreshCommandTree();
+                        feedback = Component.translatable("sfgame.admin.feedback.mode", packet.modeId)
+                                .withStyle(ChatFormatting.GREEN);
                     }
                     case SELECT_MAP -> {
                         requireArenaEditable(manager);
@@ -72,12 +75,21 @@ public record AdminActionPacket(Action action, String modeId, String mapId, Stri
                             throw new IllegalArgumentException("Unknown map: " + packet.mapId);
                         }
                         manager.arenaSelectionChanged();
+                        feedback = Component.translatable("sfgame.admin.feedback.map", packet.mapId)
+                                .withStyle(ChatFormatting.GREEN);
                     }
-                    case SET_RULE -> applyRule(manager, data, packet);
+                    case SET_RULE -> {
+                        applyRule(manager, data, packet);
+                        feedback = Component.translatable("sfgame.admin.feedback.rule", packet.key, packet.value)
+                                .withStyle(ChatFormatting.GREEN);
+                    }
                 }
             } catch (IllegalArgumentException | IllegalStateException exception) {
-                player.sendSystemMessage(Component.literal(exception.getMessage()).withStyle(ChatFormatting.RED));
+                Component error = Component.literal(exception.getMessage()).withStyle(ChatFormatting.RED);
+                player.sendSystemMessage(error);
+                player.displayClientMessage(error, true);
             }
+            if (feedback != null) player.displayClientMessage(feedback, true);
             SFGameNetwork.sendAdminSnapshot(player, open);
             SFGameNetwork.sendSnapshot(player, manager.snapshot(player));
         });

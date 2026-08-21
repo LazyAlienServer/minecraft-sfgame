@@ -5,6 +5,7 @@ import com.sfgame.game.MatchPhase;
 import com.sfgame.network.AdminActionPacket;
 import com.sfgame.network.AdminSnapshot;
 import com.sfgame.network.SFGameNetwork;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -12,6 +13,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
@@ -27,6 +29,7 @@ public final class SFGameAdminScreen extends Screen {
     private static final int BACKGROUND = 0xF0101114;
     private static final int SURFACE = 0xF01A1C20;
     private static final int SURFACE_ALT = 0xF022252A;
+    private static final int SUB_NAV_SURFACE = 0xF017191D;
     private static final int BORDER = 0xFF555A62;
     private static final int TEXT = 0xFFF4F4F4;
     private static final int MUTED = 0xFF9A9FA8;
@@ -35,6 +38,10 @@ public final class SFGameAdminScreen extends Screen {
     private static final int COLD = 0xFFA6ABB3;
     private static final int DANGER = 0xFFE06C75;
     private static final int RULE_ROW_HEIGHT = 38;
+    private static final int TOP_ACTION_MARGIN = 16;
+    private static final int TOP_ACTION_TOP = 18;
+    private static final int TOP_ACTION_WIDTH = 72;
+    private static final int TOP_ACTION_HEIGHT = 20;
 
     private enum Page { STATUS, RULES }
 
@@ -74,7 +81,8 @@ public final class SFGameAdminScreen extends Screen {
         AdminSnapshot snapshot = ClientAdminState.snapshot();
         calculateLayout();
 
-        addRenderableWidget(new SquareButton(panelRight - 72, 8, 72, 20,
+        addRenderableWidget(new SquareButton(width - TOP_ACTION_MARGIN - TOP_ACTION_WIDTH, TOP_ACTION_TOP,
+                TOP_ACTION_WIDTH, TOP_ACTION_HEIGHT,
                 Component.translatable("sfgame.admin.back"), false,
                 button -> minecraft.setScreen(new SFGameScreen())));
 
@@ -268,6 +276,11 @@ public final class SFGameAdminScreen extends Screen {
         graphics.drawString(font, title, panelLeft, 11, TEXT, false);
         AdminSnapshot snapshot = ClientAdminState.snapshot();
         if (snapshot != null) {
+            // The map selector is a child navigation row of the mode selector.
+            // Giving the whole row its own surface makes that relationship
+            // visible even when the selected mode only contains one map.
+            graphics.fill(panelLeft, 51, panelRight, 73, SUB_NAV_SURFACE);
+            outline(graphics, panelLeft, 51, panelRight, 73, BORDER);
             graphics.fill(panelLeft, contentTop - 2, panelRight, contentBottom, SURFACE);
             outline(graphics, panelLeft, contentTop - 2, panelRight, contentBottom, BORDER);
             if (page == Page.STATUS) renderStatus(graphics, snapshot);
@@ -427,6 +440,7 @@ public final class SFGameAdminScreen extends Screen {
 
     private static class SquareButton extends Button {
         private final boolean selected;
+        private long pressedUntil;
 
         SquareButton(int x, int y, int width, int height, Component message, boolean selected, OnPress onPress) {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
@@ -434,9 +448,18 @@ public final class SFGameAdminScreen extends Screen {
         }
 
         @Override
+        public void onPress() {
+            // Keep an observable pressed state for a few frames. The raw GLFW
+            // state alone can disappear between two rendered frames on a
+            // quick click, which made working buttons look unresponsive.
+            pressedUntil = Util.getMillis() + 140L;
+            super.onPress();
+        }
+
+        @Override
         public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             boolean hovered = isHoveredOrFocused();
-            boolean pressed = isHovered && GLFW.glfwGetMouseButton(
+            boolean pressed = Util.getMillis() < pressedUntil || isHovered && GLFW.glfwGetMouseButton(
                     Minecraft.getInstance().getWindow().getWindow(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
             int background = !active ? 0xE0202124 : pressed ? 0xFF101114
                     : hovered ? 0xFF34373D : selected ? 0xFF2A2D32 : 0xF01A1C20;
@@ -449,10 +472,26 @@ public final class SFGameAdminScreen extends Screen {
     }
 
     private static final class RuleValueBox extends EditBox {
+        private static final int HORIZONTAL_PADDING = 6;
+        private final int frameX;
+        private final int frameY;
+        private final int frameWidth;
+        private final int frameHeight;
+
         RuleValueBox(Font font, int x, int y, int width, int height, AdminSnapshot.RuleView rule) {
-            super(font, x, y, width, height, Component.literal(rule.key()));
+            // An unbordered vanilla EditBox renders text at its widget origin.
+            // Keep the editable text widget on the centered baseline and draw
+            // the larger SFGame frame around it.
+            super(font, x + HORIZONTAL_PADDING, y + (height - 8) / 2,
+                    width - HORIZONTAL_PADDING * 2, 8, Component.literal(rule.key()));
+            this.frameX = x;
+            this.frameY = y;
+            this.frameWidth = width;
+            this.frameHeight = height;
             setBordered(false);
             setMaxLength(32);
+            setTextColor(TEXT);
+            setTextColorUneditable(MUTED);
             if (rule.type() == AdminRuleCatalog.ValueType.INTEGER) {
                 setFilter(value -> value.matches("[0-9]*"));
             } else {
@@ -464,9 +503,22 @@ public final class SFGameAdminScreen extends Screen {
         public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             int background = active ? 0xFF111215 : 0xFF202124;
             int border = isFocused() && active ? ACCENT : BORDER;
-            graphics.fill(getX(), getY(), getX() + width, getY() + height, background);
-            outline(graphics, getX(), getY(), getX() + width, getY() + height, border);
+            graphics.fill(frameX, frameY, frameX + frameWidth, frameY + frameHeight, background);
+            outline(graphics, frameX, frameY, frameX + frameWidth, frameY + frameHeight, border);
             super.renderWidget(graphics, mouseX, mouseY, partialTick);
+        }
+
+        @Override
+        public boolean isMouseOver(double mouseX, double mouseY) {
+            return visible && mouseX >= frameX && mouseX < frameX + frameWidth
+                    && mouseY >= frameY && mouseY < frameY + frameHeight;
+        }
+
+        @Override
+        public void onClick(double mouseX, double mouseY) {
+            // Clicking the visual padding should focus the editor too. Clamp
+            // to the inner text area so vanilla cursor placement remains sane.
+            super.onClick(Mth.clamp(mouseX, getX(), getX() + width), getY() + 1);
         }
     }
 }
