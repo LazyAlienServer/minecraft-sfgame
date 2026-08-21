@@ -24,6 +24,8 @@ class AdminRuleCatalogTest {
                 "mapBlockBreaking").orElseThrow().hotReload());
         assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH,
                 "startCountdownSeconds").orElseThrow().hotReload());
+        assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH,
+                "mapSnapshotMode").orElseThrow().hotReload());
     }
 
     @Test
@@ -33,5 +35,11 @@ class AdminRuleCatalogTest {
         assertEquals(12, AdminRuleCatalog.parse(delay, "12"));
         assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(delay, "201"));
         assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(delay, "1.5"));
+
+        AdminRuleCatalog.Definition snapshotMode = AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH,
+                "mapSnapshotMode").orElseThrow();
+        assertEquals("allowlist", AdminRuleCatalog.parse(snapshotMode, "ALLOWLIST"));
+        assertEquals("full", AdminRuleCatalog.parse(snapshotMode, "full"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(snapshotMode, "partial"));
     }
 }

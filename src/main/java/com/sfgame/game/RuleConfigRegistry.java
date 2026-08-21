@@ -8,6 +8,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sfgame.SFGame;
 import com.sfgame.data.MatchRules;
+import com.sfgame.data.MapSnapshotMode;
 import com.sfgame.data.SFGameId;
 import com.sfgame.data.SFGameSavedData;
 
@@ -36,6 +37,7 @@ public final class RuleConfigRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Set<String> COMMON = Set.of("maxPlayers", "scoreLimit", "timeLimitSeconds",
             "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds", "mapBlockBreaking",
+            "mapSnapshotMode",
             "mapRestorePartitionDelayTicks", "mapRestoreAdaptiveThrottling", "mapRestoreTargetTickMillis",
             "mapRestoreMaxPartitionsPerTick");
     private static final Set<String> CAPTURE = Set.of("captureTimeSeconds", "captureUsePlayerDifference",
@@ -47,6 +49,7 @@ public final class RuleConfigRegistry {
     private static final Set<String> CTF = Set.of("attackerTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds");
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
             "mapBlockBreaking", "mapRestoreAdaptiveThrottling");
+    private static final Set<String> STRING_RULES = Set.of("mapSnapshotMode");
 
     private Path directory;
     private volatile Map<String, Profile> profiles = Map.of();
@@ -114,6 +117,10 @@ public final class RuleConfigRegistry {
         mutateRule(modeId, mapId, key, value);
     }
 
+    public synchronized void setString(String modeId, String mapId, String key, String value) {
+        mutateRule(modeId, mapId, key, value);
+    }
+
     public synchronized void resetMap(String modeId, String mapId) {
         mutate(modeId, document -> {
             JsonObject maps = object(document, "maps", true);
@@ -161,6 +168,7 @@ public final class RuleConfigRegistry {
             if (value instanceof Boolean bool) rules.addProperty(key, bool);
             else if (value instanceof Integer integer) rules.addProperty(key, integer);
             else if (value instanceof Double decimal) rules.addProperty(key, decimal);
+            else if (value instanceof String string) rules.addProperty(key, string);
             else throw new IllegalArgumentException("Unsupported rule value for " + key);
         });
     }
@@ -292,7 +300,9 @@ public final class RuleConfigRegistry {
                 JsonElement value = entry.getValue();
                 if (!value.isJsonPrimitive()
                         || BOOLEAN_RULES.contains(key) && !value.getAsJsonPrimitive().isBoolean()
-                        || !BOOLEAN_RULES.contains(key) && !value.getAsJsonPrimitive().isNumber()) {
+                        || STRING_RULES.contains(key) && !value.getAsJsonPrimitive().isString()
+                        || !BOOLEAN_RULES.contains(key) && !STRING_RULES.contains(key)
+                        && !value.getAsJsonPrimitive().isNumber()) {
                     throw new IllegalArgumentException("wrong JSON value type");
                 }
                 switch (key) {
@@ -316,6 +326,7 @@ public final class RuleConfigRegistry {
                     case "captainReplacementVoteSeconds" -> rules.captainReplacementVoteSeconds(value.getAsInt());
                     case "attackerCaptainGlowing" -> rules.attackerCaptainGlowing(value.getAsBoolean());
                     case "mapBlockBreaking" -> rules.mapBlockBreaking(value.getAsBoolean());
+                    case "mapSnapshotMode" -> rules.mapSnapshotMode(MapSnapshotMode.parse(value.getAsString()));
                     case "mapRestorePartitionDelayTicks" -> rules.mapRestorePartitionDelayTicks(value.getAsInt());
                     case "mapRestoreAdaptiveThrottling" -> rules.mapRestoreAdaptiveThrottling(value.getAsBoolean());
                     case "mapRestoreTargetTickMillis" -> rules.mapRestoreTargetTickMillis(value.getAsInt());
@@ -357,6 +368,7 @@ public final class RuleConfigRegistry {
         object.addProperty("respawnProtectionSeconds", r.respawnProtectionSeconds());
         object.addProperty("resultSeconds", r.resultSeconds());
         object.addProperty("mapBlockBreaking", r.mapBlockBreaking());
+        object.addProperty("mapSnapshotMode", r.mapSnapshotMode().id());
         object.addProperty("mapRestorePartitionDelayTicks", r.mapRestorePartitionDelayTicks());
         object.addProperty("mapRestoreAdaptiveThrottling", r.mapRestoreAdaptiveThrottling());
         object.addProperty("mapRestoreTargetTickMillis", r.mapRestoreTargetTickMillis());

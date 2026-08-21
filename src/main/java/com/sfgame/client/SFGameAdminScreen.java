@@ -218,6 +218,16 @@ public final class SFGameAdminScreen extends Screen {
                 toggle.active = enabled;
                 addRenderableWidget(toggle);
                 ruleControls.add(new RuleControl(rule, rowY, null, toggle, null));
+            } else if (rule.type() == AdminRuleCatalog.ValueType.ENUM) {
+                String current = rule.value();
+                String next = "allowlist".equals(current) ? "full" : "allowlist";
+                SquareButton selector = new SquareButton(controlX, rowY + 8, 192, 22,
+                        Component.translatable("sfgame.admin.snapshot_mode." + current), false,
+                        button -> setRule(snapshot, rule, next));
+                selector.clipTo(panelLeft, contentTop, panelRight, contentBottom);
+                selector.active = enabled;
+                addRenderableWidget(selector);
+                ruleControls.add(new RuleControl(rule, rowY, null, selector, null));
             } else {
                 RuleValueBox editor = new RuleValueBox(font, controlX, rowY + 8, 122, 22, rule);
                 editor.clipTo(panelLeft, contentTop, panelRight, contentBottom);
@@ -401,9 +411,12 @@ public final class SFGameAdminScreen extends Screen {
         Component translated = Component.translatable(translationKey);
         String label = translated.getString().equals(translationKey) ? control.rule.key() : translated.getString();
         graphics.drawString(font, label, panelLeft + 16, y + 8, TEXT, false);
-        String range = control.rule.type() == AdminRuleCatalog.ValueType.BOOLEAN
-                ? control.rule.key()
-                : control.rule.key() + "  [" + compact(control.rule.minimum()) + ".." + compact(control.rule.maximum()) + "]";
+        String range = switch (control.rule.type()) {
+            case BOOLEAN -> control.rule.key();
+            case ENUM -> control.rule.key() + "  [allowlist|full]";
+            case INTEGER, DECIMAL -> control.rule.key() + "  [" + compact(control.rule.minimum())
+                    + ".." + compact(control.rule.maximum()) + "]";
+        };
         graphics.drawString(font, range, panelLeft + 16, y + 21, MUTED, false);
         Component badge = Component.translatable(control.rule.hotReload()
                 ? "sfgame.admin.badge.hot" : "sfgame.admin.badge.cold");

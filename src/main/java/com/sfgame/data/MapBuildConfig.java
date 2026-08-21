@@ -21,8 +21,14 @@ public final class MapBuildConfig {
     public boolean snapshotSaved() { return snapshotSaved; }
     public void snapshotSaved(boolean value) { snapshotSaved = value; }
     public Set<String> allowedBlocks() { return Collections.unmodifiableSet(allowedBlocks); }
-    public void allow(String id) { allowedBlocks.add(SFGameId.normalizeResource(id)); }
-    public boolean disallow(String id) { return allowedBlocks.remove(SFGameId.normalizeResource(id)); }
+    public void allow(String id) {
+        if (allowedBlocks.add(SFGameId.normalizeResource(id))) snapshotSaved = false;
+    }
+    public boolean disallow(String id) {
+        boolean changed = allowedBlocks.remove(SFGameId.normalizeResource(id));
+        if (changed) snapshotSaved = false;
+        return changed;
+    }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();

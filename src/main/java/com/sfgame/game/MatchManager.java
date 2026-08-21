@@ -9,6 +9,7 @@ import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.ArenaMap;
 import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.MatchRules;
+import com.sfgame.data.MapSnapshotMode;
 import com.sfgame.data.SFGameSavedData;
 import com.sfgame.network.MatchSnapshot;
 import com.sfgame.network.SFGameNetwork;
@@ -273,7 +274,8 @@ public final class MatchManager {
         if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
         if (rules().mapBlockBreaking() && data.activeMap() != null) {
             if (data.activeMap().build().region() == null) errors.add("Map build box must be set while mapBlockBreaking is enabled");
-            else if (!MapBuildSnapshotService.exists(server, data.selectedMode(), data.activeMap())) errors.add("Map snapshot must be saved while mapBlockBreaking is enabled");
+            else if (!MapBuildSnapshotService.exists(server, data.selectedMode(), data.activeMap(),
+                    rules().mapSnapshotMode())) errors.add("Map snapshot must be saved while mapBlockBreaking is enabled");
         }
 
         if (enabledTeams.size() < (devMode ? 1 : 2)) {
@@ -308,7 +310,8 @@ public final class MatchManager {
         MapBuildSnapshotService.RestoreSession pendingRestore = null;
         if (rules().mapBlockBreaking()) {
             try {
-                pendingRestore = MapBuildSnapshotService.beginRestore(server, data().selectedMode(), data().activeMap());
+                pendingRestore = MapBuildSnapshotService.beginRestore(server, data().selectedMode(), data().activeMap(),
+                        rules().mapSnapshotMode());
             } catch (Exception exception) {
                 server.getPlayerList().broadcastSystemMessage(Component.literal(
                         "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
@@ -647,7 +650,8 @@ public final class MatchManager {
             }
             case "mapBlockBreaking" -> {
                 if (value && (data().activeMap() == null || data().activeMap().build().region() == null
-                        || !MapBuildSnapshotService.exists(server, data().selectedMode(), data().activeMap()))) {
+                        || !MapBuildSnapshotService.exists(server, data().selectedMode(), data().activeMap(),
+                        rules().mapSnapshotMode()))) {
                     throw new IllegalArgumentException("Set the map build box and save its snapshot before enabling mapBlockBreaking");
                 }
             }
@@ -675,6 +679,15 @@ public final class MatchManager {
             default -> throw new IllegalArgumentException("Unknown decimal rule " + key);
         }
         ruleConfigRegistry.setDouble(mode, data().selectedMap(), key, value);
+        activeRuntime.onRuleChanged(key, rules());
+        syncAll();
+    }
+
+    public void setRule(String key, String value) {
+        ensureRuleChangeAllowed(key);
+        if (!"mapSnapshotMode".equals(key)) throw new IllegalArgumentException("Unknown enum rule " + key);
+        MapSnapshotMode mode = MapSnapshotMode.parse(value);
+        ruleConfigRegistry.setString(data().selectedMode(), data().selectedMap(), key, mode.id());
         activeRuntime.onRuleChanged(key, rules());
         syncAll();
     }

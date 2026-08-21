@@ -1,6 +1,7 @@
 package com.sfgame.game;
 
 import com.sfgame.data.MatchRules;
+import com.sfgame.data.MapSnapshotMode;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -18,7 +19,7 @@ import java.util.Optional;
  * selected mode.</p>
  */
 public final class AdminRuleCatalog {
-    public enum ValueType { INTEGER, DECIMAL, BOOLEAN }
+    public enum ValueType { INTEGER, DECIMAL, BOOLEAN, ENUM }
 
     public record Definition(String key, ValueType type, double minimum, double maximum,
                              boolean hotReload, List<String> modes) {
@@ -39,6 +40,7 @@ public final class AdminRuleCatalog {
             try {
                 Method getter = MatchRules.class.getMethod(key);
                 Object result = getter.invoke(rules);
+                if (result instanceof MapSnapshotMode mode) return mode.id();
                 return result == null ? "" : result.toString();
             } catch (ReflectiveOperationException exception) {
                 throw new IllegalStateException("Could not read rule " + key, exception);
@@ -56,6 +58,7 @@ public final class AdminRuleCatalog {
             integer("respawnSeconds", 0, 60, true),
             integer("respawnProtectionSeconds", 0, 30, true),
             bool("mapBlockBreaking", false),
+            enumeration("mapSnapshotMode", false),
 
             // Capture rules shared by domination, breakthrough and CTF territory.
             integer("captureTimeSeconds", 1, 300, true, CAPTURE_MODES),
@@ -145,6 +148,7 @@ public final class AdminRuleCatalog {
                 }
                 yield parsed;
             }
+            case ENUM -> MapSnapshotMode.parse(value).id();
         };
     }
 
@@ -179,5 +183,9 @@ public final class AdminRuleCatalog {
 
     private static Definition bool(String key, boolean hot, List<String> modes) {
         return new Definition(key, ValueType.BOOLEAN, 0, 1, hot, List.copyOf(modes));
+    }
+
+    private static Definition enumeration(String key, boolean hot, String... modes) {
+        return new Definition(key, ValueType.ENUM, 0, 0, hot, List.of(modes));
     }
 }

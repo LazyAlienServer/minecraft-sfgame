@@ -52,6 +52,7 @@ import java.util.UUID;
 public final class SFGameCommands {
     private static final String[] COMMON_RULE_KEYS = {"maxPlayers", "scoreLimit", "timeLimitSeconds",
             "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds", "mapBlockBreaking",
+            "mapSnapshotMode",
             "mapRestorePartitionDelayTicks", "mapRestoreAdaptiveThrottling", "mapRestoreTargetTickMillis",
             "mapRestoreMaxPartitionsPerTick"};
     private static final String[] DOMINATION_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
@@ -433,6 +434,11 @@ public final class SFGameCommands {
                         .then(Commands.literal("mapBlockBreaking")
                                 .then(Commands.argument("value", BoolArgumentType.bool())
                                         .executes(context -> rulesSetBoolean(context, "mapBlockBreaking"))))
+                        .then(Commands.literal("mapSnapshotMode")
+                                .then(Commands.literal("allowlist")
+                                        .executes(context -> rulesSetString(context, "mapSnapshotMode", "allowlist")))
+                                .then(Commands.literal("full")
+                                        .executes(context -> rulesSetString(context, "mapSnapshotMode", "full"))))
                         .then(Commands.literal("mapRestoreAdaptiveThrottling")
                                 .then(Commands.argument("value", BoolArgumentType.bool())
                                         .executes(context -> rulesSetBoolean(context, "mapRestoreAdaptiveThrottling"))))
@@ -735,7 +741,8 @@ public final class SFGameCommands {
     private static int ctfSnapshotSave(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuildEdit(context)) return 0;
         try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-            int parts = com.sfgame.game.MapBuildSnapshotService.save(context.getSource().getServer(), data.selectedMode(), data.activeMap()); data.setDirty();
+            int parts = com.sfgame.game.MapBuildSnapshotService.save(context.getSource().getServer(),
+                    data.selectedMode(), data.activeMap(), MatchManager.get().rules().mapSnapshotMode()); data.setDirty();
             return success(context, "Saved map snapshot in " + parts + " partition(s)");
         } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not save map snapshot" : exception.getMessage()); }
     }
@@ -743,7 +750,8 @@ public final class SFGameCommands {
     private static int ctfSnapshotRestore(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuildEdit(context)) return 0;
         try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-            int parts = com.sfgame.game.MapBuildSnapshotService.restore(context.getSource().getServer(), data.selectedMode(), data.activeMap());
+            int parts = com.sfgame.game.MapBuildSnapshotService.restore(context.getSource().getServer(),
+                    data.selectedMode(), data.activeMap(), MatchManager.get().rules().mapSnapshotMode());
             return success(context, "Restored map snapshot from " + parts + " partition(s)");
         } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not restore map snapshot" : exception.getMessage()); }
     }
@@ -751,7 +759,8 @@ public final class SFGameCommands {
     private static int ctfSnapshotStatus(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuild(context)) return 0; SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         var snapshot = com.sfgame.game.MapBuildSnapshotService.status(
-                context.getSource().getServer(), data.selectedMode(), data.activeMap());
+                context.getSource().getServer(), data.selectedMode(), data.activeMap(),
+                MatchManager.get().rules().mapSnapshotMode());
         send(context, "buildBox=" + (data.activeMap().build().region() != null)
                 + ", snapshot=" + snapshot.exists() + " (" + snapshot.detail() + ")"); return 1;
     }
@@ -1811,6 +1820,12 @@ public final class SFGameCommands {
         return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
     }
 
+    private static int rulesSetString(CommandContext<CommandSourceStack> context, String key, String value) {
+        try { MatchManager.get().setRule(key, value); }
+        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
+        return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
+    }
+
     private static int rulesReset(CommandContext<CommandSourceStack> context) {
         MatchManager.get().resetRules();
         return success(context, "Current map rule overrides cleared; inherited rules now apply");
@@ -1963,6 +1978,7 @@ public final class SFGameCommands {
             case "captainReplacementVoteSeconds" -> Integer.toString(rules.captainReplacementVoteSeconds());
             case "attackerCaptainGlowing" -> Boolean.toString(rules.attackerCaptainGlowing());
             case "mapBlockBreaking" -> Boolean.toString(rules.mapBlockBreaking());
+            case "mapSnapshotMode" -> rules.mapSnapshotMode().id();
             case "mapRestorePartitionDelayTicks" -> Integer.toString(rules.mapRestorePartitionDelayTicks());
             case "mapRestoreAdaptiveThrottling" -> Boolean.toString(rules.mapRestoreAdaptiveThrottling());
             case "mapRestoreTargetTickMillis" -> Integer.toString(rules.mapRestoreTargetTickMillis());
@@ -2001,6 +2017,7 @@ public final class SFGameCommands {
                 + ", startCountdownSeconds=" + r.startCountdownSeconds() + ", respawnSeconds=" + r.respawnSeconds()
                 + ", respawnProtectionSeconds=" + r.respawnProtectionSeconds() + ", resultSeconds=" + r.resultSeconds()
                 + ", mapBlockBreaking=" + r.mapBlockBreaking()
+                + ", mapSnapshotMode=" + r.mapSnapshotMode().id()
                 + ", mapRestorePartitionDelayTicks=" + r.mapRestorePartitionDelayTicks()
                 + ", mapRestoreAdaptiveThrottling=" + r.mapRestoreAdaptiveThrottling()
                 + ", mapRestoreTargetTickMillis=" + r.mapRestoreTargetTickMillis()

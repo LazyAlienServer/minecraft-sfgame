@@ -110,6 +110,7 @@ public record AdminActionPacket(Action action, String modeId, String mapId, Stri
             case INTEGER -> manager.setRule(definition.key(), (Integer) parsed);
             case DECIMAL -> manager.setRule(definition.key(), (Double) parsed);
             case BOOLEAN -> manager.setRule(definition.key(), (Boolean) parsed);
+            case ENUM -> manager.setRule(definition.key(), (String) parsed);
         }
     }
 

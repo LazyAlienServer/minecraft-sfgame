@@ -1,6 +1,7 @@
 package com.sfgame.game;
 
 import com.sfgame.data.SFGameSavedData;
+import com.sfgame.data.MapSnapshotMode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -92,5 +93,22 @@ final class RuleConfigRegistryTest {
 
         assertEquals(88, registry.rules(GameModeRegistry.TEAM_DEATHMATCH, "default",
                 data.rules(GameModeRegistry.TEAM_DEATHMATCH)).scoreLimit());
+    }
+
+    @Test
+    void snapshotModeDefaultsToAllowlistAndSupportsMapInheritance() {
+        SFGameSavedData data = new SFGameSavedData();
+        RuleConfigRegistry registry = new RuleConfigRegistry(directory);
+        assertTrue(registry.reload(data).isEmpty());
+        assertEquals(MapSnapshotMode.ALLOWLIST, registry.rules(GameModeRegistry.TEAM_DEATHMATCH, "default",
+                data.rules(GameModeRegistry.TEAM_DEATHMATCH)).mapSnapshotMode());
+
+        registry.setString(GameModeRegistry.TEAM_DEATHMATCH, "parent", "mapSnapshotMode", "full");
+        registry.setParent(GameModeRegistry.TEAM_DEATHMATCH, "child", "parent");
+
+        assertEquals(MapSnapshotMode.FULL, registry.rules(GameModeRegistry.TEAM_DEATHMATCH, "child",
+                data.rules(GameModeRegistry.TEAM_DEATHMATCH)).mapSnapshotMode());
+        assertThrows(IllegalArgumentException.class, () -> registry.setString(
+                GameModeRegistry.TEAM_DEATHMATCH, "child", "mapSnapshotMode", "unknown"));
     }
 }

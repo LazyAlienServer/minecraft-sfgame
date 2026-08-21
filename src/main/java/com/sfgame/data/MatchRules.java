@@ -39,6 +39,7 @@ public final class MatchRules {
     private int captainReplacementVoteSeconds;
     private boolean attackerCaptainGlowing;
     private boolean mapBlockBreaking;
+    private MapSnapshotMode mapSnapshotMode;
     private int mapRestorePartitionDelayTicks;
     private boolean mapRestoreAdaptiveThrottling;
     private int mapRestoreTargetTickMillis;
@@ -71,6 +72,7 @@ public final class MatchRules {
     public int captainReplacementVoteSeconds() { return captainReplacementVoteSeconds; }
     public boolean attackerCaptainGlowing() { return attackerCaptainGlowing; }
     public boolean mapBlockBreaking() { return mapBlockBreaking; }
+    public MapSnapshotMode mapSnapshotMode() { return mapSnapshotMode; }
     public int mapRestorePartitionDelayTicks() { return mapRestorePartitionDelayTicks; }
     public boolean mapRestoreAdaptiveThrottling() { return mapRestoreAdaptiveThrottling; }
     public int mapRestoreTargetTickMillis() { return mapRestoreTargetTickMillis; }
@@ -100,6 +102,9 @@ public final class MatchRules {
     public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
     public void attackerCaptainGlowing(boolean value) { attackerCaptainGlowing = value; }
     public void mapBlockBreaking(boolean value) { mapBlockBreaking = value; }
+    public void mapSnapshotMode(MapSnapshotMode value) {
+        mapSnapshotMode = value == null ? MapSnapshotMode.ALLOWLIST : value;
+    }
     public void mapRestorePartitionDelayTicks(int value) { mapRestorePartitionDelayTicks = clamp(value, 0, 200); }
     public void mapRestoreAdaptiveThrottling(boolean value) { mapRestoreAdaptiveThrottling = value; }
     public void mapRestoreTargetTickMillis(int value) { mapRestoreTargetTickMillis = clamp(value, 10, 50); }
@@ -132,6 +137,7 @@ public final class MatchRules {
         captainReplacementVoteSeconds = 10;
         attackerCaptainGlowing = true;
         mapBlockBreaking = true;
+        mapSnapshotMode = MapSnapshotMode.ALLOWLIST;
         mapRestorePartitionDelayTicks = DEFAULT_MAP_RESTORE_DELAY_TICKS;
         mapRestoreAdaptiveThrottling = true;
         mapRestoreTargetTickMillis = DEFAULT_MAP_RESTORE_TARGET_TICK_MILLIS;
@@ -156,6 +162,7 @@ public final class MatchRules {
         tag.putInt("CaptainVoteSeconds", captainVoteSeconds); tag.putInt("CaptainReplacementVoteSeconds", captainReplacementVoteSeconds);
         tag.putBoolean("AttackerCaptainGlowing", attackerCaptainGlowing);
         tag.putBoolean("MapBlockBreaking", mapBlockBreaking);
+        tag.putString("MapSnapshotMode", mapSnapshotMode.id());
         tag.putInt("MapRestorePartitionDelayTicks", mapRestorePartitionDelayTicks);
         tag.putBoolean("MapRestoreAdaptiveThrottling", mapRestoreAdaptiveThrottling);
         tag.putInt("MapRestoreTargetTickMillis", mapRestoreTargetTickMillis);
@@ -188,6 +195,7 @@ public final class MatchRules {
         if (tag.contains("CaptainReplacementVoteSeconds")) captainReplacementVoteSeconds(tag.getInt("CaptainReplacementVoteSeconds"));
         if (tag.contains("AttackerCaptainGlowing")) attackerCaptainGlowing(tag.getBoolean("AttackerCaptainGlowing"));
         if (tag.contains("MapBlockBreaking")) mapBlockBreaking(tag.getBoolean("MapBlockBreaking"));
+        if (tag.contains("MapSnapshotMode")) mapSnapshotMode(MapSnapshotMode.byId(tag.getString("MapSnapshotMode")));
         if (tag.contains("MapRestorePartitionDelayTicks")) mapRestorePartitionDelayTicks(tag.getInt("MapRestorePartitionDelayTicks"));
         if (tag.contains("MapRestoreAdaptiveThrottling")) mapRestoreAdaptiveThrottling(tag.getBoolean("MapRestoreAdaptiveThrottling"));
         if (tag.contains("MapRestoreTargetTickMillis")) mapRestoreTargetTickMillis(tag.getInt("MapRestoreTargetTickMillis"));
