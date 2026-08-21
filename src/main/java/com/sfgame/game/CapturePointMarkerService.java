@@ -7,6 +7,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -14,6 +15,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.HashMap;
@@ -26,16 +28,13 @@ import java.util.Set;
 /**
  * Renders the currently active Domination/Breakthrough objectives in-world.
  *
- * <p>A text display is used instead of an armor-stand custom name so the
- * marker can have a predictable, opaque background. Minecraft renders text
- * display glyphs at 0.025 blocks per pixel; the non-uniform scale below keeps
- * the background close to one block wide and one block high even for longer
- * point IDs.</p>
+ * <p>The one-metre background and label are separate display entities. This is
+ * intentional: non-uniformly scaling one TextDisplay also distorts its glyphs.
+ * A thin billboarded BlockDisplay provides the square background while the
+ * TextDisplay can use a uniform scale and retain the normal Minecraft font.</p>
  */
 final class CapturePointMarkerService {
-    private static final int BACKGROUND_COLOR = 0xD0555555;
-    private static final float TARGET_PIXEL_EXTENT = 40.0F;
-    private static final float MARKER_HEIGHT_SCALE = 3.6F;
+    private static final float LABEL_SCALE = 4.0F;
     private static final String MARKER_TAG = "sfgame_capture_point_marker";
 
     private final Map<String, MarkerEntry> markers = new HashMap<>();
@@ -45,8 +44,8 @@ final class CapturePointMarkerService {
         Set<String> ids = new HashSet<>();
         for (CapturePointDefinition point : active) ids.add(point.id());
         markers.entrySet().removeIf(entry -> {
-            if (ids.contains(entry.getKey()) && entry.getValue().entity().isAlive()) return false;
-            entry.getValue().entity().discard();
+            if (ids.contains(entry.getKey()) && entry.getValue().isAlive()) return false;
+            entry.getValue().discard();
             return true;
         });
 
@@ -56,14 +55,14 @@ final class CapturePointMarkerService {
             MarkerVisual visual = MarkerVisual.from(states.get(point.id()));
             MarkerEntry existing = markers.get(point.id());
             if (existing != null && !existing.signature().equals(signature)) {
-                existing.entity().discard();
+                existing.discard();
                 markers.remove(point.id());
                 existing = null;
             }
             if (existing != null) {
                 if (!existing.visual().equals(visual)) {
-                    configure(existing.entity(), point.id(), visual);
-                    markers.put(point.id(), new MarkerEntry(existing.entity(), signature, visual));
+                    configureLabel(existing.label(), point.id(), visual);
+                    markers.put(point.id(), new MarkerEntry(existing.background(), existing.label(), signature, visual));
                 }
                 continue;
             }
@@ -79,34 +78,62 @@ final class CapturePointMarkerService {
             double y = surface + 3.0;
             if (region.maxY() != null) y = Math.min(y, region.maxY() + 1.5);
 
-            Display.TextDisplay marker = EntityType.TEXT_DISPLAY.create(level);
-            if (marker == null) continue;
-            marker.moveTo(region.centerX(), y, region.centerZ(), 0.0F, 0.0F);
-            marker.setNoGravity(true);
-            marker.setInvulnerable(true);
-            marker.setSilent(true);
-            marker.addTag(MARKER_TAG);
-            configure(marker, point.id(), visual);
-            if (level.addFreshEntity(marker)) {
-                markers.put(point.id(), new MarkerEntry(marker, signature, visual));
+            Display.BlockDisplay background = EntityType.BLOCK_DISPLAY.create(level);
+            Display.TextDisplay label = EntityType.TEXT_DISPLAY.create(level);
+            if (background == null || label == null) continue;
+            prepare(background, region.centerX(), y, region.centerZ());
+            prepare(label, region.centerX(), y, region.centerZ());
+            configureBackground(background);
+            configureLabel(label, point.id(), visual);
+            if (level.addFreshEntity(background) && level.addFreshEntity(label)) {
+                markers.put(point.id(), new MarkerEntry(background, label, signature, visual));
+            } else {
+                background.discard();
+                label.discard();
             }
         }
     }
 
     void clear() {
-        markers.values().forEach(marker -> marker.entity().discard());
+        markers.values().forEach(MarkerEntry::discard);
         markers.clear();
     }
 
-    private static void configure(Display.TextDisplay marker, String pointId, MarkerVisual visual) {
+    private static void prepare(Display marker, double x, double y, double z) {
+        marker.moveTo(x, y, z, 0.0F, 0.0F);
+        marker.setNoGravity(true);
+        marker.setInvulnerable(true);
+        marker.setSilent(true);
+        marker.addTag(MARKER_TAG);
+    }
+
+    private static void configureBackground(Display.BlockDisplay marker) {
+        CompoundTag tag = new CompoundTag();
+        marker.saveWithoutId(tag);
+        tag.put("block_state", NbtUtils.writeBlockState(Blocks.GRAY_CONCRETE.defaultBlockState()));
+        tag.putString("billboard", "center");
+        tag.putFloat("view_range", 4.0F);
+        tag.putFloat("width", 1.0F);
+        tag.putFloat("height", 1.0F);
+        putFullBrightness(tag);
+
+        CompoundTag transformation = new CompoundTag();
+        transformation.put("translation", floats(-0.5F, -0.5F, 0.04F));
+        transformation.put("scale", floats(1.0F, 1.0F, 0.025F));
+        transformation.put("left_rotation", floats(0.0F, 0.0F, 0.0F, 1.0F));
+        transformation.put("right_rotation", floats(0.0F, 0.0F, 0.0F, 1.0F));
+        tag.put("transformation", transformation);
+        marker.load(tag);
+    }
+
+    private static void configureLabel(Display.TextDisplay marker, String pointId, MarkerVisual visual) {
         CompoundTag tag = new CompoundTag();
         marker.saveWithoutId(tag);
         String displayId = pointId.toUpperCase(Locale.ROOT);
-        Component text = Component.literal(" " + displayId + " ")
-                .withStyle(visual.formatting(), ChatFormatting.BOLD);
+        Component text = Component.literal(displayId).withStyle(visual.formatting());
         tag.putString("text", Component.Serializer.toJson(text));
         tag.putInt("line_width", 1000);
-        tag.putInt("background", BACKGROUND_COLOR);
+        tag.putInt("background", 0x00000000);
         tag.putByte("text_opacity", (byte) 0xFF);
         tag.putBoolean("shadow", true);
         tag.putBoolean("see_through", true);
@@ -116,21 +143,22 @@ final class CapturePointMarkerService {
         tag.putFloat("view_range", 4.0F);
         tag.putFloat("width", 1.0F);
         tag.putFloat("height", 1.0F);
+        putFullBrightness(tag);
 
-        CompoundTag brightness = new CompoundTag();
-        brightness.putInt("block", 15);
-        brightness.putInt("sky", 15);
-        tag.put("brightness", brightness);
-
-        int estimatedWidth = 10 + displayId.length() * 6;
-        float widthScale = Math.max(0.45F, Math.min(2.5F, TARGET_PIXEL_EXTENT / estimatedWidth));
         CompoundTag transformation = new CompoundTag();
-        transformation.put("translation", floats(0.0F, 0.0F, 0.0F));
-        transformation.put("scale", floats(widthScale, MARKER_HEIGHT_SCALE, 1.0F));
+        transformation.put("translation", floats(0.0F, -0.15F, 0.0F));
+        transformation.put("scale", floats(LABEL_SCALE, LABEL_SCALE, 1.0F));
         transformation.put("left_rotation", floats(0.0F, 0.0F, 0.0F, 1.0F));
         transformation.put("right_rotation", floats(0.0F, 0.0F, 0.0F, 1.0F));
         tag.put("transformation", transformation);
         marker.load(tag);
+    }
+
+    private static void putFullBrightness(CompoundTag tag) {
+        CompoundTag brightness = new CompoundTag();
+        brightness.putInt("block", 15);
+        brightness.putInt("sky", 15);
+        tag.put("brightness", brightness);
     }
 
     private static ListTag floats(float... values) {
@@ -144,7 +172,16 @@ final class CapturePointMarkerService {
                 + '|' + region.minY() + '|' + region.maxY();
     }
 
-    private record MarkerEntry(Display.TextDisplay entity, String signature, MarkerVisual visual) {
+    private record MarkerEntry(Display.BlockDisplay background, Display.TextDisplay label,
+                               String signature, MarkerVisual visual) {
+        private boolean isAlive() {
+            return background.isAlive() && label.isAlive();
+        }
+
+        private void discard() {
+            background.discard();
+            label.discard();
+        }
     }
 
     private record MarkerVisual(TeamSide side, boolean contested) {
