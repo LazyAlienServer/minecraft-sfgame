@@ -158,14 +158,18 @@ public final class SFGameEvents {
 
     @SubscribeEvent
     public static void breakBlock(BlockEvent.BreakEvent event) {
-        if (event.getPlayer() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
-                && !MatchManager.get().canBreakBlock(player, event.getPos(), event.getState())) event.setCanceled(true);
+        if (!(event.getPlayer() instanceof ServerPlayer player)) return;
+        MatchManager manager = MatchManager.get();
+        if ((manager.phase() == MatchPhase.RESULT || manager.state(player).participating())
+                && !manager.canBreakBlock(player, event.getPos(), event.getState())) event.setCanceled(true);
     }
 
     @SubscribeEvent
     public static void placeBlock(BlockEvent.EntityPlaceEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
-                && !MatchManager.get().canPlaceBlock(player, event.getPos(), event.getPlacedBlock())) event.setCanceled(true);
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        MatchManager manager = MatchManager.get();
+        if ((manager.phase() == MatchPhase.RESULT || manager.state(player).participating())
+                && !manager.canPlaceBlock(player, event.getPos(), event.getPlacedBlock())) event.setCanceled(true);
     }
 
     /** Covers vanilla explosions plus TACZ/Superb Warfare explosions that use Forge's explosion pipeline. */

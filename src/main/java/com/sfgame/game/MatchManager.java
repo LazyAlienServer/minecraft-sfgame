@@ -132,6 +132,10 @@ public final class MatchManager {
     /** Used by explosions, TACZ projectiles and Superb Warfare vehicle/projectile destruction. */
     public boolean canExternalDestroyBlock(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos,
                                            net.minecraft.world.level.block.state.BlockState state) {
+        // The result countdown is a hard map-lock period. This also covers
+        // TACZ/Superb Warfare explosions and vehicle code paths intercepted
+        // by LevelBlockProtectionMixin.
+        if (phase == MatchPhase.RESULT) return false;
         if (mapRestoreSession != null && isInsideBuildRegion(level, pos)) return false;
         return phase != MatchPhase.RUNNING || canEditMapBlock(level, pos, state);
     }
