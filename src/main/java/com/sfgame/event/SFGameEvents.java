@@ -18,6 +18,7 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ExplosionEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
@@ -27,7 +28,9 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.LogicalSide;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -35,6 +38,7 @@ import java.util.UUID;
 public final class SFGameEvents {
     private static final MatchHudService HUD = new MatchHudService();
     private static final Set<UUID> SAFE_PHASE_PROTECTED_PLAYERS = new HashSet<>();
+    private static final Map<UUID, Long> MAP_EDIT_DENIAL_TICKS = new HashMap<>();
     private static final int SAFE_PHASE_RESISTANCE_DURATION = 40;
     private static final int RESISTANCE_FIVE_AMPLIFIER = 4;
     private static int hudTicker;
@@ -53,6 +57,7 @@ public final class SFGameEvents {
     public static void serverStopped(ServerStoppedEvent event) {
         HUD.clear(event.getServer());
         SAFE_PHASE_PROTECTED_PLAYERS.clear();
+        MAP_EDIT_DENIAL_TICKS.clear();
         MatchManager.get().serverStopped();
     }
 
@@ -161,15 +166,34 @@ public final class SFGameEvents {
         if ((manager.phase() == MatchPhase.RESULT || manager.state(player).participating())
                 && !manager.canBreakBlock(player, event.getPos(), event.getState())) {
             event.setCanceled(true);
-            long now = player.server.getTickCount();
-            var persistent = player.getPersistentData();
-            String cooldownKey = "sfgameMapEditDenialTick";
-            if (manager.devMode()
-                    && (!persistent.contains(cooldownKey) || now - persistent.getLong(cooldownKey) >= 20L)) {
-                persistent.putLong(cooldownKey, now);
-                player.displayClientMessage(manager.mapEditDenialReason(player, event.getPos(), event.getState()), true);
-            }
+            displayMapEditDenial(player, event.getPos(), event.getState());
         }
+    }
+
+    /**
+     * A left-click event is posted even when vanilla refuses to start mining
+     * (for example Adventure mode). This keeps dev diagnostics available when
+     * no final BreakEvent will ever be emitted.
+     */
+    @SubscribeEvent
+    public static void leftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        MatchManager manager = MatchManager.get();
+        if ((manager.phase() == MatchPhase.RESULT || manager.state(player).participating())
+                && !manager.canBreakBlock(player, event.getPos(), event.getLevel().getBlockState(event.getPos()))) {
+            displayMapEditDenial(player, event.getPos(), event.getLevel().getBlockState(event.getPos()));
+        }
+    }
+
+    private static void displayMapEditDenial(ServerPlayer player, net.minecraft.core.BlockPos pos,
+                                             net.minecraft.world.level.block.state.BlockState state) {
+        MatchManager manager = MatchManager.get();
+        if (!manager.devMode()) return;
+        long now = player.server.getTickCount();
+        Long last = MAP_EDIT_DENIAL_TICKS.get(player.getUUID());
+        if (last != null && now >= last && now - last < 20L) return;
+        MAP_EDIT_DENIAL_TICKS.put(player.getUUID(), now);
+        player.displayClientMessage(manager.mapEditDenialReason(player, pos, state), true);
     }
 
     @SubscribeEvent
