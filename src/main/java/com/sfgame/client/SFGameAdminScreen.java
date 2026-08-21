@@ -185,7 +185,7 @@ public final class SFGameAdminScreen extends Screen {
     private void addRuleControls(AdminSnapshot snapshot) {
         List<AdminSnapshot.RuleView> hot = snapshot.rules().stream().filter(AdminSnapshot.RuleView::hotReload).toList();
         List<AdminSnapshot.RuleView> cold = snapshot.rules().stream().filter(rule -> !rule.hotReload()).toList();
-        int totalHeight = 24 + hot.size() * RULE_ROW_HEIGHT + 26 + cold.size() * RULE_ROW_HEIGHT + 8;
+        int totalHeight = 24 + hot.size() * RULE_ROW_HEIGHT + 26 + cold.size() * RULE_ROW_HEIGHT;
         maxRuleScroll = Math.max(0, totalHeight - Math.max(1, contentBottom - contentTop));
         ruleScroll = Math.max(0, Math.min(ruleScroll, maxRuleScroll));
         boolean activeMatch = isActiveMatch(snapshot.phase());
@@ -200,7 +200,11 @@ public final class SFGameAdminScreen extends Screen {
         for (AdminSnapshot.RuleView rule : rules) {
             int rowY = y;
             y += RULE_ROW_HEIGHT;
-            if (rowY < contentTop || rowY + RULE_ROW_HEIGHT > contentBottom) continue;
+            // Keep partially visible rows and clip them during rendering. The
+            // previous full-row check discarded them, producing a changing
+            // blank band because the 30 px wheel step is not divisible by the
+            // 38 px row height.
+            if (rowY + RULE_ROW_HEIGHT <= contentTop || rowY >= contentBottom) continue;
             boolean enabled = rule.hotReload() || !activeMatch;
             int controlX = panelRight - 202;
             if (rule.type() == AdminRuleCatalog.ValueType.BOOLEAN) {
@@ -208,17 +212,20 @@ public final class SFGameAdminScreen extends Screen {
                 SquareButton toggle = new SquareButton(controlX, rowY + 8, 122, 22,
                         Component.translatable(current ? "sfgame.admin.enabled" : "sfgame.admin.disabled"),
                         current, button -> setRule(snapshot, rule, Boolean.toString(!current)));
+                toggle.clipTo(panelLeft, contentTop, panelRight, contentBottom);
                 toggle.active = enabled;
                 addRenderableWidget(toggle);
                 ruleControls.add(new RuleControl(rule, rowY, null, toggle, null));
             } else {
                 RuleValueBox editor = new RuleValueBox(font, controlX, rowY + 8, 122, 22, rule);
+                editor.clipTo(panelLeft, contentTop, panelRight, contentBottom);
                 editor.setValue(rule.value());
                 editor.active = enabled;
                 addRenderableWidget(editor);
                 SquareButton apply = new SquareButton(panelRight - 72, rowY + 8, 62, 22,
                         Component.translatable("sfgame.admin.apply"), false,
                         button -> setRule(snapshot, rule, editor.getValue()));
+                apply.clipTo(panelLeft, contentTop, panelRight, contentBottom);
                 apply.active = enabled;
                 addRenderableWidget(apply);
                 ruleControls.add(new RuleControl(rule, rowY, editor, apply, snapshot));
@@ -441,10 +448,24 @@ public final class SFGameAdminScreen extends Screen {
     private static class SquareButton extends Button {
         private final boolean selected;
         private long pressedUntil;
+        private boolean clipped;
+        private int clipLeft;
+        private int clipTop;
+        private int clipRight;
+        private int clipBottom;
 
         SquareButton(int x, int y, int width, int height, Component message, boolean selected, OnPress onPress) {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
             this.selected = selected;
+        }
+
+        SquareButton clipTo(int left, int top, int right, int bottom) {
+            clipped = true;
+            clipLeft = left;
+            clipTop = top;
+            clipRight = right;
+            clipBottom = bottom;
+            return this;
         }
 
         @Override
@@ -458,6 +479,7 @@ public final class SFGameAdminScreen extends Screen {
 
         @Override
         public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            if (clipped) graphics.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
             boolean hovered = isHoveredOrFocused();
             boolean pressed = Util.getMillis() < pressedUntil || isHovered && GLFW.glfwGetMouseButton(
                     Minecraft.getInstance().getWindow().getWindow(), GLFW.GLFW_MOUSE_BUTTON_LEFT) == GLFW.GLFW_PRESS;
@@ -468,6 +490,14 @@ public final class SFGameAdminScreen extends Screen {
             outline(graphics, getX(), getY(), getX() + width, getY() + height, border);
             graphics.drawCenteredString(Minecraft.getInstance().font, getMessage(),
                     getX() + width / 2, getY() + (height - 8) / 2, active ? TEXT : MUTED);
+            if (clipped) graphics.disableScissor();
+        }
+
+        @Override
+        public boolean isMouseOver(double mouseX, double mouseY) {
+            return super.isMouseOver(mouseX, mouseY) && (!clipped
+                    || mouseX >= clipLeft && mouseX < clipRight
+                    && mouseY >= clipTop && mouseY < clipBottom);
         }
     }
 
@@ -477,6 +507,11 @@ public final class SFGameAdminScreen extends Screen {
         private final int frameY;
         private final int frameWidth;
         private final int frameHeight;
+        private boolean clipped;
+        private int clipLeft;
+        private int clipTop;
+        private int clipRight;
+        private int clipBottom;
 
         RuleValueBox(Font font, int x, int y, int width, int height, AdminSnapshot.RuleView rule) {
             // An unbordered vanilla EditBox renders text at its widget origin.
@@ -499,19 +534,32 @@ public final class SFGameAdminScreen extends Screen {
             }
         }
 
+        RuleValueBox clipTo(int left, int top, int right, int bottom) {
+            clipped = true;
+            clipLeft = left;
+            clipTop = top;
+            clipRight = right;
+            clipBottom = bottom;
+            return this;
+        }
+
         @Override
         public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+            if (clipped) graphics.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
             int background = active ? 0xFF111215 : 0xFF202124;
             int border = isFocused() && active ? ACCENT : BORDER;
             graphics.fill(frameX, frameY, frameX + frameWidth, frameY + frameHeight, background);
             outline(graphics, frameX, frameY, frameX + frameWidth, frameY + frameHeight, border);
             super.renderWidget(graphics, mouseX, mouseY, partialTick);
+            if (clipped) graphics.disableScissor();
         }
 
         @Override
         public boolean isMouseOver(double mouseX, double mouseY) {
             return visible && mouseX >= frameX && mouseX < frameX + frameWidth
-                    && mouseY >= frameY && mouseY < frameY + frameHeight;
+                    && mouseY >= frameY && mouseY < frameY + frameHeight
+                    && (!clipped || mouseX >= clipLeft && mouseX < clipRight
+                    && mouseY >= clipTop && mouseY < clipBottom);
         }
 
         @Override
