@@ -119,6 +119,24 @@ public final class MatchManager {
         return phase == MatchPhase.RUNNING && state(player).participating()
                 && canEditMapBlock(player.serverLevel(), pos, state);
     }
+
+    public Component mapEditDenialReason(ServerPlayer player, net.minecraft.core.BlockPos pos,
+                                         net.minecraft.world.level.block.state.BlockState blockState) {
+        if (phase != MatchPhase.RUNNING || !state(player).participating()) {
+            return Component.translatable("sfgame.map_edit.denied.match");
+        }
+        if (!rules().mapBlockBreaking()) return Component.translatable("sfgame.map_edit.denied.disabled");
+        if (!activeRuntime.allowsMapEditing()) return Component.translatable("sfgame.map_edit.denied.mode_locked");
+        ArenaMap map = data().activeMap();
+        if (map == null || map.build().region() == null) {
+            return Component.translatable("sfgame.map_edit.denied.no_region");
+        }
+        if (!isInsideBuildRegion(player.serverLevel(), pos)) {
+            return Component.translatable("sfgame.map_edit.denied.outside");
+        }
+        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(blockState.getBlock()).toString();
+        return Component.translatable("sfgame.map_edit.denied.not_allowed", id);
+    }
     /** Participants use Survival while the common allowlisted build system is active. */
     public boolean usesMapEditingSurvival(ServerPlayer player) {
         return phase == MatchPhase.RUNNING && state(player).participating()
@@ -153,9 +171,24 @@ public final class MatchManager {
     private boolean isInsideBuildRegion(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos) {
         ArenaMap map = data().activeMap();
         if (map == null || map.build().region() == null) return false;
-        com.sfgame.data.ArenaPosition location = new com.sfgame.data.ArenaPosition(
-                level.dimension().location().toString(), pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, 0, 0);
-        return map.build().region().contains(location);
+        return containsBuildBlock(map.build().region(), level.dimension().location().toString(), pos);
+    }
+
+    static boolean containsBuildBlock(com.sfgame.data.BoxCaptureRegion region, String dimension,
+                                      net.minecraft.core.BlockPos pos) {
+        if (!dimension.equals(region.dimension())) return false;
+        // Build selections are made while standing in blocks, so compare
+        // integer block coordinates inclusively. Using block centres against
+        // the player's fractional corner coordinates excluded both boundary
+        // rows from otherwise valid selections.
+        int minX = net.minecraft.util.Mth.floor(region.minX());
+        int maxX = net.minecraft.util.Mth.floor(region.maxX());
+        int minZ = net.minecraft.util.Mth.floor(region.minZ());
+        int maxZ = net.minecraft.util.Mth.floor(region.maxZ());
+        return pos.getX() >= minX && pos.getX() <= maxX
+                && pos.getZ() >= minZ && pos.getZ() <= maxZ
+                && (region.minY() == null || pos.getY() >= region.minY())
+                && (region.maxY() == null || pos.getY() <= region.maxY());
     }
     public boolean ctfCarrierCannotUseWeapons(ServerPlayer player) {
         return isCtfCarrier(player) && ctfCarrierRestriction() == com.sfgame.data.CarrierRestriction.NO_WEAPONS;
@@ -964,6 +997,7 @@ public final class MatchManager {
         elapsedTicks++;
         MatchRules rules = rules();
         ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
+        synchronizeDeployedParticipantGameModes();
         if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && elapsedTicks >= rules.timeLimitSeconds() * 20) {
             result = modeResult.finished() ? modeResult.winner() : determineWinner();
             stop(true, Component.empty());
@@ -1103,7 +1137,11 @@ public final class MatchManager {
     }
 
     private GameType participantGameType() {
-        return phase == MatchPhase.RUNNING && rules().mapBlockBreaking() && activeRuntime.allowsMapEditing()
+        return participantGameType(phase, rules().mapBlockBreaking(), activeRuntime.allowsMapEditing());
+    }
+
+    static GameType participantGameType(MatchPhase phase, boolean mapBlockBreaking, boolean modeAllowsEditing) {
+        return phase == MatchPhase.RUNNING && mapBlockBreaking && modeAllowsEditing
                 ? GameType.SURVIVAL : GameType.ADVENTURE;
     }
 
@@ -1111,6 +1149,23 @@ public final class MatchManager {
         if (server == null) return;
         GameType gameType = participantGameType();
         forParticipants(player -> player.setGameMode(gameType));
+    }
+
+    /**
+     * Mode runtimes may temporarily disable map editing during sector or leg
+     * transitions. Once they become active again, deployed players must leave
+     * Adventure mode or vanilla will reject the break before Forge posts its
+     * allowlist event. Respawning players intentionally remain spectators.
+     */
+    private void synchronizeDeployedParticipantGameModes() {
+        if (server == null || phase != MatchPhase.RUNNING) return;
+        GameType expected = participantGameType();
+        forParticipants(player -> {
+            PlayerMatchState playerState = state(player);
+            if (playerState.respawning() || playerState.awaitingRespawnSelection()
+                    || playerState.pendingImmediateJoin()) return;
+            if (player.gameMode.getGameModeForPlayer() != expected) player.setGameMode(expected);
+        });
     }
 
     private void finishToLobby() {

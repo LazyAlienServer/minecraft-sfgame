@@ -161,7 +161,16 @@ public final class SFGameEvents {
         if (!(event.getPlayer() instanceof ServerPlayer player)) return;
         MatchManager manager = MatchManager.get();
         if ((manager.phase() == MatchPhase.RESULT || manager.state(player).participating())
-                && !manager.canBreakBlock(player, event.getPos(), event.getState())) event.setCanceled(true);
+                && !manager.canBreakBlock(player, event.getPos(), event.getState())) {
+            event.setCanceled(true);
+            long now = player.server.getTickCount();
+            var persistent = player.getPersistentData();
+            String cooldownKey = "sfgameMapEditDenialTick";
+            if (!persistent.contains(cooldownKey) || now - persistent.getLong(cooldownKey) >= 20L) {
+                persistent.putLong(cooldownKey, now);
+                player.displayClientMessage(manager.mapEditDenialReason(player, event.getPos(), event.getState()), true);
+            }
+        }
     }
 
     @SubscribeEvent
