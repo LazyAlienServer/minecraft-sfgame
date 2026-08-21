@@ -343,8 +343,12 @@ public final class MapBuildSnapshotService {
     }
 
     private static Path resolveColumn(Path directory, String file) throws IOException {
-        Path result = directory.resolve(file).normalize();
-        if (result.getParent() == null || !result.getParent().equals(directory)) {
+        // Integrated servers may expose the world root with equivalent "."
+        // path segments. Compare normalized paths on both sides so a valid
+        // column is not mistaken for traversal outside the map directory.
+        Path normalizedDirectory = directory.normalize();
+        Path result = normalizedDirectory.resolve(file).normalize();
+        if (result.getParent() == null || !result.getParent().equals(normalizedDirectory)) {
             throw new IOException("Snapshot column path escapes its map directory");
         }
         return result;
