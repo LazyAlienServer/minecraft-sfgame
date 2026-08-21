@@ -53,6 +53,8 @@ public final class SFGameAdminScreen extends Screen {
     private int contentBottom;
     private int ruleScroll;
     private int maxRuleScroll;
+    private int statusScroll;
+    private int maxStatusScroll;
     private int mapScroll;
     private int visibleMapCount;
     private int totalMapCount;
@@ -259,6 +261,12 @@ public final class SFGameAdminScreen extends Screen {
             }
             return true;
         }
+        if (page == Page.STATUS && mouseX >= panelLeft && mouseX <= panelRight
+                && mouseY >= contentTop && mouseY <= contentBottom && maxStatusScroll > 0) {
+            int next = Math.max(0, Math.min(maxStatusScroll, statusScroll + (delta < 0 ? 30 : -30)));
+            if (next != statusScroll) statusScroll = next;
+            return true;
+        }
         return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
@@ -299,10 +307,10 @@ public final class SFGameAdminScreen extends Screen {
 
     private void renderStatus(GuiGraphics graphics, AdminSnapshot snapshot) {
         int gap = 8;
-        int columns = width < 620 ? 2 : 3;
-        int cardWidth = (panelRight - panelLeft - 24 - gap * (columns - 1)) / columns;
+        int availableWidth = panelRight - panelLeft - 24;
+        int columns = availableWidth >= 600 ? 3 : availableWidth >= 330 ? 2 : 1;
+        int cardWidth = (availableWidth - gap * (columns - 1)) / columns;
         int x0 = panelLeft + 12;
-        int y0 = contentTop + 12;
         List<StatusCard> cards = List.of(
                 new StatusCard("sfgame.admin.status.phase", phaseLabel(snapshot.phase()), ACCENT),
                 new StatusCard("sfgame.admin.status.selection", snapshot.selectedMode() + " / " + snapshot.selectedMap(), TEXT),
@@ -320,16 +328,24 @@ public final class SFGameAdminScreen extends Screen {
                         + "  Y " + snapshot.yellowScore() + "  G " + snapshot.greenScore(), TEXT)
         );
         int cardHeight = 54;
+        int rows = (cards.size() + columns - 1) / columns;
+        int naturalHeight = 12 + rows * (cardHeight + gap) + 4 + 60 + 12;
+        maxStatusScroll = Math.max(0, naturalHeight - Math.max(1, contentBottom - contentTop));
+        statusScroll = Math.max(0, Math.min(statusScroll, maxStatusScroll));
+        int y0 = contentTop + 12 - statusScroll;
+
+        graphics.enableScissor(panelLeft, contentTop, panelRight, contentBottom);
         for (int i = 0; i < cards.size(); i++) {
             int column = i % columns;
             int row = i / columns;
             drawCard(graphics, x0 + column * (cardWidth + gap), y0 + row * (cardHeight + gap),
                     cardWidth, cardHeight, cards.get(i));
         }
-        int rows = (cards.size() + columns - 1) / columns;
         int restoreY = y0 + rows * (cardHeight + gap) + 4;
-        if (restoreY + 64 <= contentBottom) renderRestoreStatus(graphics, snapshot, x0, restoreY,
-                panelRight - panelLeft - 24, 60);
+        renderRestoreStatus(graphics, snapshot, x0, restoreY, panelRight - panelLeft - 24, 60);
+        graphics.disableScissor();
+
+        if (maxStatusScroll > 0) renderScrollBar(graphics, statusScroll, maxStatusScroll);
     }
 
     private void renderRestoreStatus(GuiGraphics graphics, AdminSnapshot snapshot, int x, int y, int width, int height) {
@@ -363,14 +379,19 @@ public final class SFGameAdminScreen extends Screen {
         for (RuleControl control : ruleControls) renderRuleLabel(graphics, control);
         graphics.disableScissor();
         if (maxRuleScroll > 0) {
-            int trackTop = contentTop + 8;
-            int trackBottom = contentBottom - 8;
-            int thumbHeight = Math.max(18, (trackBottom - trackTop) * (trackBottom - trackTop)
-                    / (trackBottom - trackTop + maxRuleScroll));
-            int thumbY = trackTop + (trackBottom - trackTop - thumbHeight) * ruleScroll / maxRuleScroll;
-            graphics.fill(panelRight - 4, trackTop, panelRight - 2, trackBottom, 0xFF33363B);
-            graphics.fill(panelRight - 5, thumbY, panelRight - 1, thumbY + thumbHeight, ACCENT);
+            renderScrollBar(graphics, ruleScroll, maxRuleScroll);
         }
+    }
+
+    private void renderScrollBar(GuiGraphics graphics, int scroll, int maximum) {
+        int trackTop = contentTop + 8;
+        int trackBottom = contentBottom - 8;
+        int trackHeight = Math.max(1, trackBottom - trackTop);
+        int thumbHeight = Math.max(18, trackHeight * trackHeight / (trackHeight + maximum));
+        thumbHeight = Math.min(trackHeight, thumbHeight);
+        int thumbY = trackTop + (trackHeight - thumbHeight) * scroll / Math.max(1, maximum);
+        graphics.fill(panelRight - 4, trackTop, panelRight - 2, trackBottom, 0xFF33363B);
+        graphics.fill(panelRight - 5, thumbY, panelRight - 1, thumbY + thumbHeight, ACCENT);
     }
 
     private void renderRuleLabel(GuiGraphics graphics, RuleControl control) {
