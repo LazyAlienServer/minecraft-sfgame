@@ -78,6 +78,7 @@ public final class MatchManager {
     private int mapRestoreAdaptiveSkips;
     private double mapRestorePartitionMillisEstimate;
     private boolean modePreparationStarted;
+    private GameType matchParticipantGameType = GameType.ADVENTURE;
 
     public static MatchManager get() { return INSTANCE; }
     public MatchPhase phase() { return phase; }
@@ -109,6 +110,7 @@ public final class MatchManager {
     public int elapsedTicks() { return elapsedTicks; }
     public int remainingSeconds() { return activeRuntime.remainingSeconds(this, rules()); }
     public boolean restoringMap() { return mapRestoreSession != null; }
+    public boolean devMode() { return server != null && data().devMode(); }
     public float mapRestoreProgress() { return mapRestoreSession == null ? 0.0F : mapRestoreSession.progress(); }
     public long mapRestoreElapsedMillis() { return mapRestoreSession == null ? 0L : mapRestoreSession.elapsedMillis(); }
     public int restoredPartitions() { return mapRestoreSession == null ? 0 : mapRestoreSession.completedPartitions(); }
@@ -132,15 +134,14 @@ public final class MatchManager {
             return Component.translatable("sfgame.map_edit.denied.no_region");
         }
         if (!isInsideBuildRegion(player.serverLevel(), pos)) {
-            return Component.translatable("sfgame.map_edit.denied.outside");
+            com.sfgame.data.BoxCaptureRegion region = map.build().region();
+            return Component.translatable("sfgame.map_edit.denied.outside",
+                    pos.getX(), pos.getY(), pos.getZ(),
+                    net.minecraft.util.Mth.floor(region.minX()), net.minecraft.util.Mth.floor(region.maxX()),
+                    net.minecraft.util.Mth.floor(region.minZ()), net.minecraft.util.Mth.floor(region.maxZ()));
         }
         String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(blockState.getBlock()).toString();
         return Component.translatable("sfgame.map_edit.denied.not_allowed", id);
-    }
-    /** Participants use Survival while the common allowlisted build system is active. */
-    public boolean usesMapEditingSurvival(ServerPlayer player) {
-        return phase == MatchPhase.RUNNING && state(player).participating()
-                && rules().mapBlockBreaking() && activeRuntime.allowsMapEditing();
     }
     public boolean canPlaceBlock(ServerPlayer player, net.minecraft.core.BlockPos pos,
                                  net.minecraft.world.level.block.state.BlockState state) {
@@ -693,7 +694,6 @@ public final class MatchManager {
         }
         ruleConfigRegistry.setBoolean(data().selectedMode(), data().selectedMap(), key, value);
         activeRuntime.onRuleChanged(key, rules());
-        if ("mapBlockBreaking".equals(key)) refreshParticipantGameModes();
         syncAll();
     }
 
@@ -729,7 +729,6 @@ public final class MatchManager {
         if (isActiveMatchPhase()) throw new IllegalStateException("Rules can only be reset in the lobby");
         ruleConfigRegistry.resetMap(data().selectedMode(), data().selectedMap());
         activeRuntime.onRuleChanged("attackerTickets", rules());
-        refreshParticipantGameModes();
         syncAll();
     }
 
@@ -737,7 +736,6 @@ public final class MatchManager {
         if (isActiveMatchPhase()) throw new IllegalStateException("Rule inheritance can only change in the lobby");
         ruleConfigRegistry.setParent(data().selectedMode(), data().selectedMap(), parent);
         activeRuntime.onRuleChanged("attackerTickets", rules());
-        refreshParticipantGameModes();
         syncAll();
     }
 
@@ -748,7 +746,6 @@ public final class MatchManager {
         List<String> errors = ruleConfigRegistry.reload(data());
         if (errors.isEmpty()) {
             activeRuntime.onRuleChanged("attackerTickets", rules());
-            refreshParticipantGameModes();
             arenaSelectionChanged();
             syncAll();
         }
@@ -982,6 +979,11 @@ public final class MatchManager {
         phase = MatchPhase.RUNNING;
         elapsedTicks = 0;
         activeRuntime = modeRuntime();
+        // The match fixes its participant game type exactly once. Rule reloads,
+        // GUI edits and runtime sub-phases must not keep overriding admins or
+        // players every tick. Respawn deployment only restores this choice
+        // after the required spectator countdown.
+        matchParticipantGameType = participantGameTypeAtMatchStart(rules().mapBlockBreaking());
         activeRuntime.start(server, this, data().activeMap(), rules());
         forParticipants(player -> deploy(player, state(player), false));
         forParticipants(player -> {
@@ -997,7 +999,6 @@ public final class MatchManager {
         elapsedTicks++;
         MatchRules rules = rules();
         ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
-        synchronizeDeployedParticipantGameModes();
         if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && elapsedTicks >= rules.timeLimitSeconds() * 20) {
             result = modeResult.finished() ? modeResult.winner() : determineWinner();
             stop(true, Component.empty());
@@ -1137,35 +1138,11 @@ public final class MatchManager {
     }
 
     private GameType participantGameType() {
-        return participantGameType(phase, rules().mapBlockBreaking(), activeRuntime.allowsMapEditing());
+        return phase == MatchPhase.RUNNING ? matchParticipantGameType : GameType.ADVENTURE;
     }
 
-    static GameType participantGameType(MatchPhase phase, boolean mapBlockBreaking, boolean modeAllowsEditing) {
-        return phase == MatchPhase.RUNNING && mapBlockBreaking && modeAllowsEditing
-                ? GameType.SURVIVAL : GameType.ADVENTURE;
-    }
-
-    private void refreshParticipantGameModes() {
-        if (server == null) return;
-        GameType gameType = participantGameType();
-        forParticipants(player -> player.setGameMode(gameType));
-    }
-
-    /**
-     * Mode runtimes may temporarily disable map editing during sector or leg
-     * transitions. Once they become active again, deployed players must leave
-     * Adventure mode or vanilla will reject the break before Forge posts its
-     * allowlist event. Respawning players intentionally remain spectators.
-     */
-    private void synchronizeDeployedParticipantGameModes() {
-        if (server == null || phase != MatchPhase.RUNNING) return;
-        GameType expected = participantGameType();
-        forParticipants(player -> {
-            PlayerMatchState playerState = state(player);
-            if (playerState.respawning() || playerState.awaitingRespawnSelection()
-                    || playerState.pendingImmediateJoin()) return;
-            if (player.gameMode.getGameModeForPlayer() != expected) player.setGameMode(expected);
-        });
+    static GameType participantGameTypeAtMatchStart(boolean mapBlockBreaking) {
+        return mapBlockBreaking ? GameType.SURVIVAL : GameType.ADVENTURE;
     }
 
     private void finishToLobby() {

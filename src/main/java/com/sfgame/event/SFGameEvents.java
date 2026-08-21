@@ -13,13 +13,11 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.scores.PlayerTeam;
-import net.minecraft.world.level.GameType;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
-import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ExplosionEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
@@ -166,7 +164,8 @@ public final class SFGameEvents {
             long now = player.server.getTickCount();
             var persistent = player.getPersistentData();
             String cooldownKey = "sfgameMapEditDenialTick";
-            if (!persistent.contains(cooldownKey) || now - persistent.getLong(cooldownKey) >= 20L) {
+            if (manager.devMode()
+                    && (!persistent.contains(cooldownKey) || now - persistent.getLong(cooldownKey) >= 20L)) {
                 persistent.putLong(cooldownKey, now);
                 player.displayClientMessage(manager.mapEditDenialReason(player, event.getPos(), event.getState()), true);
             }
@@ -187,15 +186,6 @@ public final class SFGameEvents {
         if (!(event.getLevel() instanceof net.minecraft.server.level.ServerLevel level)) return;
         event.getAffectedBlocks().removeIf(pos -> !MatchManager.get().canExternalDestroyBlock(
                 level, pos, level.getBlockState(pos)));
-    }
-
-    @SubscribeEvent
-    public static void useBlock(PlayerInteractEvent.RightClickBlock event) {
-        if (event.getEntity() instanceof ServerPlayer player && MatchManager.get().state(player).participating()
-                && player.gameMode.getGameModeForPlayer() != GameType.ADVENTURE
-                && !MatchManager.get().usesMapEditingSurvival(player)) {
-            player.setGameMode(GameType.ADVENTURE);
-        }
     }
 
     private static void fillHunger(ServerPlayer player) {

@@ -37,10 +37,15 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.ArrayList;
@@ -555,8 +560,7 @@ public final class SFGameCommands {
                 ArenaPosition first = CTF_POS_1.get(player.getUUID()), second = CTF_POS_2.get(player.getUUID());
                 if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
                 if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
-                region = new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
-                        Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
+                region = selectedBlockBox(first, second, null, null);
             }
             var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().captureTheFlag();
             config.validateHomeCaptureRegion(side, region);
@@ -589,8 +593,7 @@ public final class SFGameCommands {
         ArenaPosition first = CTF_POS_1.get(player.getUUID()), second = CTF_POS_2.get(player.getUUID());
         if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
-        CaptureRegion region = new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
-                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
+        CaptureRegion region = selectedBlockBox(first, second, null, null);
         return ctfForwardAdd(context, region, player);
     }
 
@@ -619,8 +622,8 @@ public final class SFGameCommands {
         ServerPlayer player = context.getSource().getPlayerOrException(); ArenaPosition first = CTF_POS_1.get(player.getUUID()), second = CTF_POS_2.get(player.getUUID());
         if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
-        return ctfReplaceForward(context, old -> old.withRegion(new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
-                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), old.region().minY(), old.region().maxY())));
+        return ctfReplaceForward(context, old -> old.withRegion(selectedBlockBox(
+                first, second, old.region().minY(), old.region().maxY())));
     }
 
     private static int ctfForwardSetCenter(CommandContext<CommandSourceStack> context) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -699,10 +702,12 @@ public final class SFGameCommands {
         var config = SFGameSavedData.get(context.getSource().getServer()).activeMap();
         Integer minY = fullHeight ? null : (int) Math.floor(Math.min(first.y(), second.y()));
         Integer maxY = fullHeight ? null : (int) Math.floor(Math.max(first.y(), second.y()));
-        config.build().region(new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
-                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), minY, maxY));
+        config.build().region(selectedBlockBox(first, second, minY, maxY));
         dirty(context);
-        return success(context, fullHeight ? "Set full-height map build box" : "Set bounded-height map build box");
+        BoxCaptureRegion region = config.build().region();
+        return success(context, (fullHeight ? "Set full-height map build box" : "Set bounded-height map build box")
+                + ": X " + net.minecraft.util.Mth.floor(region.minX()) + ".." + net.minecraft.util.Mth.floor(region.maxX())
+                + ", Z " + net.minecraft.util.Mth.floor(region.minZ()) + ".." + net.minecraft.util.Mth.floor(region.maxZ()));
     }
 
     private static int ctfBuildClear(CommandContext<CommandSourceStack> context) {
@@ -1050,12 +1055,42 @@ public final class SFGameCommands {
         if (data.activeMap() == null) return failure(context, "Select a map first");
         if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot edit regions during a match");
         ServerPlayer player = context.getSource().getPlayerOrException();
-        ArenaPosition position = ArenaPosition.from(player);
+        ArenaPosition position = targetedBlockPosition(player);
+        if (position == null) return failure(context, "No block is targeted within 128 blocks");
         (first ? CTF_POS_1 : CTF_POS_2).put(player.getUUID(), position);
         if (GameModeRegistry.DOMINATION.equals(mode) || GameModeRegistry.BREAKTHROUGH.equals(mode)) {
             (first ? POINT_POS_1 : POINT_POS_2).put(player.getUUID(), position);
         }
         return success(context, "Set " + mode + " pos" + (first ? "1" : "2") + " to " + positionText(position));
+    }
+
+    private static ArenaPosition targetedBlockPosition(ServerPlayer player) {
+        Vec3 start = player.getEyePosition();
+        Vec3 end = start.add(player.getViewVector(1.0F).scale(128.0D));
+        BlockHitResult hit = player.level().clip(new ClipContext(
+                start, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
+        if (hit.getType() != HitResult.Type.BLOCK) return null;
+        BlockPos block = hit.getBlockPos();
+        return new ArenaPosition(player.level().dimension().location().toString(),
+                block.getX(), block.getY(), block.getZ(), 0.0F, 0.0F);
+    }
+
+    /** Creates a region that includes the complete volume of both selected blocks. */
+    static BoxCaptureRegion selectedBlockBox(ArenaPosition first, ArenaPosition second,
+                                             Integer minY, Integer maxY) {
+        if (!first.dimension().equals(second.dimension())) {
+            throw new IllegalArgumentException("Corners must be in the same dimension");
+        }
+        int firstX = net.minecraft.util.Mth.floor(first.x());
+        int secondX = net.minecraft.util.Mth.floor(second.x());
+        int firstZ = net.minecraft.util.Mth.floor(first.z());
+        int secondZ = net.minecraft.util.Mth.floor(second.z());
+        int minBlockX = Math.min(firstX, secondX);
+        int maxBlockX = Math.max(firstX, secondX);
+        int minBlockZ = Math.min(firstZ, secondZ);
+        int maxBlockZ = Math.max(firstZ, secondZ);
+        return new BoxCaptureRegion(first.dimension(), minBlockX, Math.nextDown(maxBlockX + 1.0D),
+                minBlockZ, Math.nextDown(maxBlockZ + 1.0D), minY, maxY);
     }
 
     private static int pointAddBox(CommandContext<CommandSourceStack> context)
@@ -1066,8 +1101,7 @@ public final class SFGameCommands {
         if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
         try {
-            addPoint(context, new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
-                    Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null));
+            addPoint(context, selectedBlockBox(first, second, null, null));
             return 1;
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
@@ -1098,10 +1132,8 @@ public final class SFGameCommands {
         ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
         if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
-        return replacePointRegion(context, existing -> new BoxCaptureRegion(first.dimension(),
-                Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
-                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()),
-                existing.region().minY(), existing.region().maxY()));
+        return replacePointRegion(context, existing -> selectedBlockBox(
+                first, second, existing.region().minY(), existing.region().maxY()));
     }
 
     private static int pointSetCenter(CommandContext<CommandSourceStack> context)
@@ -1503,8 +1535,7 @@ public final class SFGameCommands {
         ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
         if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
-        CaptureRegion region = new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()), Math.max(first.x(), second.x()),
-                Math.min(first.z(), second.z()), Math.max(first.z(), second.z()), null, null);
+        CaptureRegion region = selectedBlockBox(first, second, null, null);
         return sectorPointAdd(context, region);
     }
 
@@ -1532,9 +1563,8 @@ public final class SFGameCommands {
         ArenaPosition first = POINT_POS_1.get(player.getUUID()), second = POINT_POS_2.get(player.getUUID());
         if (first == null || second == null) return failure(context, "Set /sfgame pos1 and /sfgame pos2 first");
         if (!first.dimension().equals(second.dimension())) return failure(context, "Corners must be in the same dimension");
-        return replaceSectorPoint(context, existing -> new BoxCaptureRegion(first.dimension(), Math.min(first.x(), second.x()),
-                Math.max(first.x(), second.x()), Math.min(first.z(), second.z()), Math.max(first.z(), second.z()),
-                existing.region().minY(), existing.region().maxY()));
+        return replaceSectorPoint(context, existing -> selectedBlockBox(
+                first, second, existing.region().minY(), existing.region().maxY()));
     }
 
     private static int sectorPointSetRadius(CommandContext<CommandSourceStack> context) {

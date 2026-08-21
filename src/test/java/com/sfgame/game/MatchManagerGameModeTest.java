@@ -13,17 +13,13 @@ final class MatchManagerGameModeTest {
     @Test
     void runningAllowlistEditingUsesSurvivalSoForgeReceivesBreakEvents() {
         assertEquals(GameType.SURVIVAL,
-                MatchManager.participantGameType(MatchPhase.RUNNING, true, true));
+                MatchManager.participantGameTypeAtMatchStart(true));
     }
 
     @Test
-    void disabledOrSafePhaseEditingUsesAdventure() {
+    void disabledMapEditingStartsParticipantsInAdventure() {
         assertEquals(GameType.ADVENTURE,
-                MatchManager.participantGameType(MatchPhase.RUNNING, false, true));
-        assertEquals(GameType.ADVENTURE,
-                MatchManager.participantGameType(MatchPhase.RESULT, true, true));
-        assertEquals(GameType.ADVENTURE,
-                MatchManager.participantGameType(MatchPhase.RUNNING, true, false));
+                MatchManager.participantGameTypeAtMatchStart(false));
     }
 
     @Test

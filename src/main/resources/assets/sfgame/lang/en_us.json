@@ -57,7 +57,7 @@
   "sfgame.map_edit.denied.disabled": "Block editing is disabled for this map",
   "sfgame.map_edit.denied.mode_locked": "Block editing is temporarily locked by this mode phase",
   "sfgame.map_edit.denied.no_region": "This map has no build box",
-  "sfgame.map_edit.denied.outside": "This block is outside the current map build box",
+  "sfgame.map_edit.denied.outside": "Block %s %s %s is outside build box (X %s..%s, Z %s..%s)",
   "sfgame.map_edit.denied.not_allowed": "Block %s is not in the current map allowlist",
   "sfgame.admin.rule.captureTimeSeconds": "Capture stage duration (seconds)",
   "sfgame.admin.rule.captureUsePlayerDifference": "Scale capture speed by player difference",

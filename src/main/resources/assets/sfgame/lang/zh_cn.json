@@ -57,7 +57,7 @@
   "sfgame.map_edit.denied.disabled": "当前地图未开启方块破坏",
   "sfgame.map_edit.denied.mode_locked": "当前模式阶段暂时禁止破坏方块",
   "sfgame.map_edit.denied.no_region": "当前地图尚未设置 build box",
-  "sfgame.map_edit.denied.outside": "该方块位于当前地图 build box 之外",
+  "sfgame.map_edit.denied.outside": "方块 %s %s %s 位于 build box 外（X %s..%s，Z %s..%s）",
   "sfgame.map_edit.denied.not_allowed": "方块 %s 不在当前地图白名单中",
   "sfgame.admin.rule.captureTimeSeconds": "占领阶段时长（秒）",
   "sfgame.admin.rule.captureUsePlayerDifference": "按人数差计算占领速度",
