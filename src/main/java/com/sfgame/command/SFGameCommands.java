@@ -363,16 +363,18 @@ public final class SFGameCommands {
                 .then(Commands.literal("setbox")
                         .executes(context -> ctfBuildSetBox(context, false))
                         .then(Commands.literal("full").executes(context -> ctfBuildSetBox(context, true))))
-                .then(Commands.literal("clear").executes(SFGameCommands::ctfBuildClear))
+                .then(Commands.literal("clear")
+                        .then(Commands.literal("snapshot").executes(SFGameCommands::ctfSnapshotClear))
+                        .then(Commands.literal("setbox").executes(SFGameCommands::ctfBuildClear))
+                        .then(Commands.literal("all").executes(SFGameCommands::ctfBuildClearAll)))
+                .then(Commands.literal("status").executes(SFGameCommands::ctfBuildStatus))
                 .then(Commands.literal("allow").then(Commands.argument("block", ResourceLocationArgument.id())
                         .suggests(BLOCK_SUGGESTIONS).executes(SFGameCommands::ctfBuildAllow)))
                 .then(Commands.literal("disallow").then(Commands.argument("block", ResourceLocationArgument.id())
                         .suggests(BLOCK_SUGGESTIONS).executes(SFGameCommands::ctfBuildDisallow)))
                 .then(Commands.literal("allowlist").executes(SFGameCommands::ctfBuildAllowList))
                 .then(Commands.literal("snapshot").then(Commands.literal("save").executes(SFGameCommands::ctfSnapshotSave))
-                        .then(Commands.literal("restore").executes(SFGameCommands::ctfSnapshotRestore))
-                        .then(Commands.literal("status").executes(SFGameCommands::ctfSnapshotStatus))
-                        .then(Commands.literal("clear").executes(SFGameCommands::ctfSnapshotClear)));
+                        .then(Commands.literal("restore").executes(SFGameCommands::ctfSnapshotRestore)));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> shopCommands() {
@@ -607,6 +609,21 @@ public final class SFGameCommands {
         return success(context, "Cleared map build box");
     }
 
+    private static int ctfBuildClearAll(CommandContext<CommandSourceStack> context) {
+        if (!checkMapBuildEdit(context)) return 0;
+        try {
+            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            com.sfgame.game.MapBuildSnapshotService.clear(context.getSource().getServer(),
+                    data.selectedMode(), data.activeMap());
+            data.activeMap().build().clearRegion();
+            data.setDirty();
+            return success(context, "Cleared map build box and snapshot");
+        } catch (Exception exception) {
+            return failure(context, exception.getMessage() == null
+                    ? "Could not clear map build box and snapshot" : exception.getMessage());
+        }
+    }
+
     private static int ctfBuildAllow(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuildEdit(context)) return 0;
         try {
@@ -652,13 +669,30 @@ public final class SFGameCommands {
         } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not restore map snapshot" : exception.getMessage()); }
     }
 
-    private static int ctfSnapshotStatus(CommandContext<CommandSourceStack> context) {
-        if (!checkMapBuild(context)) return 0; SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+    private static int ctfBuildStatus(CommandContext<CommandSourceStack> context) {
+        if (!checkMapBuild(context)) return 0;
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        BoxCaptureRegion region = data.activeMap().build().region();
         var snapshot = com.sfgame.game.MapBuildSnapshotService.status(
                 context.getSource().getServer(), data.selectedMode(), data.activeMap(),
                 MatchManager.get().rules().mapSnapshotMode());
-        send(context, "buildBox=" + (data.activeMap().build().region() != null)
-                + ", snapshot=" + snapshot.exists() + " (" + snapshot.detail() + ")"); return 1;
+        send(context, "setbox=" + (region != null));
+        if (region != null) {
+            send(context, "setbox pos1=" + buildCornerText(region, true));
+            send(context, "setbox pos2=" + buildCornerText(region, false));
+        }
+        send(context, "snapshot=" + snapshot.exists()
+                + ", partitions=" + snapshot.partitions()
+                + ", detail=" + snapshot.detail());
+        return 1;
+    }
+
+    static String buildCornerText(BoxCaptureRegion region, boolean first) {
+        int x = net.minecraft.util.Mth.floor(first ? region.minX() : region.maxX());
+        int z = net.minecraft.util.Mth.floor(first ? region.minZ() : region.maxZ());
+        Integer configuredY = first ? region.minY() : region.maxY();
+        String y = configuredY == null ? "full-height" : Integer.toString(configuredY);
+        return region.dimension() + " " + x + " " + y + " " + z;
     }
 
     private static int ctfSnapshotClear(CommandContext<CommandSourceStack> context) {

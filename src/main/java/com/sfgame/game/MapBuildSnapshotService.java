@@ -178,23 +178,24 @@ public final class MapBuildSnapshotService {
     public static SnapshotStatus status(MinecraftServer server, String modeId, ArenaMap map,
                                         MapSnapshotMode snapshotMode) {
         Path manifest = snapshotPath(server, modeId, map).resolve(MANIFEST);
-        if (map.build().region() == null) return new SnapshotStatus(false, "map build box is not set");
-        if (!Files.isRegularFile(manifest)) return new SnapshotStatus(false, "manifest is missing");
+        if (map.build().region() == null) return new SnapshotStatus(false, 0, "map build box is not set");
+        if (!Files.isRegularFile(manifest)) return new SnapshotStatus(false, 0, "manifest is missing");
         try {
             CompoundTag tag = NbtIo.readCompressed(manifest.toFile());
             if (!compatible(server, map, tag, snapshotMode)) {
-                return new SnapshotStatus(false, "manifest does not match the current build box");
+                return new SnapshotStatus(false, 0, "manifest does not match the current build box");
             }
             ServerLevel level = level(server, tag.getString("Dimension"));
-            if (level == null) return new SnapshotStatus(false, "snapshot dimension is unavailable");
+            if (level == null) return new SnapshotStatus(false, 0, "snapshot dimension is unavailable");
             Bounds bounds = bounds(level, map.build().region());
             int partitions = validateManifest(manifest.getParent(), bounds, tag,
                     tag.getList("Columns", Tag.TAG_COMPOUND));
-            return new SnapshotStatus(true, partitions + " partition(s) ready, mode="
+            return new SnapshotStatus(true, partitions, partitions + " partition(s) ready, mode="
                     + snapshotMode.id());
         } catch (IOException | RuntimeException exception) {
             String message = exception.getMessage();
-            return new SnapshotStatus(false, message == null ? exception.getClass().getSimpleName() : message);
+            return new SnapshotStatus(false, 0,
+                    message == null ? exception.getClass().getSimpleName() : message);
         }
     }
 
@@ -586,7 +587,7 @@ public final class MapBuildSnapshotService {
         int maxZ() { return origin.getZ() + size.getZ() - 1; }
     }
 
-    public record SnapshotStatus(boolean exists, String detail) { }
+    public record SnapshotStatus(boolean exists, int partitions, String detail) { }
 
     private MapBuildSnapshotService() {
     }

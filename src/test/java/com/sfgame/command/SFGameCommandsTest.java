@@ -19,4 +19,18 @@ final class SFGameCommandsTest {
         assertEquals(-72.0, region.minZ());
         assertEquals(-71, Math.floor(region.maxZ()));
     }
+
+    @Test
+    void buildStatusFormatsBothSetboxCorners() {
+        BoxCaptureRegion bounded = new BoxCaptureRegion("minecraft:overworld",
+                -25, Math.nextDown(-18.0), -72, Math.nextDown(-70.0), 60, 75);
+        assertEquals("minecraft:overworld -25 60 -72", SFGameCommands.buildCornerText(bounded, true));
+        assertEquals("minecraft:overworld -19 75 -71", SFGameCommands.buildCornerText(bounded, false));
+
+        BoxCaptureRegion fullHeight = (BoxCaptureRegion) bounded.withHeight(null, null);
+        assertEquals("minecraft:overworld -25 full-height -72",
+                SFGameCommands.buildCornerText(fullHeight, true));
+        assertEquals("minecraft:overworld -19 full-height -71",
+                SFGameCommands.buildCornerText(fullHeight, false));
+    }
 }
