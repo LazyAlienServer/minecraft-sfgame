@@ -13,6 +13,7 @@ import com.sfgame.data.ArenaMap;
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.SFGameSavedData;
 import com.sfgame.data.BoxCaptureRegion;
+import com.sfgame.data.BlockAllowlist;
 import com.sfgame.data.CapturePointDefinition;
 import com.sfgame.data.CaptureRegion;
 import com.sfgame.data.SquareCaptureRegion;
@@ -30,10 +31,12 @@ import com.sfgame.game.TeamSide;
 import com.sfgame.network.SFGameNetwork;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.ResourceOrTagArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -63,8 +66,6 @@ public final class SFGameCommands {
             SharedSuggestionProvider.suggest(BuiltInRegistries.ENTITY_TYPE.keySet().stream().map(Object::toString), builder);
     private static final SuggestionProvider<CommandSourceStack> ITEM_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(BuiltInRegistries.ITEM.keySet().stream().map(Object::toString), builder);
-    private static final SuggestionProvider<CommandSourceStack> BLOCK_SUGGESTIONS = (context, builder) ->
-            SharedSuggestionProvider.suggest(BuiltInRegistries.BLOCK.keySet().stream().map(Object::toString), builder);
     private static final SuggestionProvider<CommandSourceStack> VEHICLE_ROLE_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(List.of("attacker", "defender"), builder);
     private static final SuggestionProvider<CommandSourceStack> CLASS_SUGGESTIONS = (context, builder) ->
@@ -107,7 +108,7 @@ public final class SFGameCommands {
                     ? java.util.stream.Stream.empty() : SFGameSavedData.get(context.getSource().getServer()).activeMap()
                     .domination().points().stream().map(CapturePointDefinition::id), builder);
 
-    public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
+    public static void register(CommandDispatcher<CommandSourceStack> dispatcher, CommandBuildContext buildContext) {
         dispatcher.register(Commands.literal("sfgame")
                 .then(Commands.literal("menu").executes(SFGameCommands::menu))
                 .then(Commands.literal("leave").executes(SFGameCommands::leave))
@@ -221,7 +222,7 @@ public final class SFGameCommands {
                                 .executes(c -> setTeam(c, TeamSide.NONE))))
                         .then(Commands.literal("remove").then(Commands.argument("players", EntityArgument.players())
                                 .executes(SFGameCommands::removeTeam))))
-                .then(ruleCommands("rule"))
+                .then(ruleCommands("rule", buildContext))
                 .then(Commands.literal("class").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("reload").executes(SFGameCommands::classReload))
                         .then(Commands.literal("validate").executes(SFGameCommands::classValidate))
@@ -358,7 +359,7 @@ public final class SFGameCommands {
         return root;
     }
 
-    private static LiteralArgumentBuilder<CommandSourceStack> mapBuildCommands() {
+    private static LiteralArgumentBuilder<CommandSourceStack> mapBuildCommands(CommandBuildContext buildContext) {
         return Commands.literal("build")
                 .then(Commands.literal("setbox")
                         .executes(context -> ctfBuildSetBox(context, false))
@@ -368,10 +369,12 @@ public final class SFGameCommands {
                         .then(Commands.literal("setbox").executes(SFGameCommands::ctfBuildClear))
                         .then(Commands.literal("all").executes(SFGameCommands::ctfBuildClearAll)))
                 .then(Commands.literal("status").executes(SFGameCommands::ctfBuildStatus))
-                .then(Commands.literal("allow").then(Commands.argument("block", ResourceLocationArgument.id())
-                        .suggests(BLOCK_SUGGESTIONS).executes(SFGameCommands::ctfBuildAllow)))
-                .then(Commands.literal("disallow").then(Commands.argument("block", ResourceLocationArgument.id())
-                        .suggests(BLOCK_SUGGESTIONS).executes(SFGameCommands::ctfBuildDisallow)))
+                .then(Commands.literal("allow").then(Commands.argument("block",
+                        ResourceOrTagArgument.resourceOrTag(buildContext, net.minecraft.core.registries.Registries.BLOCK))
+                        .executes(SFGameCommands::ctfBuildAllow)))
+                .then(Commands.literal("disallow").then(Commands.argument("block",
+                        ResourceOrTagArgument.resourceOrTag(buildContext, net.minecraft.core.registries.Registries.BLOCK))
+                        .executes(SFGameCommands::ctfBuildDisallow)))
                 .then(Commands.literal("allowlist").executes(SFGameCommands::ctfBuildAllowList))
                 .then(Commands.literal("snapshot").then(Commands.literal("save").executes(SFGameCommands::ctfSnapshotSave))
                         .then(Commands.literal("restore").executes(SFGameCommands::ctfSnapshotRestore)));
@@ -386,11 +389,12 @@ public final class SFGameCommands {
                         .executes(SFGameCommands::shopReload));
     }
 
-    private static LiteralArgumentBuilder<CommandSourceStack> ruleCommands(String literal) {
+    private static LiteralArgumentBuilder<CommandSourceStack> ruleCommands(String literal,
+                                                                            CommandBuildContext buildContext) {
         return Commands.literal(literal).requires(s -> s.hasPermission(2))
                 .then(breakthroughCommands())
                 .then(ctfCommands())
-                .then(mapBuildCommands())
+                .then(mapBuildCommands(buildContext))
                 .then(Commands.literal("list").executes(SFGameCommands::rulesList))
                 .then(Commands.literal("reset").executes(SFGameCommands::rulesReset))
                 .then(Commands.literal("inherit").then(Commands.argument("parent", StringArgumentType.word())
@@ -624,38 +628,53 @@ public final class SFGameCommands {
         }
     }
 
-    private static int ctfBuildAllow(CommandContext<CommandSourceStack> context) {
+    private static int ctfBuildAllow(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         if (!checkMapBuildEdit(context)) return 0;
         try {
-            net.minecraft.resources.ResourceLocation resource = ResourceLocationArgument.getId(context, "block");
-            String id = resource.toString();
-            if (!BuiltInRegistries.BLOCK.containsKey(resource)) return failure(context, "Unknown block: " + id);
-            SFGameSavedData.get(context.getSource().getServer()).activeMap().build().allow(id); dirty(context);
-            return success(context, "Allowed block " + id);
+            String selector = BlockAllowlist.normalize(ResourceOrTagArgument.getResourceOrTag(
+                    context, "block", net.minecraft.core.registries.Registries.BLOCK).asPrintable());
+            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            java.util.Set<String> allowlist = new java.util.LinkedHashSet<>(MatchManager.get().rules().mapBlockAllowlist());
+            if (!allowlist.add(selector)) return failure(context, "Selector is already in the allowlist: " + selector);
+            MatchManager.get().ruleConfigs().setStringSet(data.selectedMode(), data.selectedMap(),
+                    "mapBlockAllowlist", allowlist);
+            data.activeMap().build().snapshotSaved(false);
+            data.setDirty();
+            return success(context, "Allowed block selector " + selector);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
 
-    private static int ctfBuildDisallow(CommandContext<CommandSourceStack> context) {
+    private static int ctfBuildDisallow(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         if (!checkMapBuildEdit(context)) return 0;
         try {
-            String id = ResourceLocationArgument.getId(context, "block").toString();
-            var build = SFGameSavedData.get(context.getSource().getServer()).activeMap().build();
-            if (!build.disallow(id)) return failure(context, "Block was not in the allowlist: " + id);
-            dirty(context); return success(context, "Disallowed block " + id);
+            String selector = BlockAllowlist.normalize(ResourceOrTagArgument.getResourceOrTag(
+                    context, "block", net.minecraft.core.registries.Registries.BLOCK).asPrintable());
+            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+            java.util.Set<String> allowlist = new java.util.LinkedHashSet<>(MatchManager.get().rules().mapBlockAllowlist());
+            if (!allowlist.remove(selector)) return failure(context, "Selector was not in the allowlist: " + selector);
+            MatchManager.get().ruleConfigs().setStringSet(data.selectedMode(), data.selectedMap(),
+                    "mapBlockAllowlist", allowlist);
+            data.activeMap().build().snapshotSaved(false);
+            data.setDirty();
+            return success(context, "Disallowed block selector " + selector);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
 
     private static int ctfBuildAllowList(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuild(context)) return 0;
-        var build = SFGameSavedData.get(context.getSource().getServer()).activeMap().build();
-        build.allowedBlocks().forEach(id -> send(context, id)); return build.allowedBlocks().size();
+        var allowlist = MatchManager.get().rules().mapBlockAllowlist();
+        allowlist.forEach(id -> send(context, id));
+        return allowlist.size();
     }
 
     private static int ctfSnapshotSave(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuildEdit(context)) return 0;
         try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
             int parts = com.sfgame.game.MapBuildSnapshotService.save(context.getSource().getServer(),
-                    data.selectedMode(), data.activeMap(), MatchManager.get().rules().mapSnapshotMode()); data.setDirty();
+                    data.selectedMode(), data.activeMap(), MatchManager.get().rules().mapSnapshotMode(),
+                    MatchManager.get().rules().mapBlockAllowlist()); data.setDirty();
             return success(context, "Saved map snapshot in " + parts + " partition(s)");
         } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not save map snapshot" : exception.getMessage()); }
     }
@@ -664,7 +683,8 @@ public final class SFGameCommands {
         if (!checkMapBuildEdit(context)) return 0;
         try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
             int parts = com.sfgame.game.MapBuildSnapshotService.restore(context.getSource().getServer(),
-                    data.selectedMode(), data.activeMap(), MatchManager.get().rules().mapSnapshotMode());
+                    data.selectedMode(), data.activeMap(), MatchManager.get().rules().mapSnapshotMode(),
+                    MatchManager.get().rules().mapBlockAllowlist());
             return success(context, "Restored map snapshot from " + parts + " partition(s)");
         } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not restore map snapshot" : exception.getMessage()); }
     }
@@ -675,7 +695,7 @@ public final class SFGameCommands {
         BoxCaptureRegion region = data.activeMap().build().region();
         var snapshot = com.sfgame.game.MapBuildSnapshotService.status(
                 context.getSource().getServer(), data.selectedMode(), data.activeMap(),
-                MatchManager.get().rules().mapSnapshotMode());
+                MatchManager.get().rules().mapSnapshotMode(), MatchManager.get().rules().mapBlockAllowlist());
         send(context, "setbox=" + (region != null));
         if (region != null) {
             send(context, "setbox pos1=" + buildCornerText(region, true));

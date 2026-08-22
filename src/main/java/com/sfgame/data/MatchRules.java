@@ -3,6 +3,10 @@ package com.sfgame.data;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.TeamSide;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
+
+import java.util.Set;
 
 public final class MatchRules {
     public static final int DEFAULT_MAX_PLAYERS = 10;
@@ -40,6 +44,8 @@ public final class MatchRules {
     private int captainReplacementVoteSeconds;
     private boolean attackerCaptainGlowing;
     private boolean mapBlockBreaking;
+    private Set<String> mapBlockAllowlist;
+    private BlockAllowlist.Matcher mapBlockMatcher;
     private MapSnapshotMode mapSnapshotMode;
     private int mapRestorePartitionDelayTicks;
     private boolean mapRestoreAdaptiveThrottling;
@@ -82,6 +88,10 @@ public final class MatchRules {
     public int captainReplacementVoteSeconds() { return captainReplacementVoteSeconds; }
     public boolean attackerCaptainGlowing() { return attackerCaptainGlowing; }
     public boolean mapBlockBreaking() { return mapBlockBreaking; }
+    public Set<String> mapBlockAllowlist() { return mapBlockAllowlist; }
+    public boolean allowsMapBlock(net.minecraft.world.level.block.state.BlockState state) {
+        return mapBlockMatcher.matches(state);
+    }
     public MapSnapshotMode mapSnapshotMode() { return mapSnapshotMode; }
     public int mapRestorePartitionDelayTicks() { return mapRestorePartitionDelayTicks; }
     public boolean mapRestoreAdaptiveThrottling() { return mapRestoreAdaptiveThrottling; }
@@ -121,6 +131,10 @@ public final class MatchRules {
     public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
     public void attackerCaptainGlowing(boolean value) { attackerCaptainGlowing = value; }
     public void mapBlockBreaking(boolean value) { mapBlockBreaking = value; }
+    public void mapBlockAllowlist(java.util.Collection<String> value) {
+        mapBlockAllowlist = BlockAllowlist.normalizeAll(value);
+        mapBlockMatcher = BlockAllowlist.compile(mapBlockAllowlist);
+    }
     public void mapSnapshotMode(MapSnapshotMode value) {
         mapSnapshotMode = value == null ? MapSnapshotMode.ALLOWLIST : value;
     }
@@ -171,6 +185,7 @@ public final class MatchRules {
         captainReplacementVoteSeconds = 10;
         attackerCaptainGlowing = true;
         mapBlockBreaking = true;
+        mapBlockAllowlist(Set.of());
         mapSnapshotMode = MapSnapshotMode.ALLOWLIST;
         mapRestorePartitionDelayTicks = DEFAULT_MAP_RESTORE_DELAY_TICKS;
         mapRestoreAdaptiveThrottling = true;
@@ -205,6 +220,9 @@ public final class MatchRules {
         tag.putInt("CaptainVoteSeconds", captainVoteSeconds); tag.putInt("CaptainReplacementVoteSeconds", captainReplacementVoteSeconds);
         tag.putBoolean("AttackerCaptainGlowing", attackerCaptainGlowing);
         tag.putBoolean("MapBlockBreaking", mapBlockBreaking);
+        ListTag allowlist = new ListTag();
+        mapBlockAllowlist.forEach(value -> allowlist.add(net.minecraft.nbt.StringTag.valueOf(value)));
+        tag.put("MapBlockAllowlist", allowlist);
         tag.putString("MapSnapshotMode", mapSnapshotMode.id());
         tag.putInt("MapRestorePartitionDelayTicks", mapRestorePartitionDelayTicks);
         tag.putBoolean("MapRestoreAdaptiveThrottling", mapRestoreAdaptiveThrottling);
@@ -247,6 +265,12 @@ public final class MatchRules {
         if (tag.contains("CaptainReplacementVoteSeconds")) captainReplacementVoteSeconds(tag.getInt("CaptainReplacementVoteSeconds"));
         if (tag.contains("AttackerCaptainGlowing")) attackerCaptainGlowing(tag.getBoolean("AttackerCaptainGlowing"));
         if (tag.contains("MapBlockBreaking")) mapBlockBreaking(tag.getBoolean("MapBlockBreaking"));
+        if (tag.contains("MapBlockAllowlist", Tag.TAG_LIST)) {
+            ListTag allowlist = tag.getList("MapBlockAllowlist", Tag.TAG_STRING);
+            java.util.List<String> values = new java.util.ArrayList<>();
+            for (int i = 0; i < allowlist.size(); i++) values.add(allowlist.getString(i));
+            mapBlockAllowlist(values);
+        }
         if (tag.contains("MapSnapshotMode")) mapSnapshotMode(MapSnapshotMode.byId(tag.getString("MapSnapshotMode")));
         if (tag.contains("MapRestorePartitionDelayTicks")) mapRestorePartitionDelayTicks(tag.getInt("MapRestorePartitionDelayTicks"));
         if (tag.contains("MapRestoreAdaptiveThrottling")) mapRestoreAdaptiveThrottling(tag.getBoolean("MapRestoreAdaptiveThrottling"));

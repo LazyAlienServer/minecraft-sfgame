@@ -73,10 +73,23 @@ final class MatchRulesTest {
         assertEquals(MatchRules.DEFAULT_RESPAWN_PROTECTION_SECONDS, rules.respawnProtectionSeconds());
         assertEquals(MatchRules.DEFAULT_RESULT_SECONDS, rules.resultSeconds());
         assertTrue(rules.mapBlockBreaking());
+        assertTrue(rules.mapBlockAllowlist().isEmpty());
         assertEquals(0, rules.mapRestorePartitionDelayTicks());
         assertTrue(rules.mapRestoreAdaptiveThrottling());
         assertEquals(40, rules.mapRestoreTargetTickMillis());
         assertEquals(8, rules.mapRestoreMaxPartitionsPerTick());
+    }
+
+    @Test
+    void blockAllowlistPersistsBlockAndTagSelectors() {
+        MatchRules rules = new MatchRules();
+        rules.mapBlockAllowlist(java.util.List.of("minecraft:white_wool", "#minecraft:logs"));
+
+        MatchRules restored = new MatchRules();
+        restored.load(rules.save());
+
+        assertEquals(java.util.Set.of("minecraft:white_wool", "#minecraft:logs"),
+                restored.mapBlockAllowlist());
     }
 
     @Test

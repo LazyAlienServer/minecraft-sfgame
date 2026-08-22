@@ -10,6 +10,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -113,6 +114,30 @@ final class RuleConfigRegistryTest {
                 data.rules(GameModeRegistry.TEAM_DEATHMATCH)).mapSnapshotMode());
         assertThrows(IllegalArgumentException.class, () -> registry.setString(
                 GameModeRegistry.TEAM_DEATHMATCH, "child", "mapSnapshotMode", "unknown"));
+    }
+
+    @Test
+    void blockAllowlistIsJsonBackedAndSupportsTagsAndInheritance() throws Exception {
+        SFGameSavedData data = new SFGameSavedData();
+        RuleConfigRegistry registry = new RuleConfigRegistry(directory);
+        assertTrue(registry.reload(data).isEmpty());
+
+        registry.setStringSet(GameModeRegistry.TEAM_DEATHMATCH, "parent", "mapBlockAllowlist",
+                Set.of("minecraft:white_wool", "#minecraft:logs"));
+        registry.setParent(GameModeRegistry.TEAM_DEATHMATCH, "child", "parent");
+
+        assertEquals(Set.of("minecraft:white_wool", "#minecraft:logs"),
+                registry.rules(GameModeRegistry.TEAM_DEATHMATCH, "child",
+                        data.rules(GameModeRegistry.TEAM_DEATHMATCH)).mapBlockAllowlist());
+        String json = Files.readString(directory.resolve(GameModeRegistry.TEAM_DEATHMATCH + ".json"));
+        assertTrue(json.contains("\"mapBlockAllowlist\""));
+        assertTrue(json.contains("\"#minecraft:logs\""));
+
+        RuleConfigRegistry restored = new RuleConfigRegistry(directory);
+        assertTrue(restored.reload(data).isEmpty());
+        assertEquals(Set.of("minecraft:white_wool", "#minecraft:logs"),
+                restored.rules(GameModeRegistry.TEAM_DEATHMATCH, "child",
+                        data.rules(GameModeRegistry.TEAM_DEATHMATCH)).mapBlockAllowlist());
     }
 
     @Test

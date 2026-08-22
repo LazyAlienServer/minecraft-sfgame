@@ -1,6 +1,7 @@
 package com.sfgame.game;
 
 import com.sfgame.data.ArenaMap;
+import com.sfgame.data.BlockAllowlist;
 import com.sfgame.data.BoxCaptureRegion;
 import com.sfgame.data.SFGameId;
 import com.sfgame.data.MapSnapshotMode;
@@ -46,14 +47,15 @@ public final class MapBuildSnapshotService {
     private static final String MANIFEST = "manifest.nbt";
 
     public static int save(MinecraftServer server, String modeId, ArenaMap map,
-                           MapSnapshotMode snapshotMode) throws IOException {
+                           MapSnapshotMode snapshotMode, Set<String> configuredAllowlist) throws IOException {
         BoxCaptureRegion region = map.build().region();
         if (region == null) throw new IOException("Map build box is not set");
         ServerLevel level = level(server, region.dimension());
         if (level == null) throw new IOException("Build box dimension is unavailable");
         Bounds bounds = bounds(level, region);
         snapshotMode = snapshotMode == null ? MapSnapshotMode.ALLOWLIST : snapshotMode;
-        Set<String> allowlist = Set.copyOf(map.build().allowedBlocks());
+        Set<String> allowlist = BlockAllowlist.normalizeAll(configuredAllowlist);
+        BlockAllowlist.Matcher allowlistMatcher = BlockAllowlist.compile(allowlist);
         Path target = snapshotPath(server, modeId, map);
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         Files.createDirectories(target.getParent());
@@ -91,7 +93,7 @@ public final class MapBuildSnapshotService {
                     putPartition(part, origin, size);
                     CompoundTag templateTag = template.save(new CompoundTag());
                     if (snapshotMode == MapSnapshotMode.ALLOWLIST) {
-                        templateTag = filterTemplateForAllowlist(templateTag, allowlist);
+                        templateTag = filterTemplateForAllowlist(templateTag, allowlistMatcher);
                         // Allowlist snapshots are sparse. An empty partition
                         // neither restores a baseline block nor needs to scan
                         // its 4096 cells, so do not put it in the restore queue.
@@ -128,7 +130,7 @@ public final class MapBuildSnapshotService {
         manifest.put("Columns", columns);
         NbtIo.writeCompressed(manifest, temporary.resolve(MANIFEST).toFile());
         replaceDirectory(temporary, target);
-        SnapshotStatus validation = status(server, modeId, map, snapshotMode);
+        SnapshotStatus validation = status(server, modeId, map, snapshotMode, allowlist);
         if (!validation.exists()) {
             map.build().snapshotSaved(false);
             throw new IOException("Saved snapshot failed validation: " + validation.detail());
@@ -139,20 +141,21 @@ public final class MapBuildSnapshotService {
 
     /** Synchronous restore retained for the explicit administrator command. */
     public static int restore(MinecraftServer server, String modeId, ArenaMap map,
-                              MapSnapshotMode snapshotMode) throws IOException {
-        RestoreSession session = beginRestore(server, modeId, map, snapshotMode);
+                              MapSnapshotMode snapshotMode, Set<String> allowlist) throws IOException {
+        RestoreSession session = beginRestore(server, modeId, map, snapshotMode, allowlist);
         while (!session.complete()) session.restoreNext();
         return session.totalPartitions();
     }
 
     /** Creates a tick-driven restore session used during match preparation. */
     public static RestoreSession beginRestore(MinecraftServer server, String modeId, ArenaMap map,
-                                              MapSnapshotMode expectedMode) throws IOException {
+                                              MapSnapshotMode expectedMode,
+                                              Set<String> configuredAllowlist) throws IOException {
         Path directory = snapshotPath(server, modeId, map).normalize();
         Path manifestPath = directory.resolve(MANIFEST);
         if (!Files.isRegularFile(manifestPath)) throw new IOException("Map snapshot does not exist");
         CompoundTag manifest = NbtIo.readCompressed(manifestPath.toFile());
-        if (!compatible(server, map, manifest, expectedMode)) {
+        if (!compatible(server, map, manifest, expectedMode, configuredAllowlist)) {
             throw new IOException("Map snapshot does not match the current build box; save it again");
         }
         ServerLevel level = level(server, manifest.getString("Dimension"));
@@ -166,8 +169,8 @@ public final class MapBuildSnapshotService {
     }
 
     public static boolean exists(MinecraftServer server, String modeId, ArenaMap map,
-                                 MapSnapshotMode snapshotMode) {
-        return status(server, modeId, map, snapshotMode).exists();
+                                 MapSnapshotMode snapshotMode, Set<String> allowlist) {
+        return status(server, modeId, map, snapshotMode, allowlist).exists();
     }
 
     /**
@@ -176,13 +179,13 @@ public final class MapBuildSnapshotService {
      * snapshot after an integrated-server save or an interrupted data flush.
      */
     public static SnapshotStatus status(MinecraftServer server, String modeId, ArenaMap map,
-                                        MapSnapshotMode snapshotMode) {
+                                        MapSnapshotMode snapshotMode, Set<String> configuredAllowlist) {
         Path manifest = snapshotPath(server, modeId, map).resolve(MANIFEST);
         if (map.build().region() == null) return new SnapshotStatus(false, 0, "map build box is not set");
         if (!Files.isRegularFile(manifest)) return new SnapshotStatus(false, 0, "manifest is missing");
         try {
             CompoundTag tag = NbtIo.readCompressed(manifest.toFile());
-            if (!compatible(server, map, tag, snapshotMode)) {
+            if (!compatible(server, map, tag, snapshotMode, configuredAllowlist)) {
                 return new SnapshotStatus(false, 0, "manifest does not match the current build box");
             }
             ServerLevel level = level(server, tag.getString("Dimension"));
@@ -329,7 +332,7 @@ public final class MapBuildSnapshotService {
 
     /** Clears only allowlisted blocks inside one restore partition. */
     private static void clearAllowlistedCells(ServerLevel level, BlockPos origin, Vec3i size,
-                                              Set<String> allowlist) {
+                                              BlockAllowlist.Matcher allowlist) {
         if (allowlist.isEmpty()) return;
         BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
         for (int y = 0; y < size.getY(); y++) {
@@ -337,9 +340,9 @@ public final class MapBuildSnapshotService {
                 for (int x = 0; x < size.getX(); x++) {
                     cursor.set(origin.getX() + x, origin.getY() + y, origin.getZ() + z);
                     var state = level.getBlockState(cursor);
-                    String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
-                            .getKey(state.getBlock()).toString();
-                    if (allowlist.contains(id)) level.setBlock(cursor, Blocks.AIR.defaultBlockState(), RESTORE_FLAGS);
+                    if (allowlist.matches(state)) {
+                        level.setBlock(cursor, Blocks.AIR.defaultBlockState(), RESTORE_FLAGS);
+                    }
                 }
             }
         }
@@ -351,6 +354,11 @@ public final class MapBuildSnapshotService {
      * kept entries, so allowlisted containers restore with their contents.
      */
     static CompoundTag filterTemplateForAllowlist(CompoundTag template, Set<String> allowlist) throws IOException {
+        return filterTemplateForAllowlist(template, BlockAllowlist.compile(allowlist));
+    }
+
+    private static CompoundTag filterTemplateForAllowlist(CompoundTag template,
+                                                           BlockAllowlist.Matcher allowlist) throws IOException {
         CompoundTag filtered = template.copy();
         ListTag blocks = template.getList("blocks", Tag.TAG_COMPOUND);
         ListTag kept = new ListTag();
@@ -367,7 +375,7 @@ public final class MapBuildSnapshotService {
                 throw new IOException("Snapshot block references an invalid palette state");
             }
             String blockId = palette.getCompound(stateIndex).getString("Name");
-            if (allowlist.contains(blockId)) kept.add(block.copy());
+            if (allowlist.matches(blockId)) kept.add(block.copy());
         }
         filtered.put("blocks", kept);
         return filtered;
@@ -407,7 +415,7 @@ public final class MapBuildSnapshotService {
     }
 
     private static boolean compatible(MinecraftServer server, ArenaMap map, CompoundTag manifest,
-                                      MapSnapshotMode expectedMode) {
+                                      MapSnapshotMode expectedMode, Set<String> configuredAllowlist) {
         BoxCaptureRegion region = map.build().region();
         if (manifest.getInt("Format") != FORMAT || manifest.getInt("PartitionSize") != PARTITION_SIZE
                 || region == null || !region.dimension().equals(manifest.getString("Dimension"))) return false;
@@ -415,7 +423,7 @@ public final class MapBuildSnapshotService {
         String snapshotMode = manifest.getString("SnapshotMode");
         if (!expectedMode.id().equals(snapshotMode)) return false;
         if (expectedMode == MapSnapshotMode.ALLOWLIST
-                && !map.build().allowedBlocks().equals(readAllowlist(manifest))) return false;
+                && !BlockAllowlist.normalizeAll(configuredAllowlist).equals(readAllowlist(manifest))) return false;
         ServerLevel level = level(server, region.dimension());
         if (level == null) return false;
         Bounds expected = bounds(level, region);
@@ -455,7 +463,7 @@ public final class MapBuildSnapshotService {
         ListTag values = tag.getList("Allowlist", Tag.TAG_STRING);
         Set<String> result = new HashSet<>();
         for (int i = 0; i < values.size(); i++) result.add(values.getString(i));
-        return Set.copyOf(result);
+        return BlockAllowlist.normalizeAll(result);
     }
 
     private static Path resolveColumn(Path directory, String file) throws IOException {
@@ -506,7 +514,7 @@ public final class MapBuildSnapshotService {
         private final ListTag columns;
         private final int totalPartitions;
         private final MapSnapshotMode snapshotMode;
-        private final Set<String> allowlist;
+        private final BlockAllowlist.Matcher allowlist;
         private final long startedNanos = System.nanoTime();
         private int nextColumn;
         private ListTag currentParts;
@@ -522,7 +530,7 @@ public final class MapBuildSnapshotService {
             this.columns = columns;
             this.totalPartitions = totalPartitions;
             this.snapshotMode = snapshotMode;
-            this.allowlist = allowlist;
+            this.allowlist = BlockAllowlist.compile(allowlist);
         }
 
         public void restoreNext() throws IOException {

@@ -45,7 +45,7 @@ public final class SFGameEvents {
 
     @SubscribeEvent
     public static void registerCommands(RegisterCommandsEvent event) {
-        SFGameCommands.register(event.getDispatcher());
+        SFGameCommands.register(event.getDispatcher(), event.getBuildContext());
     }
 
     @SubscribeEvent

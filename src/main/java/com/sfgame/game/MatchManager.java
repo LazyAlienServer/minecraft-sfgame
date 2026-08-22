@@ -165,8 +165,7 @@ public final class MatchManager {
         if (!rules().mapBlockBreaking() || !activeRuntime.allowsMapEditing()) return false;
         ArenaMap map = data().activeMap();
         if (map == null || !isInsideBuildRegion(level, pos)) return false;
-        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
-        return map.build().allowedBlocks().contains(id);
+        return rules().allowsMapBlock(state);
     }
 
     private boolean isInsideBuildRegion(net.minecraft.server.level.ServerLevel level, net.minecraft.core.BlockPos pos) {
@@ -309,7 +308,9 @@ public final class MatchManager {
         if (rules().mapBlockBreaking() && data.activeMap() != null) {
             if (data.activeMap().build().region() == null) errors.add("Map build box must be set while mapBlockBreaking is enabled");
             else if (!MapBuildSnapshotService.exists(server, data.selectedMode(), data.activeMap(),
-                    rules().mapSnapshotMode())) errors.add("Map snapshot must be saved while mapBlockBreaking is enabled");
+                    rules().mapSnapshotMode(), rules().mapBlockAllowlist())) {
+                errors.add("Map snapshot must be saved while mapBlockBreaking is enabled");
+            }
         }
 
         if (enabledTeams.size() < (devMode ? 1 : 2)) {
@@ -345,7 +346,7 @@ public final class MatchManager {
         if (rules().mapBlockBreaking()) {
             try {
                 pendingRestore = MapBuildSnapshotService.beginRestore(server, data().selectedMode(), data().activeMap(),
-                        rules().mapSnapshotMode());
+                        rules().mapSnapshotMode(), rules().mapBlockAllowlist());
             } catch (Exception exception) {
                 server.getPlayerList().broadcastSystemMessage(Component.literal(
                         "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
@@ -685,7 +686,7 @@ public final class MatchManager {
             case "mapBlockBreaking" -> {
                 if (value && (data().activeMap() == null || data().activeMap().build().region() == null
                         || !MapBuildSnapshotService.exists(server, data().selectedMode(), data().activeMap(),
-                        rules().mapSnapshotMode()))) {
+                        rules().mapSnapshotMode(), rules().mapBlockAllowlist()))) {
                     throw new IllegalArgumentException("Set the map build box and save its snapshot before enabling mapBlockBreaking");
                 }
             }
