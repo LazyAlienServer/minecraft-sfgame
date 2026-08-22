@@ -7,7 +7,7 @@ import net.minecraft.server.MinecraftServer;
 import java.util.List;
 
 public final class TeamDeathmatchRuntime implements MatchModeRuntime {
-    @Override public List<String> validate(MinecraftServer server, ArenaMap map) { return List.of(); }
+    @Override public List<String> validate(MinecraftServer server, ArenaMap map, MatchRules rules) { return List.of(); }
     @Override public void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) { }
 
     @Override

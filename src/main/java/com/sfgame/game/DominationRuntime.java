@@ -33,7 +33,7 @@ public final class DominationRuntime implements MatchModeRuntime {
     private final List<String> syncPointOrder = new ArrayList<>();
 
     @Override
-    public List<String> validate(MinecraftServer server, ArenaMap map) {
+    public List<String> validate(MinecraftServer server, ArenaMap map, MatchRules rules) {
         List<String> errors = new ArrayList<>(map.domination().validate());
         for (CapturePointDefinition point : map.domination().points()) {
             ResourceLocation id = ResourceLocation.tryParse(point.region().dimension());
@@ -55,18 +55,18 @@ public final class DominationRuntime implements MatchModeRuntime {
     public void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
         stop(); states.clear(); scoreTicks = 0; syncHoldTicks = 0; syncIndex = 0;
         map.domination().points().forEach(point -> states.put(point.id(), new CapturePointState()));
-        if (map.domination().strategy() == PointActivationStrategy.SYNC) {
+        if (rules.dominationStrategy() == PointActivationStrategy.SYNC) {
             syncPointOrder.addAll(map.domination().points().stream().map(CapturePointDefinition::id).toList());
             Collections.shuffle(syncPointOrder);
         }
         refreshBossBars(server, manager, map);
-        pointMarkers.refresh(server, activePoints(map), states);
+        pointMarkers.refresh(server, activePoints(map, rules), states);
         if (!syncPointOrder.isEmpty()) announceActivePoint(server, manager, syncPointOrder.get(0));
     }
 
     @Override
     public ModeTickResult tick(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
-        List<CapturePointDefinition> active = activePoints(map);
+        List<CapturePointDefinition> active = activePoints(map, rules);
         for (CapturePointDefinition point : active) tickPoint(server, manager, point, rules);
         if (++scoreTicks >= rules.scoreIntervalSeconds() * 20) {
             scoreTicks = 0;
@@ -76,7 +76,7 @@ public final class DominationRuntime implements MatchModeRuntime {
             }
         }
 
-        if (map.domination().strategy() == PointActivationStrategy.SYNC && !active.isEmpty()) {
+        if (rules.dominationStrategy() == PointActivationStrategy.SYNC && !active.isEmpty()) {
             CapturePointState state = states.get(active.get(0).id());
             if (state.owner() != TeamSide.NONE) syncHoldTicks++;
             if (syncHoldTicks >= rules.syncHoldSeconds() * 20) {
@@ -90,7 +90,7 @@ public final class DominationRuntime implements MatchModeRuntime {
             }
         }
         refreshBossBars(server, manager, map);
-        pointMarkers.refresh(server, activePoints(map), states);
+        pointMarkers.refresh(server, activePoints(map, rules), states);
         return map.enabledTeams().stream().anyMatch(side -> manager.score(side) >= rules.scoreLimit())
                 ? ModeTickResult.finish(manager.determineWinner()) : ModeTickResult.CONTINUE;
     }
@@ -138,15 +138,15 @@ public final class DominationRuntime implements MatchModeRuntime {
         return Math.min(rules.captureMaxMultiplier(), multiplier);
     }
 
-    private List<CapturePointDefinition> activePoints(ArenaMap map) {
+    private List<CapturePointDefinition> activePoints(ArenaMap map, MatchRules rules) {
         List<CapturePointDefinition> points = map.domination().points();
-        if (map.domination().strategy() == PointActivationStrategy.ASYNC) return points;
+        if (rules.dominationStrategy() == PointActivationStrategy.ASYNC) return points;
         if (syncPointOrder.isEmpty() || syncIndex >= syncPointOrder.size()) return List.of();
         return map.domination().point(syncPointOrder.get(syncIndex)).map(List::of).orElseGet(List::of);
     }
 
     private void refreshBossBars(MinecraftServer server, MatchManager manager, ArenaMap map) {
-        List<CapturePointDefinition> active = activePoints(map);
+        List<CapturePointDefinition> active = activePoints(map, manager.rules());
         List<String> activeIds = active.stream().map(CapturePointDefinition::id).toList();
         new ArrayList<>(bossBars.keySet()).stream().filter(id -> !activeIds.contains(id)).forEach(id -> {
             bossBars.remove(id).removeAllPlayers();

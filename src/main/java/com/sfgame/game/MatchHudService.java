@@ -54,7 +54,7 @@ public final class MatchHudService {
             scoreboard.getOrCreatePlayerScore(SECTOR_LINE, objective).setScore(runtime.sectorNumber());
         } else if (GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode())
                 && data.activeMap() != null
-                && data.activeMap().captureTheFlag().variant() == com.sfgame.data.CtfVariant.ASSAULT) {
+                && rules.ctfVariant() == com.sfgame.data.CtfVariant.ASSAULT) {
             scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(manager.captureTheFlag().attackerTickets());
             scoreboard.resetPlayerScore(LEG_LINE, objective);
             scoreboard.resetPlayerScore(SECTOR_LINE, objective);

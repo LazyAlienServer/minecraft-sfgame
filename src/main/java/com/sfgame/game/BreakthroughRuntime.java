@@ -3,7 +3,6 @@ package com.sfgame.game;
 import com.sfgame.SFGame;
 import com.sfgame.data.ArenaMap;
 import com.sfgame.data.ArenaPosition;
-import com.sfgame.data.BreakthroughMapConfig;
 import com.sfgame.data.BreakthroughSectorDefinition;
 import com.sfgame.data.BreakthroughVehicleDefinition;
 import com.sfgame.data.BreakthroughVariant;
@@ -77,8 +76,17 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private static final Map<Class<?>, Optional<Method>> VEHICLE_WRECK_METHODS = new ConcurrentHashMap<>();
 
     @Override
-    public List<String> validate(MinecraftServer server, ArenaMap map) {
+    public List<String> validate(MinecraftServer server, ArenaMap map, MatchRules rules) {
         List<String> errors = new ArrayList<>(map.breakthrough().validate());
+        if (rules.breakthroughAttacker() == rules.breakthroughDefender()) {
+            errors.add("Breakthrough attacker and defender must be different teams");
+        }
+        if (!map.enabledTeams().contains(rules.breakthroughAttacker())) {
+            errors.add("Breakthrough attacker needs a configured spawn: " + rules.breakthroughAttacker().id());
+        }
+        if (!map.enabledTeams().contains(rules.breakthroughDefender())) {
+            errors.add("Breakthrough defender needs a configured spawn: " + rules.breakthroughDefender().id());
+        }
         for (BreakthroughSectorDefinition sector : map.breakthrough().sectors()) {
             for (CapturePointDefinition point : sector.points()) {
                 ResourceLocation id = ResourceLocation.tryParse(point.region().dimension());
@@ -112,15 +120,15 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         return errors;
     }
 
-    @Override public boolean needsPreparation(ArenaMap map) {
-        return map.breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+    @Override public boolean needsPreparation(ArenaMap map, MatchRules rules) {
+        return rules.breakthroughVariant() == BreakthroughVariant.CAPTAIN;
     }
 
     @Override
     public void prepare(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
         runtimeServer = server;
         clearRuntimeEntities();
-        configureRoles(map.breakthrough(), 1);
+        configureRoles(rules, 1);
         captain = null;
         beginElection(rules.captainVoteSeconds());
         announce(server, manager, Component.translatable("sfgame.breakthrough.captain.vote", rules.captainVoteSeconds()));
@@ -141,7 +149,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     public void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
         runtimeServer = server;
         clearRuntimeEntities();
-        configureRoles(map.breakthrough(), 1);
+        configureRoles(rules, 1);
         leg = 1; sectorIndex = 0; sectorElapsedTicks = 0; totalAttackTicks = 0;
         transitionTicks = 0; tickets = rules.attackerTickets(); firstLeg = null;
         runtimeState = RuntimeState.ACTIVE;
@@ -286,7 +294,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
                            CapturePointDefinition point, MatchRules rules) {
         double attackWeight = 0.0;
         double defenseWeight = 0.0;
-        boolean captainMode = map.breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+        boolean captainMode = rules.breakthroughVariant() == BreakthroughVariant.CAPTAIN;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             PlayerMatchState state = manager.state(player);
             if (!state.participating() || state.respawning() || player.isSpectator() || !point.region().contains(player)) continue;
@@ -361,7 +369,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private ModeTickResult finishLeg(MinecraftServer server, MatchManager manager, ArenaMap map,
                                      MatchRules rules, boolean attackSucceeded) {
         LegResult current = snapshotLeg(map, attackSucceeded);
-        if (map.breakthrough().legs() == 1) return ModeTickResult.finish(attackSucceeded ? attacker : defender);
+        if (rules.breakthroughLegs() == 1) return ModeTickResult.finish(attackSucceeded ? attacker : defender);
         if (leg == 1) {
             firstLeg = current; leg = 2;
             TeamSide oldAttacker = attacker; attacker = defender; defender = oldAttacker;
@@ -369,9 +377,9 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             sectorIndex = 0; sectorElapsedTicks = 0; totalAttackTicks = 0; tickets = rules.attackerTickets();
             runtimeState = RuntimeState.LEG_TRANSITION;
             transitionTicks = Math.max(rules.sectorTransitionSeconds(),
-                    map.breakthrough().variant() == BreakthroughVariant.CAPTAIN ? rules.captainVoteSeconds() : 0) * 20;
+                    rules.breakthroughVariant() == BreakthroughVariant.CAPTAIN ? rules.captainVoteSeconds() : 0) * 20;
             clearDisplays();
-            if (map.breakthrough().variant() == BreakthroughVariant.CAPTAIN) {
+            if (rules.breakthroughVariant() == BreakthroughVariant.CAPTAIN) {
                 beginElection(rules.captainVoteSeconds());
                 announce(server, manager, Component.translatable("sfgame.breakthrough.captain.vote", rules.captainVoteSeconds()));
             }
@@ -401,7 +409,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     }
 
     private void maintainCaptain(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
-        if (map.breakthrough().variant() != BreakthroughVariant.CAPTAIN) return;
+        if (rules.breakthroughVariant() != BreakthroughVariant.CAPTAIN) return;
         if (captain != null) {
             ServerPlayer player = server.getPlayerList().getPlayer(captain);
             if (player == null || !manager.state(player).participating()
@@ -454,7 +462,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     }
 
     private void updateCaptainAppearance(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
-        if (map.breakthrough().variant() != BreakthroughVariant.CAPTAIN || captain == null) {
+        if (rules.breakthroughVariant() != BreakthroughVariant.CAPTAIN || captain == null) {
             clearCaptainAppearance();
             return;
         }
@@ -634,9 +642,9 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         List<BreakthroughSectorDefinition> sectors = map.breakthrough().sectors();
         return sectors.get(Math.max(0, Math.min(sectorIndex, sectors.size() - 1)));
     }
-    private void configureRoles(BreakthroughMapConfig config, int legNumber) {
-        if (legNumber == 2) { attacker = config.defender(); defender = config.attacker(); }
-        else { attacker = config.attacker(); defender = config.defender(); }
+    private void configureRoles(MatchRules rules, int legNumber) {
+        if (legNumber == 2) { attacker = rules.breakthroughDefender(); defender = rules.breakthroughAttacker(); }
+        else { attacker = rules.breakthroughAttacker(); defender = rules.breakthroughDefender(); }
     }
     private void announceObjective(MinecraftServer server, MatchManager manager, ArenaMap map) {
         announce(server, manager, Component.translatable("sfgame.breakthrough.objective", currentSector(map).id()));

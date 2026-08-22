@@ -3,7 +3,6 @@ package com.sfgame.command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
-import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
@@ -16,19 +15,17 @@ import com.sfgame.data.SFGameSavedData;
 import com.sfgame.data.BoxCaptureRegion;
 import com.sfgame.data.CapturePointDefinition;
 import com.sfgame.data.CaptureRegion;
-import com.sfgame.data.PointActivationStrategy;
 import com.sfgame.data.SquareCaptureRegion;
 import com.sfgame.data.BreakthroughVariant;
 import com.sfgame.data.BreakthroughSectorDefinition;
 import com.sfgame.data.BreakthroughVehicleDefinition;
-import com.sfgame.data.CtfVariant;
-import com.sfgame.data.CarrierRestriction;
 import com.sfgame.data.CtfForwardFlagDefinition;
 import com.sfgame.data.CtfHomeFlagDefinition;
 import com.sfgame.data.CaptureTheFlagMapConfig;
 import com.sfgame.game.GameModeDefinition;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.MatchManager;
+import com.sfgame.game.AdminRuleCatalog;
 import com.sfgame.game.TeamSide;
 import com.sfgame.network.SFGameNetwork;
 import net.minecraft.ChatFormatting;
@@ -55,20 +52,6 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class SFGameCommands {
-    private static final String[] COMMON_RULE_KEYS = {"maxPlayers", "scoreLimit", "timeLimitSeconds",
-            "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds", "mapBlockBreaking",
-            "mapSnapshotMode",
-            "mapRestorePartitionDelayTicks", "mapRestoreAdaptiveThrottling", "mapRestoreTargetTickMillis",
-            "mapRestoreMaxPartitionsPerTick"};
-    private static final String[] DOMINATION_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
-            "captureDifferenceCoefficient", "captureMaxMultiplier", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds"};
-    private static final String[] BREAKTHROUGH_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
-            "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "sectorTransitionSeconds",
-            "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
-            "attackerCaptainCaptureWeight", "defenderCaptureWeight"};
-    private static final String[] CTF_RULE_KEYS = {"captureTimeSeconds", "captureUsePlayerDifference",
-            "captureDifferenceCoefficient", "captureMaxMultiplier", "attackerTickets", "ctfFlagReturnSeconds",
-            "ctfHomeCaptureTimeSeconds"};
     private static final Map<UUID, ArenaPosition> POINT_POS_1 = new HashMap<>();
     private static final Map<UUID, ArenaPosition> POINT_POS_2 = new HashMap<>();
     private static final Map<UUID, ArenaPosition> CTF_POS_1 = new HashMap<>();
@@ -94,11 +77,17 @@ public final class SFGameCommands {
                     SFGameSavedData.get(context.getSource().getServer()).selectedMap()).stream().map(ClassDefinition::id), builder);
     private static final SuggestionProvider<CommandSourceStack> RULE_SUGGESTIONS = (context, builder) -> {
         String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
-        java.util.stream.Stream<String> keys = java.util.Arrays.stream(COMMON_RULE_KEYS);
-        if (GameModeRegistry.DOMINATION.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(DOMINATION_RULE_KEYS));
-        if (GameModeRegistry.BREAKTHROUGH.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(BREAKTHROUGH_RULE_KEYS));
-        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(mode)) keys = java.util.stream.Stream.concat(keys, java.util.Arrays.stream(CTF_RULE_KEYS));
-        return SharedSuggestionProvider.suggest(keys, builder);
+        return SharedSuggestionProvider.suggest(AdminRuleCatalog.forMode(mode).stream()
+                .map(AdminRuleCatalog.Definition::key), builder);
+    };
+    private static final SuggestionProvider<CommandSourceStack> RULE_VALUE_SUGGESTIONS = (context, builder) -> {
+        String key = StringArgumentType.getString(context, "key");
+        String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
+        return AdminRuleCatalog.find(mode, key).map(definition -> switch (definition.type()) {
+            case BOOLEAN -> SharedSuggestionProvider.suggest(List.of("true", "false"), builder);
+            case ENUM -> SharedSuggestionProvider.suggest(AdminRuleCatalog.enumValues(key), builder);
+            default -> builder.buildFuture();
+        }).orElseGet(builder::buildFuture);
     };
     private static final SuggestionProvider<CommandSourceStack> MODE_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(GameModeRegistry.all().stream().map(GameModeDefinition::id), builder);
@@ -189,9 +178,6 @@ public final class SFGameCommands {
                                 .then(Commands.literal("order").then(Commands.argument("point", StringArgumentType.word())
                                         .suggests(POINT_SUGGESTIONS).then(Commands.argument("order", IntegerArgumentType.integer(1, 16))
                                                 .executes(SFGameCommands::pointSetOrder)))))
-                        .then(Commands.literal("strategy")
-                                .then(Commands.literal("async").executes(c -> pointStrategy(c, PointActivationStrategy.ASYNC)))
-                                .then(Commands.literal("sync").executes(c -> pointStrategy(c, PointActivationStrategy.SYNC))))
                         .then(Commands.literal("list").executes(SFGameCommands::pointList))
                         .then(Commands.literal("status").then(Commands.argument("point", StringArgumentType.word())
                                 .suggests(POINT_SUGGESTIONS).executes(SFGameCommands::pointStatus)))
@@ -258,13 +244,6 @@ public final class SFGameCommands {
         return Commands.literal("breakthrough")
                 .requires(source -> source.hasPermission(2)
                         && modeIs(source, GameModeRegistry.BREAKTHROUGH))
-                .then(Commands.literal("variant")
-                        .then(Commands.literal("normal").executes(context -> breakthroughVariant(context, BreakthroughVariant.NORMAL)))
-                        .then(Commands.literal("captain").executes(context -> breakthroughVariant(context, BreakthroughVariant.CAPTAIN))))
-                .then(Commands.literal("legs").then(Commands.argument("legs", IntegerArgumentType.integer(1, 2))
-                        .executes(SFGameCommands::breakthroughLegs)))
-                .then(Commands.literal("roles").then(Commands.argument("attacker", StringArgumentType.word())
-                        .then(Commands.argument("defender", StringArgumentType.word()).executes(SFGameCommands::breakthroughRoles))))
                 .then(breakthroughVehicleCommands())
                 .then(Commands.literal("status").executes(SFGameCommands::breakthroughStatus));
     }
@@ -337,16 +316,6 @@ public final class SFGameCommands {
         LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("ctf")
                 .requires(source -> source.hasPermission(2)
                         && modeIs(source, GameModeRegistry.CAPTURE_THE_FLAG));
-        root.then(Commands.literal("variant")
-                .then(Commands.literal("classic").executes(c -> ctfVariant(c, CtfVariant.CLASSIC)))
-                .then(Commands.literal("assault").executes(c -> ctfVariant(c, CtfVariant.ASSAULT)))
-                .then(Commands.literal("territory").executes(c -> ctfVariant(c, CtfVariant.TERRITORY))));
-        root.then(Commands.literal("roles").then(Commands.argument("attacker", StringArgumentType.word())
-                .then(Commands.argument("defender", StringArgumentType.word()).executes(SFGameCommands::ctfRoles))));
-        root.then(Commands.literal("carrier")
-                .then(Commands.literal("normal").executes(c -> ctfCarrier(c, CarrierRestriction.NORMAL)))
-                .then(Commands.literal("movement_limited").executes(c -> ctfCarrier(c, CarrierRestriction.MOVEMENT_LIMITED)))
-                .then(Commands.literal("no_weapons").executes(c -> ctfCarrier(c, CarrierRestriction.NO_WEAPONS))));
         root.then(Commands.literal("status").executes(SFGameCommands::ctfStatus));
         LiteralArgumentBuilder<CommandSourceStack> home = Commands.literal("home");
         home.then(Commands.literal("set").then(Commands.argument("team", StringArgumentType.word())
@@ -427,64 +396,9 @@ public final class SFGameCommands {
                 .then(Commands.literal("get").then(Commands.argument("key", StringArgumentType.word())
                         .suggests(RULE_SUGGESTIONS).executes(SFGameCommands::rulesGet)))
                 .then(Commands.literal("set")
-                        .then(Commands.literal("captureUsePlayerDifference")
-                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION, GameModeRegistry.BREAKTHROUGH,
-                                        GameModeRegistry.CAPTURE_THE_FLAG))
-                                .then(Commands.argument("value", BoolArgumentType.bool())
-                                        .executes(context -> rulesSetBoolean(context, "captureUsePlayerDifference"))))
-                        .then(Commands.literal("attackerCaptainGlowing")
-                                .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
-                                .then(Commands.argument("value", BoolArgumentType.bool())
-                                        .executes(context -> rulesSetBoolean(context, "attackerCaptainGlowing"))))
-                        .then(Commands.literal("mapBlockBreaking")
-                                .then(Commands.argument("value", BoolArgumentType.bool())
-                                        .executes(context -> rulesSetBoolean(context, "mapBlockBreaking"))))
-                        .then(Commands.literal("mapSnapshotMode")
-                                .then(Commands.literal("allowlist")
-                                        .executes(context -> rulesSetString(context, "mapSnapshotMode", "allowlist")))
-                                .then(Commands.literal("full")
-                                        .executes(context -> rulesSetString(context, "mapSnapshotMode", "full"))))
-                        .then(Commands.literal("mapRestoreAdaptiveThrottling")
-                                .then(Commands.argument("value", BoolArgumentType.bool())
-                                        .executes(context -> rulesSetBoolean(context, "mapRestoreAdaptiveThrottling"))))
-                        .then(Commands.literal("captureDifferenceCoefficient")
-                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION, GameModeRegistry.BREAKTHROUGH,
-                                        GameModeRegistry.CAPTURE_THE_FLAG))
-                                .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0))
-                                        .executes(c -> rulesSetDouble(c, "captureDifferenceCoefficient"))))
-                        .then(Commands.literal("attackerCaptainCaptureWeight")
-                                .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
-                                .then(Commands.argument("value", DoubleArgumentType.doubleArg(1.0, 10.0))
-                                        .executes(c -> rulesSetDouble(c, "attackerCaptainCaptureWeight"))))
-                        .then(Commands.literal("defenderCaptureWeight")
-                                .requires(s -> modeIs(s, GameModeRegistry.BREAKTHROUGH))
-                                .then(Commands.argument("value", DoubleArgumentType.doubleArg(0.1, 10.0))
-                                        .executes(c -> rulesSetDouble(c, "defenderCaptureWeight"))))
-                        // Integer-only mode rules are intentionally exposed as
-                        // literals too, so mode-inapplicable rules never appear
-                        // in command suggestions or execute accidentally.
-                        .then(Commands.literal("scoreIntervalSeconds")
-                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION))
-                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
-                                        .executes(SFGameCommands::rulesSet)))
-                        .then(Commands.literal("scorePerPoint")
-                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION))
-                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
-                                        .executes(SFGameCommands::rulesSet)))
-                        .then(Commands.literal("syncHoldSeconds")
-                                .requires(s -> modeIs(s, GameModeRegistry.DOMINATION))
-                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
-                                        .executes(SFGameCommands::rulesSet)))
-                        .then(Commands.literal("ctfFlagReturnSeconds")
-                                .requires(s -> modeIs(s, GameModeRegistry.CAPTURE_THE_FLAG))
-                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
-                                        .executes(SFGameCommands::rulesSet)))
-                        .then(Commands.literal("ctfHomeCaptureTimeSeconds")
-                                .requires(s -> modeIs(s, GameModeRegistry.CAPTURE_THE_FLAG))
-                                .then(Commands.argument("value", IntegerArgumentType.integer(1))
-                                        .executes(SFGameCommands::rulesSet)))
                         .then(Commands.argument("key", StringArgumentType.word()).suggests(RULE_SUGGESTIONS)
-                                .then(Commands.argument("value", IntegerArgumentType.integer(0)).executes(SFGameCommands::rulesSet))));
+                                .then(Commands.argument("value", StringArgumentType.word())
+                                        .suggests(RULE_VALUE_SUGGESTIONS).executes(SFGameCommands::rulesSetGeneric))));
     }
 
     private static boolean modeIs(CommandSourceStack source, String... modes) {
@@ -492,39 +406,16 @@ public final class SFGameCommands {
         return java.util.Arrays.stream(modes).anyMatch(selected::equals);
     }
 
-    private static int ctfVariant(CommandContext<CommandSourceStack> context, CtfVariant variant) {
-        if (!checkCtfEdit(context)) return 0;
-        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        data.activeMap().captureTheFlag().variant(variant); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-        return success(context, "CTF variant set to " + variant.id());
-    }
-
-    private static int ctfRoles(CommandContext<CommandSourceStack> context) {
-        if (!checkCtfEdit(context)) return 0;
-        TeamSide attacker = TeamSide.fromId(StringArgumentType.getString(context, "attacker"));
-        TeamSide defender = TeamSide.fromId(StringArgumentType.getString(context, "defender"));
-        try {
-            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-            data.activeMap().captureTheFlag().roles(attacker, defender); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-            return success(context, "CTF roles set to " + attacker.id() + " attack / " + defender.id() + " defend");
-        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
-    }
-
-    private static int ctfCarrier(CommandContext<CommandSourceStack> context, CarrierRestriction restriction) {
-        if (!checkCtfEdit(context)) return 0;
-        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        data.activeMap().captureTheFlag().carrierRestriction(restriction); data.setDirty();
-        return success(context, "CTF carrier restriction set to " + restriction.id());
-    }
-
     private static int ctfStatus(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode()) || data.activeMap() == null) return failure(context, "Select ctf mode first");
         var config = data.activeMap().captureTheFlag();
-        send(context, "variant=" + config.variant().id() + ", carrierRestriction=" + config.carrierRestriction().id()
-                + ", attacker=" + config.attacker().id() + ", defender=" + config.defender().id()
+        MatchRules rules = MatchManager.get().rules();
+        send(context, "variant=" + rules.ctfVariant().id() + ", carrierRestriction=" + rules.ctfCarrierRestriction().id()
+                + ", attacker=" + rules.ctfAttacker().id() + ", defender=" + rules.ctfDefender().id()
                 + ", homes=" + config.homes().size() + ", forwardFlags=" + config.forwardFlags().size());
-        return config.validate(data.activeMap().enabledTeams()).isEmpty() ? 1 : 0;
+        return config.validate(data.activeMap().enabledTeams(), rules.ctfVariant(), rules.ctfAttacker(),
+                rules.ctfDefender()).isEmpty() ? 1 : 0;
     }
 
     private static int ctfPosition(CommandContext<CommandSourceStack> context, boolean first)
@@ -1176,17 +1067,10 @@ public final class SFGameCommands {
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
 
-    private static int pointStrategy(CommandContext<CommandSourceStack> context, PointActivationStrategy strategy) {
-        if (!checkPointEdit(context)) return 0;
-        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        data.activeMap().domination().strategy(strategy); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-        return success(context, "Domination point strategy set to " + strategy.name().toLowerCase());
-    }
-
     private static int pointList(CommandContext<CommandSourceStack> context) {
         if (!checkDomination(context)) return 0;
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        send(context, "Strategy=" + data.activeMap().domination().strategy().name().toLowerCase()
+        send(context, "Strategy=" + MatchManager.get().rules().dominationStrategy().name().toLowerCase()
                 + ", points=" + data.activeMap().domination().points().size());
         data.activeMap().domination().points().forEach(point -> send(context,
                 point.order() + ": " + point.id() + " " + regionText(point.region())));
@@ -1260,37 +1144,12 @@ public final class SFGameCommands {
                 + " radius=" + square.radius() + " " + height;
     }
 
-    private static int breakthroughVariant(CommandContext<CommandSourceStack> context, BreakthroughVariant variant) {
-        if (!checkBreakthroughEdit(context)) return 0;
-        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        data.activeMap().breakthrough().variant(variant); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-        return success(context, "Breakthrough mode variant set to " + variant.name().toLowerCase());
-    }
-
-    private static int breakthroughLegs(CommandContext<CommandSourceStack> context) {
-        if (!checkBreakthroughEdit(context)) return 0;
-        int legs = IntegerArgumentType.getInteger(context, "legs");
-        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        data.activeMap().breakthrough().legs(legs); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-        return success(context, "Breakthrough mode legs set to " + legs);
-    }
-
-    private static int breakthroughRoles(CommandContext<CommandSourceStack> context) {
-        if (!checkBreakthroughEdit(context)) return 0;
-        TeamSide attacker = TeamSide.fromId(StringArgumentType.getString(context, "attacker"));
-        TeamSide defender = TeamSide.fromId(StringArgumentType.getString(context, "defender"));
-        try {
-            SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-            data.activeMap().breakthrough().roles(attacker, defender); data.setDirty(); MatchManager.get().arenaSelectionChanged();
-            return success(context, "Breakthrough mode roles: attacker=" + attacker.id() + ", defender=" + defender.id());
-        } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
-    }
-
     private static int breakthroughStatus(CommandContext<CommandSourceStack> context) {
         if (!checkBreakthrough(context)) return 0;
         var config = SFGameSavedData.get(context.getSource().getServer()).activeMap().breakthrough();
-        send(context, "variant=" + config.variant().name().toLowerCase() + ", legs=" + config.legs()
-                + ", attacker=" + config.attacker().id() + ", defender=" + config.defender().id()
+        MatchRules rules = MatchManager.get().rules();
+        send(context, "variant=" + rules.breakthroughVariant().name().toLowerCase() + ", legs=" + rules.breakthroughLegs()
+                + ", attacker=" + rules.breakthroughAttacker().id() + ", defender=" + rules.breakthroughDefender().id()
                 + ", sectors=" + config.sectors().size() + ", vehicles=" + config.vehicles().size());
         return 1;
     }
@@ -1725,7 +1584,7 @@ public final class SFGameCommands {
                 + ", enabledTeams=" + map.enabledTeams()
                 + ", spawns=" + TeamSide.PLAYABLE.stream().map(side -> side.id() + ":" + map.spawns(side).size()).toList());
         if (GameModeRegistry.DOMINATION.equals(data.selectedMode())) {
-            send(context, "pointStrategy=" + map.domination().strategy().name().toLowerCase()
+            send(context, "pointStrategy=" + MatchManager.get().rules().dominationStrategy().name().toLowerCase()
                     + ", capturePoints=" + map.domination().points().size());
         }
         return data.mapConfigured(map) ? 1 : 0;
@@ -1828,32 +1687,24 @@ public final class SFGameCommands {
         return 1;
     }
 
-    private static int rulesSet(CommandContext<CommandSourceStack> context) {
+    private static int rulesSetGeneric(CommandContext<CommandSourceStack> context) {
         String key = StringArgumentType.getString(context, "key");
-        int value = IntegerArgumentType.getInteger(context, "value");
-        try { MatchManager.get().setRule(key, value); }
-        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
-        return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
-    }
-
-    private static int rulesSetBoolean(CommandContext<CommandSourceStack> context, String key) {
-        boolean value = BoolArgumentType.getBool(context, "value");
-        try { MatchManager.get().setRule(key, value); }
-        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
-        return success(context, key + "=" + value);
-    }
-
-    private static int rulesSetDouble(CommandContext<CommandSourceStack> context, String key) {
-        double value = DoubleArgumentType.getDouble(context, "value");
-        try { MatchManager.get().setRule(key, value); }
-        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
-        return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
-    }
-
-    private static int rulesSetString(CommandContext<CommandSourceStack> context, String key, String value) {
-        try { MatchManager.get().setRule(key, value); }
-        catch (IllegalArgumentException | IllegalStateException exception) { return failure(context, exception.getMessage()); }
-        return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
+        String input = StringArgumentType.getString(context, "value");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        try {
+            AdminRuleCatalog.Definition definition = AdminRuleCatalog.find(data.selectedMode(), key)
+                    .orElseThrow(() -> new IllegalArgumentException("Rule is unavailable in this mode: " + key));
+            Object value = AdminRuleCatalog.parse(definition, input);
+            switch (definition.type()) {
+                case INTEGER -> MatchManager.get().setRule(key, (Integer) value);
+                case DECIMAL -> MatchManager.get().setRule(key, (Double) value);
+                case BOOLEAN -> MatchManager.get().setRule(key, (Boolean) value);
+                case ENUM -> MatchManager.get().setRule(key, (String) value);
+            }
+            return success(context, key + "=" + ruleValue(MatchManager.get().rules(), key));
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            return failure(context, exception.getMessage());
+        }
     }
 
     private static int rulesReset(CommandContext<CommandSourceStack> context) {
@@ -1871,8 +1722,8 @@ public final class SFGameCommands {
     private static int classReload(CommandContext<CommandSourceStack> context) {
         List<String> errors = new ArrayList<>(MatchManager.get().classes().reload());
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
-                && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+        boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())
+                && MatchManager.get().rules().breakthroughVariant() == BreakthroughVariant.CAPTAIN;
         errors.addAll(MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), data.selectedMap(), data.enabledTeams(), captains)
                 .stream().filter(e -> !errors.contains(e)).toList());
         if (!errors.isEmpty()) {
@@ -1884,8 +1735,8 @@ public final class SFGameCommands {
 
     private static int classValidate(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
-                && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+        boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())
+                && MatchManager.get().rules().breakthroughVariant() == BreakthroughVariant.CAPTAIN;
         List<String> errors = MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), data.selectedMap(), data.enabledTeams(), captains);
         if (!errors.isEmpty()) {
             errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
@@ -2002,6 +1853,11 @@ public final class SFGameCommands {
             case "scoreIntervalSeconds" -> Integer.toString(rules.scoreIntervalSeconds());
             case "scorePerPoint" -> Integer.toString(rules.scorePerPoint());
             case "syncHoldSeconds" -> Integer.toString(rules.syncHoldSeconds());
+            case "dominationStrategy" -> rules.dominationStrategy().name().toLowerCase(java.util.Locale.ROOT);
+            case "breakthroughVariant" -> rules.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT);
+            case "breakthroughLegs" -> Integer.toString(rules.breakthroughLegs());
+            case "breakthroughAttacker" -> rules.breakthroughAttacker().id();
+            case "breakthroughDefender" -> rules.breakthroughDefender().id();
             case "attackerTickets" -> Integer.toString(rules.attackerTickets());
             case "sectorTransitionSeconds" -> Integer.toString(rules.sectorTransitionSeconds());
             case "captainVoteSeconds" -> Integer.toString(rules.captainVoteSeconds());
@@ -2017,12 +1873,17 @@ public final class SFGameCommands {
             case "defenderCaptureWeight" -> Double.toString(rules.defenderCaptureWeight());
             case "ctfFlagReturnSeconds" -> Integer.toString(rules.ctfFlagReturnSeconds());
             case "ctfHomeCaptureTimeSeconds" -> Integer.toString(rules.ctfHomeCaptureTimeSeconds());
+            case "ctfVariant" -> rules.ctfVariant().id();
+            case "ctfAttacker" -> rules.ctfAttacker().id();
+            case "ctfDefender" -> rules.ctfDefender().id();
+            case "ctfCarrierRestriction" -> rules.ctfCarrierRestriction().id();
             default -> throw new IllegalArgumentException("Unknown rule " + key);
         };
     }
 
     private static boolean isDominationOnlyRule(String key) {
-        return key.equals("scoreIntervalSeconds") || key.equals("scorePerPoint") || key.equals("syncHoldSeconds");
+        return key.equals("dominationStrategy") || key.equals("scoreIntervalSeconds")
+                || key.equals("scorePerPoint") || key.equals("syncHoldSeconds");
     }
 
     private static boolean isCaptureOnlyRule(String key) {
@@ -2031,14 +1892,18 @@ public final class SFGameCommands {
     }
 
     private static boolean isBreakthroughOnlyRule(String key) {
-        return key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
+        return key.equals("breakthroughVariant") || key.equals("breakthroughLegs")
+                || key.equals("breakthroughAttacker") || key.equals("breakthroughDefender")
+                || key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
                 || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainGlowing")
                 || key.equals("attackerCaptainCaptureWeight")
                 || key.equals("defenderCaptureWeight");
     }
 
     private static boolean isCtfOnlyRule(String key) {
-        return key.equals("ctfFlagReturnSeconds") || key.equals("ctfHomeCaptureTimeSeconds");
+        return key.equals("ctfVariant") || key.equals("ctfAttacker") || key.equals("ctfDefender")
+                || key.equals("ctfCarrierRestriction") || key.equals("ctfFlagReturnSeconds")
+                || key.equals("ctfHomeCaptureTimeSeconds");
     }
 
 
@@ -2053,12 +1918,17 @@ public final class SFGameCommands {
                 + ", mapRestoreTargetTickMillis=" + r.mapRestoreTargetTickMillis()
                 + ", mapRestoreMaxPartitionsPerTick=" + r.mapRestoreMaxPartitionsPerTick();
         if (GameModeRegistry.DOMINATION.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
+                + ", dominationStrategy=" + r.dominationStrategy().name().toLowerCase(java.util.Locale.ROOT)
                 + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
                 + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier()
                 + ", scoreIntervalSeconds=" + r.scoreIntervalSeconds() + ", scorePerPoint=" + r.scorePerPoint()
                 + ", syncHoldSeconds=" + r.syncHoldSeconds();
         if (GameModeRegistry.BREAKTHROUGH.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
+                + ", breakthroughVariant=" + r.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT)
+                + ", breakthroughLegs=" + r.breakthroughLegs()
+                + ", breakthroughAttacker=" + r.breakthroughAttacker().id()
+                + ", breakthroughDefender=" + r.breakthroughDefender().id()
                 + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
                 + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()
@@ -2068,6 +1938,9 @@ public final class SFGameCommands {
                 + ", attackerCaptainCaptureWeight=" + r.attackerCaptainCaptureWeight()
                 + ", defenderCaptureWeight=" + r.defenderCaptureWeight();
         if (GameModeRegistry.CAPTURE_THE_FLAG.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
+                + ", ctfVariant=" + r.ctfVariant().id()
+                + ", ctfAttacker=" + r.ctfAttacker().id() + ", ctfDefender=" + r.ctfDefender().id()
+                + ", ctfCarrierRestriction=" + r.ctfCarrierRestriction().id()
                 + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
                 + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()

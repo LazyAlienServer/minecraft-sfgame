@@ -1,6 +1,7 @@
 package com.sfgame.data;
 
 import com.sfgame.game.GameModeRegistry;
+import com.sfgame.game.TeamSide;
 import net.minecraft.nbt.CompoundTag;
 
 public final class MatchRules {
@@ -48,6 +49,15 @@ public final class MatchRules {
     private double defenderCaptureWeight;
     private int ctfFlagReturnSeconds;
     private int ctfHomeCaptureTimeSeconds;
+    private PointActivationStrategy dominationStrategy;
+    private BreakthroughVariant breakthroughVariant;
+    private int breakthroughLegs;
+    private TeamSide breakthroughAttacker;
+    private TeamSide breakthroughDefender;
+    private CtfVariant ctfVariant;
+    private TeamSide ctfAttacker;
+    private TeamSide ctfDefender;
+    private CarrierRestriction ctfCarrierRestriction;
 
     public MatchRules() { this(GameModeRegistry.TEAM_DEATHMATCH); }
     public MatchRules(String modeId) { this.modeId = modeId; reset(); }
@@ -81,6 +91,15 @@ public final class MatchRules {
     public double defenderCaptureWeight() { return defenderCaptureWeight; }
     public int ctfFlagReturnSeconds() { return ctfFlagReturnSeconds; }
     public int ctfHomeCaptureTimeSeconds() { return ctfHomeCaptureTimeSeconds; }
+    public PointActivationStrategy dominationStrategy() { return dominationStrategy; }
+    public BreakthroughVariant breakthroughVariant() { return breakthroughVariant; }
+    public int breakthroughLegs() { return breakthroughLegs; }
+    public TeamSide breakthroughAttacker() { return breakthroughAttacker; }
+    public TeamSide breakthroughDefender() { return breakthroughDefender; }
+    public CtfVariant ctfVariant() { return ctfVariant; }
+    public TeamSide ctfAttacker() { return ctfAttacker; }
+    public TeamSide ctfDefender() { return ctfDefender; }
+    public CarrierRestriction ctfCarrierRestriction() { return ctfCarrierRestriction; }
 
     public void maxPlayers(int value) { maxPlayers = clamp(value, 2, 128); }
     public void scoreLimit(int value) { scoreLimit = clamp(value, 1, 10000); }
@@ -113,6 +132,21 @@ public final class MatchRules {
     public void defenderCaptureWeight(double value) { defenderCaptureWeight = clamp(value, 0.1, 10.0); }
     public void ctfFlagReturnSeconds(int value) { ctfFlagReturnSeconds = clamp(value, 5, 600); }
     public void ctfHomeCaptureTimeSeconds(int value) { ctfHomeCaptureTimeSeconds = clamp(value, 1, 600); }
+    public void dominationStrategy(PointActivationStrategy value) {
+        dominationStrategy = value == null ? PointActivationStrategy.ASYNC : value;
+    }
+    public void breakthroughVariant(BreakthroughVariant value) {
+        breakthroughVariant = value == null ? BreakthroughVariant.NORMAL : value;
+    }
+    public void breakthroughLegs(int value) { breakthroughLegs = clamp(value, 1, 2); }
+    public void breakthroughAttacker(TeamSide value) { breakthroughAttacker = playable(value, TeamSide.RED); }
+    public void breakthroughDefender(TeamSide value) { breakthroughDefender = playable(value, TeamSide.BLUE); }
+    public void ctfVariant(CtfVariant value) { ctfVariant = value == null ? CtfVariant.CLASSIC : value; }
+    public void ctfAttacker(TeamSide value) { ctfAttacker = playable(value, TeamSide.RED); }
+    public void ctfDefender(TeamSide value) { ctfDefender = playable(value, TeamSide.BLUE); }
+    public void ctfCarrierRestriction(CarrierRestriction value) {
+        ctfCarrierRestriction = value == null ? CarrierRestriction.NORMAL : value;
+    }
 
     public void reset() {
         maxPlayers = DEFAULT_MAX_PLAYERS;
@@ -146,6 +180,15 @@ public final class MatchRules {
         defenderCaptureWeight = 1.4;
         ctfFlagReturnSeconds = 30;
         ctfHomeCaptureTimeSeconds = 15;
+        dominationStrategy = PointActivationStrategy.ASYNC;
+        breakthroughVariant = BreakthroughVariant.NORMAL;
+        breakthroughLegs = 1;
+        breakthroughAttacker = TeamSide.RED;
+        breakthroughDefender = TeamSide.BLUE;
+        ctfVariant = CtfVariant.CLASSIC;
+        ctfAttacker = TeamSide.RED;
+        ctfDefender = TeamSide.BLUE;
+        ctfCarrierRestriction = CarrierRestriction.NORMAL;
     }
 
     public CompoundTag save() {
@@ -171,6 +214,15 @@ public final class MatchRules {
         tag.putDouble("DefenderCaptureWeight", defenderCaptureWeight);
         tag.putInt("CtfFlagReturnSeconds", ctfFlagReturnSeconds);
         tag.putInt("CtfHomeCaptureTimeSeconds", ctfHomeCaptureTimeSeconds);
+        tag.putString("DominationStrategy", dominationStrategy.name().toLowerCase(java.util.Locale.ROOT));
+        tag.putString("BreakthroughVariant", breakthroughVariant.name().toLowerCase(java.util.Locale.ROOT));
+        tag.putInt("BreakthroughLegs", breakthroughLegs);
+        tag.putString("BreakthroughAttacker", breakthroughAttacker.id());
+        tag.putString("BreakthroughDefender", breakthroughDefender.id());
+        tag.putString("CtfVariant", ctfVariant.id());
+        tag.putString("CtfAttacker", ctfAttacker.id());
+        tag.putString("CtfDefender", ctfDefender.id());
+        tag.putString("CtfCarrierRestriction", ctfCarrierRestriction.id());
         return tag;
     }
 
@@ -204,6 +256,15 @@ public final class MatchRules {
         if (tag.contains("DefenderCaptureWeight")) defenderCaptureWeight(tag.getDouble("DefenderCaptureWeight"));
         if (tag.contains("CtfFlagReturnSeconds")) ctfFlagReturnSeconds(tag.getInt("CtfFlagReturnSeconds"));
         if (tag.contains("CtfHomeCaptureTimeSeconds")) ctfHomeCaptureTimeSeconds(tag.getInt("CtfHomeCaptureTimeSeconds"));
+        if (tag.contains("DominationStrategy")) dominationStrategy(PointActivationStrategy.parse(tag.getString("DominationStrategy")));
+        if (tag.contains("BreakthroughVariant")) breakthroughVariant(BreakthroughVariant.valueOf(tag.getString("BreakthroughVariant").toUpperCase(java.util.Locale.ROOT)));
+        if (tag.contains("BreakthroughLegs")) breakthroughLegs(tag.getInt("BreakthroughLegs"));
+        if (tag.contains("BreakthroughAttacker")) breakthroughAttacker(TeamSide.fromId(tag.getString("BreakthroughAttacker")));
+        if (tag.contains("BreakthroughDefender")) breakthroughDefender(TeamSide.fromId(tag.getString("BreakthroughDefender")));
+        if (tag.contains("CtfVariant")) ctfVariant(CtfVariant.fromId(tag.getString("CtfVariant")));
+        if (tag.contains("CtfAttacker")) ctfAttacker(TeamSide.fromId(tag.getString("CtfAttacker")));
+        if (tag.contains("CtfDefender")) ctfDefender(TeamSide.fromId(tag.getString("CtfDefender")));
+        if (tag.contains("CtfCarrierRestriction")) ctfCarrierRestriction(CarrierRestriction.fromId(tag.getString("CtfCarrierRestriction")));
     }
 
     public MatchRules copy() {
@@ -214,4 +275,7 @@ public final class MatchRules {
 
     private static int clamp(int value, int min, int max) { return Math.max(min, Math.min(max, value)); }
     private static double clamp(double value, double min, double max) { return Math.max(min, Math.min(max, value)); }
+    private static TeamSide playable(TeamSide value, TeamSide fallback) {
+        return value == null || value == TeamSide.NONE ? fallback : value;
+    }
 }

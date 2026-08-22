@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.UUID;
 
 public interface MatchModeRuntime {
-    List<String> validate(MinecraftServer server, ArenaMap map);
-    default boolean needsPreparation(ArenaMap map) { return false; }
+    List<String> validate(MinecraftServer server, ArenaMap map, MatchRules rules);
+    default boolean needsPreparation(ArenaMap map, MatchRules rules) { return false; }
     default void prepare(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) { }
     default boolean tickPreparation(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) { return true; }
     void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules);

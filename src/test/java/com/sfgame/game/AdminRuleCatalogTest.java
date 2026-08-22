@@ -14,6 +14,10 @@ class AdminRuleCatalogTest {
         assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "scorePerPoint").isPresent());
         assertTrue(AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH, "attackerCaptainCaptureWeight").isPresent());
         assertFalse(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, "attackerCaptainCaptureWeight").isPresent());
+        assertTrue(AdminRuleCatalog.find(GameModeRegistry.DOMINATION, "dominationStrategy").isPresent());
+        assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "dominationStrategy").isPresent());
+        assertTrue(AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH, "breakthroughVariant").isPresent());
+        assertTrue(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, "ctfCarrierRestriction").isPresent());
     }
 
     @Test
@@ -41,5 +45,12 @@ class AdminRuleCatalogTest {
         assertEquals("allowlist", AdminRuleCatalog.parse(snapshotMode, "ALLOWLIST"));
         assertEquals("full", AdminRuleCatalog.parse(snapshotMode, "full"));
         assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(snapshotMode, "partial"));
+
+        AdminRuleCatalog.Definition roles = AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH,
+                "breakthroughAttacker").orElseThrow();
+        assertEquals("yellow", AdminRuleCatalog.parse(roles, "YELLOW"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(roles, "none"));
+        assertEquals(java.util.List.of("red", "blue", "yellow", "green"),
+                AdminRuleCatalog.enumValues("breakthroughAttacker"));
     }
 }

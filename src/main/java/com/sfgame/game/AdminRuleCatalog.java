@@ -2,6 +2,10 @@ package com.sfgame.game;
 
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.MapSnapshotMode;
+import com.sfgame.data.BreakthroughVariant;
+import com.sfgame.data.CarrierRestriction;
+import com.sfgame.data.CtfVariant;
+import com.sfgame.data.PointActivationStrategy;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -41,6 +45,11 @@ public final class AdminRuleCatalog {
                 Method getter = MatchRules.class.getMethod(key);
                 Object result = getter.invoke(rules);
                 if (result instanceof MapSnapshotMode mode) return mode.id();
+                if (result instanceof PointActivationStrategy strategy) return strategy.name().toLowerCase(Locale.ROOT);
+                if (result instanceof BreakthroughVariant variant) return variant.name().toLowerCase(Locale.ROOT);
+                if (result instanceof CtfVariant variant) return variant.id();
+                if (result instanceof CarrierRestriction restriction) return restriction.id();
+                if (result instanceof TeamSide side) return side.id();
                 return result == null ? "" : result.toString();
             } catch (ReflectiveOperationException exception) {
                 throw new IllegalStateException("Could not read rule " + key, exception);
@@ -67,11 +76,16 @@ public final class AdminRuleCatalog {
             integer("captureMaxMultiplier", 1, 64, true, CAPTURE_MODES),
 
             // Domination.
+            enumeration("dominationStrategy", false, GameModeRegistry.DOMINATION),
             integer("scoreIntervalSeconds", 1, 300, true, GameModeRegistry.DOMINATION),
             integer("scorePerPoint", 1, 1_000, true, GameModeRegistry.DOMINATION),
             integer("syncHoldSeconds", 1, 3_600, true, GameModeRegistry.DOMINATION),
 
             // Breakthrough.
+            enumeration("breakthroughVariant", false, GameModeRegistry.BREAKTHROUGH),
+            integer("breakthroughLegs", 1, 2, false, GameModeRegistry.BREAKTHROUGH),
+            enumeration("breakthroughAttacker", false, GameModeRegistry.BREAKTHROUGH),
+            enumeration("breakthroughDefender", false, GameModeRegistry.BREAKTHROUGH),
             integer("attackerTickets", 1, 10_000, true,
                     GameModeRegistry.BREAKTHROUGH, GameModeRegistry.CAPTURE_THE_FLAG),
             integer("sectorTransitionSeconds", 0, 60, true, GameModeRegistry.BREAKTHROUGH),
@@ -82,6 +96,10 @@ public final class AdminRuleCatalog {
             decimal("defenderCaptureWeight", 0.1, 10.0, true, GameModeRegistry.BREAKTHROUGH),
 
             // CTF.
+            enumeration("ctfVariant", false, GameModeRegistry.CAPTURE_THE_FLAG),
+            enumeration("ctfAttacker", false, GameModeRegistry.CAPTURE_THE_FLAG),
+            enumeration("ctfDefender", false, GameModeRegistry.CAPTURE_THE_FLAG),
+            enumeration("ctfCarrierRestriction", false, GameModeRegistry.CAPTURE_THE_FLAG),
             integer("ctfFlagReturnSeconds", 5, 600, true, GameModeRegistry.CAPTURE_THE_FLAG),
             integer("ctfHomeCaptureTimeSeconds", 1, 600, true, GameModeRegistry.CAPTURE_THE_FLAG),
 
@@ -148,7 +166,26 @@ public final class AdminRuleCatalog {
                 }
                 yield parsed;
             }
-            case ENUM -> MapSnapshotMode.parse(value).id();
+            case ENUM -> {
+                List<String> values = enumValues(definition.key());
+                if (!values.contains(value)) {
+                    throw new IllegalArgumentException("Expected one of: " + String.join(", ", values));
+                }
+                yield value;
+            }
+        };
+    }
+
+    public static List<String> enumValues(String key) {
+        return switch (key) {
+            case "mapSnapshotMode" -> List.of("allowlist", "full");
+            case "dominationStrategy" -> List.of("async", "sync");
+            case "breakthroughVariant" -> List.of("normal", "captain");
+            case "ctfVariant" -> List.of("classic", "assault", "territory");
+            case "ctfCarrierRestriction" -> List.of("normal", "movement_limited", "no_weapons");
+            case "breakthroughAttacker", "breakthroughDefender", "ctfAttacker", "ctfDefender" ->
+                    TeamSide.PLAYABLE.stream().map(TeamSide::id).toList();
+            default -> List.of();
         };
     }
 

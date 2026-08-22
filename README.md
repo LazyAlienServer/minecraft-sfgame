@@ -57,7 +57,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 权限等级 2 的管理员打开 `M` 菜单后，右上角会出现“管理”按钮。管理面板顶部第一行选择模式，第二行选择该模式的地图；比赛进行期间两行都会锁定，防止误切换正在运行的地图。面板包含两个独立选项卡：
 
 - “状态”页显示比赛阶段、当前模式/地图、在线/参赛/排队人数、比分、剩余时间、地图配置状态、规则继承来源及地图重载进度。地图重载时该页每秒刷新一次，不需要手动关闭重开。
-- “规则”页只列出当前模式可用的规则。支持对局内实时修改的参数排列在上方并标记为“实时”；只能在大厅修改的参数排列在下方并标记为“下局”，比赛期间控件自动禁用。数值规则会显示允许范围，输入后点击“应用”或按回车；布尔规则直接点击开关。规则页不会自动刷新，避免清除管理员正在输入的内容，可使用右上角“刷新”主动重新读取。
+- “规则”页只列出当前模式可用的规则。支持对局内实时修改的参数排列在上方并标记为“实时”；只能在大厅修改的参数排列在下方并标记为“下局”，比赛期间控件自动禁用。数值规则会显示允许范围，输入后点击“应用”或按回车；布尔规则直接点击开关；枚举规则点击按钮会在全部合法选项间循环。规则页不会自动刷新，避免清除管理员正在输入的内容，可使用右上角“刷新”主动重新读取。
 
 所有按钮操作都会重新在服务端校验管理员权限、当前模式、当前地图、参数类型和范围；修改仍写入对应模式的地图规则 JSON，与 `/sfgame rule set` 使用同一套规则系统。
 
@@ -109,7 +109,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 ### 规则参数完整说明
 
-管理员权限要求为 2。`<规则>` 必须使用下表中的精确拼写；`<值>` 不要带单位。修改会写入当前世界，并在当前比赛的下一次服务端 Tick（或下一阶段）生效。
+管理员权限要求为 2。`<规则>` 必须使用下表中的精确拼写；`<值>` 不要带单位。修改会写入当前世界。标记为实时的规则会在当前比赛下一 Tick（或下一阶段）生效；模式变体、开放策略、攻守方和赛段数属于下局规则，只能在大厅修改。
 
 | 规则 | 默认值 | 允许范围 | 适用模式 | 含义与用法 |
 | --- | ---: | ---: | --- | --- |
@@ -127,6 +127,11 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `scoreIntervalSeconds` | 1 | 1～300 | 占点 | 已归属活动点产生分数的周期。默认每秒结算一次。 |
 | `scorePerPoint` | 1 | 1～1000 | 占点 | 每个已归属活动点每个周期产生的团队分数。 |
 | `syncHoldSeconds` | 45 | 1～3600 | 占点 `sync` | `sync` 点位保持归属达到该秒数后切换到下一个点；无人争夺时暂停累计。 |
+| `dominationStrategy` | async | async/sync | 占点 | 点位开放策略。`async` 同时开放全部点，`sync` 每局随机轮换一个开放点。下局规则。例：`/sfgame rule set dominationStrategy sync`。 |
+| `breakthroughVariant` | normal | normal/captain | 突破 | `normal` 为普通突破，`captain` 启用进攻方队长选举。下局规则。 |
+| `breakthroughLegs` | 1 | 1～2 | 突破 | 完整攻防赛段数；2 表示第一赛段后交换攻守再进行一次。下局规则。 |
+| `breakthroughAttacker` | red | red/blue/yellow/green | 突破 | 第一赛段进攻阵营。必须与防守方不同且具有地图出生点。下局规则。 |
+| `breakthroughDefender` | blue | red/blue/yellow/green | 突破 | 第一赛段防守阵营。双赛段会自动与进攻方互换。下局规则。 |
 | `attackerTickets` | 100 | 1～10000 | 突破、CTF assault | 突破为进攻方死亡票数；CTF assault 为进攻方兵力票。设定后当前阶段/回合立即改为该值。 |
 | `sectorTransitionSeconds` | 10 | 0～60 | 突破 | 攻陷一个 sector 后的整备和安全部署时间。 |
 | `captainVoteSeconds` | 15 | 1～120 | 突破 captain | 首次队长投票时长。 |
@@ -138,6 +143,10 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `defenderCaptureWeight` | 1.4 | 0.1～10.0 | 突破 captain | 每名防守玩家在点内的占领权重；防守方不选举队长。 |
 | `ctfFlagReturnSeconds` | 30 | 5～600 | CTF | 掉落旗帜无人回收时自动返回旗座的秒数。 |
 | `ctfHomeCaptureTimeSeconds` | 15 | 1～600 | CTF territory | territory 家旗独立占领/中立化阶段的基础时间。 |
+| `ctfVariant` | classic | classic/assault/territory | CTF | 夺旗子模式。下局规则。 |
+| `ctfAttacker` | red | red/blue/yellow/green | CTF assault | 单向攻防夺旗的进攻方。下局规则。 |
+| `ctfDefender` | blue | red/blue/yellow/green | CTF assault | 单向攻防夺旗的防守方。下局规则。 |
+| `ctfCarrierRestriction` | normal | normal/movement_limited/no_weapons | CTF | 持旗限制：无限制、限制特殊移动、禁止枪械与近战。下局规则。 |
 
 查询或修改示例：
 
@@ -146,11 +155,15 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame rule get scoreLimit
 /sfgame rule set scoreLimit 75
 /sfgame rule set mapSnapshotMode allowlist
+/sfgame rule set dominationStrategy sync
+/sfgame rule set breakthroughVariant captain
+/sfgame rule set breakthroughLegs 2
+/sfgame rule set ctfVariant territory
 /sfgame rule inherit base
 /sfgame rule reset
 ```
 
-`rule set` 修改当前选中模式和地图的覆盖值，立即写入 JSON，并在正在进行的当前对局中实时生效，不需要执行 `reload`。`rule get` 与 `rule list` 显示继承合并后的最终值。`rule reset` 只清除当前地图的覆盖值并重新使用父级，不会重置模式基础规则；`rule inherit base` 继承本模式基础规则，`rule inherit <地图ID>` 继承同模式另一张已配置规则的地图。
+`rule set` 修改当前选中模式和地图的覆盖值并立即写入 JSON。实时规则可在当前对局中生效；管理面板标记为“下局”的规则会在比赛期间锁定，只能回到大厅后修改。`rule get` 与 `rule list` 显示继承合并后的最终值。`rule reset` 只清除当前地图的覆盖值并重新使用父级，不会重置模式基础规则；`rule inherit base` 继承本模式基础规则，`rule inherit <地图ID>` 继承同模式另一张已配置规则的地图。
 
 规则配置文件位于：
 
@@ -187,7 +200,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 }
 ```
 
-管理员手动编辑 JSON 后执行 `/sfgame reload` 热重载；重载在对局中也会立即替换当前地图的有效规则。配置按存档隔离，缺失时会从模组内置默认值生成。旧版全局 `config/sfgame/` 下的 JSON 不会读取或迁移，需要时请管理员手动复制。
+管理员手动编辑 JSON 后在大厅执行 `/sfgame reload` 重载；对局内需要实时修改时使用 `/sfgame rule set`，不允许在比赛中整体重载规则文件。配置按存档隔离，缺失时会从模组内置默认值生成。旧版全局 `config/sfgame/` 下的 JSON 不会读取或迁移，需要时请管理员手动复制。
 
 单人开发测试使用全局命令 `/sfgame dev`。每次执行会切换开启/关闭状态；状态写入当前世界，切换模式或地图后仍然保持。开启后允许只有一名参赛玩家开局，但地图、出生点、队伍绑定、职业/TACZ 资源和模式配置仍必须有效：
 
@@ -409,7 +422,6 @@ TDM 与占点默认包含：
 /sfgame point set height <点位ID> full
 /sfgame point set height <点位ID> <minY> <maxY>
 /sfgame point set order <点位ID> <序号>
-/sfgame point strategy <async|sync>
 /sfgame point list
 /sfgame point status <点位ID>
 /sfgame point remove <点位ID>
@@ -428,8 +440,8 @@ TDM 与占点默认包含：
 | `set height full` | 让点位覆盖当前维度所有高度。 |
 | `set height <minY> <maxY>` | 只允许脚部 Y 坐标在闭区间内的玩家占点，范围 -2048～2048。 |
 | `set order <序号>` | 仅影响 `sync` 的候选顺序，序号 1～16；实际每局会在这些点中随机选取下一个未完成点。 |
-| `strategy async` | 所有点同时扫描、同时显示 Bossbar，并分别产分。 |
-| `strategy sync` | 只扫描和显示当前开放点；当前点完成保持时间后才切到随机下一个点。 |
+| `dominationStrategy=async` | 所有点同时扫描、同时显示 Bossbar，并分别产分。使用 `/sfgame rule set dominationStrategy async`。 |
+| `dominationStrategy=sync` | 只扫描和显示当前开放点；当前点完成保持时间后才切到随机下一个点。使用 `/sfgame rule set dominationStrategy sync`。 |
 | `list` / `status <点位ID>` | 查看区域类型、维度、高度、归属、推进者、进度和当前是否开放。 |
 
 点内没有唯一人数最多的阵营时进度暂停；唯一领先方推进，中立点更换推进方会清除原挑战进度。已有归属点被争夺后先中立化，再由新阵营占领。占点人员必须是存活且参赛玩家，旁观、排队和重生倒计时玩家不计入。
@@ -438,6 +450,7 @@ TDM 与占点默认包含：
 
 ```text
 /sfgame rule set captureTimeSeconds <秒>
+/sfgame rule set dominationStrategy <async|sync>
 /sfgame rule set captureUsePlayerDifference <true|false>
 /sfgame rule set captureDifferenceCoefficient <小数>
 /sfgame rule set captureMaxMultiplier <倍率>
@@ -465,9 +478,10 @@ TDM 与占点默认包含：
 /sfgame map create example
 /sfgame spawn set lobby
 
-/sfgame rule breakthrough variant normal
-/sfgame rule breakthrough legs 1
-/sfgame rule breakthrough roles red blue
+/sfgame rule set breakthroughVariant normal
+/sfgame rule set breakthroughLegs 1
+/sfgame rule set breakthroughAttacker red
+/sfgame rule set breakthroughDefender blue
 
 /sfgame sector add first
 /sfgame pos1
@@ -493,9 +507,10 @@ TDM 与占点默认包含：
 ### 模式与 sector 指令
 
 ```text
-/sfgame rule breakthrough variant <normal|captain>
-/sfgame rule breakthrough legs <1|2>
-/sfgame rule breakthrough roles <进攻阵营> <防守阵营>
+/sfgame rule set breakthroughVariant <normal|captain>
+/sfgame rule set breakthroughLegs <1|2>
+/sfgame rule set breakthroughAttacker <red|blue|yellow|green>
+/sfgame rule set breakthroughDefender <red|blue|yellow|green>
 /sfgame rule breakthrough status
 
 /sfgame sector add <sectorID>
@@ -508,20 +523,20 @@ TDM 与占点默认包含：
 
 `legs` 表示整场比赛进行几次完整的攻防赛段，不是 sector 数量：
 
-- `/sfgame rule breakthrough legs 1`：只进行一次攻防。`roles` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜，任一 sector 超时或进攻票数归零时防守方获胜。比赛结束后不会交换攻守。
-- `/sfgame rule breakthrough legs 2`：双方各进攻一次。第一赛段结束后自动交换攻守并从第一个 sector 重新开始；第二赛段结束后比较双方推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
+- `breakthroughLegs=1`：只进行一次攻防。`breakthroughAttacker` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜，任一 sector 超时或进攻票数归零时防守方获胜。比赛结束后不会交换攻守。
+- `breakthroughLegs=2`：双方各进攻一次。第一赛段结束后自动交换攻守并从第一个 sector 重新开始；第二赛段结束后比较双方推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
 
-例如 `roles red blue` 配合 `legs 1` 表示整局固定由红队进攻、蓝队防守；配合 `legs 2` 则第一赛段红攻蓝守，第二赛段蓝攻红守。
+例如 `breakthroughAttacker=red`、`breakthroughDefender=blue` 配合 `breakthroughLegs=1` 表示整局固定由红队进攻、蓝队防守；配合 `breakthroughLegs=2` 则第一赛段红攻蓝守，第二赛段蓝攻红守。
 
-`roles` 中可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。sector 的数量由 `/sfgame sector add` 决定，与 `legs` 无关。
+攻守规则可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。sector 的数量由 `/sfgame sector add` 决定，与 `breakthroughLegs` 无关。
 
 突破模式参数速查：
 
 | 参数 | 可选值/范围 | 说明 |
 | --- | --- | --- |
-| `variant` | `normal` / `captain` | `normal` 没有队长选举；`captain` 只为当前进攻方选举队长，防守方不选举。 |
-| `legs` | `1` / `2` | `1` 只进行指定攻守方向；`2` 第一赛段结束后交换攻守，各进行一次完整进攻。 |
-| `roles` | 两个不同阵营 | 第一个参数是初始进攻方，第二个是初始防守方；双赛段会自动互换。 |
+| `breakthroughVariant` | `normal` / `captain` | `normal` 没有队长选举；`captain` 只为当前进攻方选举队长，防守方不选举。 |
+| `breakthroughLegs` | `1` / `2` | `1` 只进行指定攻守方向；`2` 第一赛段结束后交换攻守，各进行一次完整进攻。 |
+| `breakthroughAttacker` / `breakthroughDefender` | 两个不同阵营 | 设置第一赛段的初始攻守；双赛段会自动互换。 |
 | `<sectorID>` | 资源式 ID | 一个有序攻防阶段，最多 16 个；`sector set order` 的序号决定基础顺序。 |
 | `<pointID>` | 资源式 ID | sector 内的占领点；同一 sector 内不得重叠，不同 sector 可以复用区域。 |
 | `attacker` / `defender` | 角色关键字 | sector 出生点按角色保存，不直接写阵营；双赛段换边时角色坐标自动换用。 |
@@ -603,6 +618,10 @@ TDM 与占点默认包含：
 
 ```text
 /sfgame rule set attackerTickets <1-10000>
+/sfgame rule set breakthroughVariant <normal|captain>
+/sfgame rule set breakthroughLegs <1|2>
+/sfgame rule set breakthroughAttacker <阵营>
+/sfgame rule set breakthroughDefender <阵营>
 /sfgame rule set timeLimitSeconds <秒>
 /sfgame rule set sectorTransitionSeconds <秒>
 /sfgame rule set captureTimeSeconds <秒>
@@ -621,7 +640,7 @@ TDM 与占点默认包含：
 
 ### 队长变体用法
 
-执行 `/sfgame rule breakthrough variant captain` 启用队长变体。只有当前进攻方选举队长，防守方不选举队长、没有旗帜、也不使用队长职业。
+执行 `/sfgame rule set breakthroughVariant captain` 启用队长变体。只有当前进攻方选举队长，防守方不选举队长、没有旗帜、也不使用队长职业。
 
 - `/sfgame start` 后先进入默认 15 秒投票阶段，进攻玩家会自动打开投票菜单。
 - 玩家可以投给任意在线进攻队友、自投或弃权；未投票按弃权处理。
@@ -656,25 +675,26 @@ TDM 与占点默认包含：
 ### 模式与队伍
 
 ```text
-/sfgame rule ctf variant <classic|assault|territory>
-/sfgame rule ctf roles <进攻阵营> <防守阵营>
-/sfgame rule ctf carrier <normal|movement_limited|no_weapons>
+/sfgame rule set ctfVariant <classic|assault|territory>
+/sfgame rule set ctfAttacker <red|blue|yellow|green>
+/sfgame rule set ctfDefender <red|blue|yellow|green>
+/sfgame rule set ctfCarrierRestriction <normal|movement_limited|no_weapons>
 /sfgame rule ctf status
 ```
 
-`classic` 和 `territory` 支持当前地图启用的 2～4 个阵营；`assault` 必须恰好启用两个阵营，并用 `roles` 指定进攻方与防守方。`normal` 允许完整装备，`movement_limited` 禁止冲刺，`no_weapons` 禁止枪械和近战攻击但保留投掷物。
+`classic` 和 `territory` 支持当前地图启用的 2～4 个阵营；`assault` 必须恰好启用两个阵营，并用 `ctfAttacker` 与 `ctfDefender` 指定攻守。`normal` 允许完整装备，`movement_limited` 禁止冲刺，`no_weapons` 禁止枪械和近战攻击但保留投掷物。
 
 CTF 模式参数说明：
 
 | 参数 | 可选值/范围 | 说明 |
 | --- | --- | --- |
-| `variant classic` | 2～4 个启用阵营 | 每队都有家旗；夺取敌旗并带回己方交旗区域得分。己方家旗不在旗座时不能交旗得分。 |
-| `variant assault` | 恰好 2 个阵营 | 只允许 `roles` 指定的进攻方夺取防守方目标旗；防守方不能得分，进攻票归零时防守方获胜。 |
-| `variant territory` | 2～4 个启用阵营 | 先按占点规则解锁前线旗，再把旗带到己方 depot；原归属队伍可回收并插回原点。 |
-| `roles <进攻> <防守>` | 两个不同阵营 | 只在 assault 中使用；classic/territory 不需要设置。 |
-| `carrier normal` | — | 持旗者可正常使用职业装备、武器和冲刺。 |
-| `carrier movement_limited` | — | 持旗者不能冲刺及使用特殊移动，但仍可使用武器。 |
-| `carrier no_weapons` | — | 持旗者禁止 TACZ 枪械和近战攻击，只保留投掷物（待对应 TACZ 枪包提供后启用）。 |
+| `ctfVariant=classic` | 2～4 个启用阵营 | 每队都有家旗；夺取敌旗并带回己方交旗区域得分。己方家旗不在旗座时不能交旗得分。 |
+| `ctfVariant=assault` | 恰好 2 个阵营 | 只允许规则指定的进攻方夺取防守方目标旗；防守方不能得分，进攻票归零时防守方获胜。 |
+| `ctfVariant=territory` | 2～4 个启用阵营 | 先按占点规则解锁前线旗，再把旗带到己方 depot；原归属队伍可回收并插回原点。 |
+| `ctfAttacker` / `ctfDefender` | 两个不同阵营 | 只在 assault 中使用；classic/territory 不读取攻守方规则。 |
+| `ctfCarrierRestriction=normal` | — | 持旗者可正常使用职业装备、武器和冲刺。 |
+| `ctfCarrierRestriction=movement_limited` | — | 持旗者不能冲刺及使用特殊移动，但仍可使用武器。 |
+| `ctfCarrierRestriction=no_weapons` | — | 持旗者禁止 TACZ 枪械和近战攻击，只保留投掷物（待对应 TACZ 枪包提供后启用）。 |
 | `<队伍>` | `red` / `blue` / `yellow` / `green` | 家旗配置使用的 SFGame 阵营；该阵营必须是当前地图启用阵营。 |
 | `<旗帜ID>` | 字母、数字、下划线 | 前线旗的唯一 ID；允许单个字母或单个数字。 |
 | `<半径>` | 1～256 | square 家旗交旗区或前线旗占点区半径。 |

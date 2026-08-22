@@ -71,22 +71,41 @@ public final class CaptureTheFlagMapConfig {
     }
 
     public List<TeamSide> teams(List<TeamSide> spawnedTeams) {
-        if (variant == CtfVariant.ASSAULT) return List.of(attacker, defender);
+        return teams(spawnedTeams, variant, attacker, defender);
+    }
+
+    public List<TeamSide> teams(List<TeamSide> spawnedTeams, CtfVariant selectedVariant,
+                                TeamSide selectedAttacker, TeamSide selectedDefender) {
+        if (selectedVariant == CtfVariant.ASSAULT) return List.of(selectedAttacker, selectedDefender);
         return spawnedTeams.stream().filter(side -> side != TeamSide.NONE).toList();
     }
 
     public List<String> validate(List<TeamSide> spawnedTeams) {
+        return validate(spawnedTeams, variant, attacker, defender);
+    }
+
+    /** Base map topology independent of the rule-selected CTF variant. */
+    public boolean topologyConfigured(List<TeamSide> spawnedTeams) {
+        List<TeamSide> enabled = spawnedTeams.stream().filter(side -> side != TeamSide.NONE).toList();
+        return enabled.size() >= 2 && enabled.size() <= 4
+                && enabled.stream().allMatch(side -> homes.containsKey(side) && homes.get(side).configured());
+    }
+
+    public List<String> validate(List<TeamSide> spawnedTeams, CtfVariant selectedVariant,
+                                 TeamSide selectedAttacker, TeamSide selectedDefender) {
         List<String> errors = new ArrayList<>();
-        List<TeamSide> enabled = teams(spawnedTeams);
-        if (variant == CtfVariant.ASSAULT) {
-            if (attacker == TeamSide.NONE || defender == TeamSide.NONE || attacker == defender) errors.add("Assault needs different attacker and defender teams");
+        List<TeamSide> enabled = teams(spawnedTeams, selectedVariant, selectedAttacker, selectedDefender);
+        if (selectedVariant == CtfVariant.ASSAULT) {
+            if (selectedAttacker == TeamSide.NONE || selectedDefender == TeamSide.NONE || selectedAttacker == selectedDefender) errors.add("Assault needs different attacker and defender teams");
             if (spawnedTeams.stream().filter(side -> side != TeamSide.NONE).count() != 2) errors.add("Assault CTF requires exactly two spawned teams");
+            if (!spawnedTeams.contains(selectedAttacker)) errors.add("Assault attacker needs a configured spawn");
+            if (!spawnedTeams.contains(selectedDefender)) errors.add("Assault defender needs a configured spawn");
         } else if (enabled.size() < 2 || enabled.size() > 4) errors.add("CTF needs between two and four enabled teams");
         for (TeamSide side : enabled) {
             CtfHomeFlagDefinition home = homes.get(side);
             if (home == null || !home.configured()) errors.add("Missing home flag, capture region or depot for " + side.id());
         }
-        if (variant == CtfVariant.TERRITORY) {
+        if (selectedVariant == CtfVariant.TERRITORY) {
             if (forwardFlags.isEmpty()) errors.add("Territory CTF needs at least one forward flag");
             for (CtfForwardFlagDefinition flag : forwardFlags) if (!enabled.contains(flag.owner())) {
                 errors.add("Forward flag " + flag.id() + " belongs to a disabled team");

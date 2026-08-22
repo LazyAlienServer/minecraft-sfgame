@@ -220,9 +220,11 @@ public final class SFGameAdminScreen extends Screen {
                 ruleControls.add(new RuleControl(rule, rowY, null, toggle, null));
             } else if (rule.type() == AdminRuleCatalog.ValueType.ENUM) {
                 String current = rule.value();
-                String next = "allowlist".equals(current) ? "full" : "allowlist";
+                List<String> values = AdminRuleCatalog.enumValues(rule.key());
+                int currentIndex = Math.max(0, values.indexOf(current));
+                String next = values.isEmpty() ? current : values.get((currentIndex + 1) % values.size());
                 SquareButton selector = new SquareButton(controlX, rowY + 8, 192, 22,
-                        Component.translatable("sfgame.admin.snapshot_mode." + current), false,
+                        enumLabel(rule.key(), current), false,
                         button -> setRule(snapshot, rule, next));
                 selector.clipTo(panelLeft, contentTop, panelRight, contentBottom);
                 selector.active = enabled;
@@ -413,7 +415,8 @@ public final class SFGameAdminScreen extends Screen {
         graphics.drawString(font, label, panelLeft + 16, y + 8, TEXT, false);
         String range = switch (control.rule.type()) {
             case BOOLEAN -> control.rule.key();
-            case ENUM -> control.rule.key() + "  [allowlist|full]";
+            case ENUM -> control.rule.key() + "  ["
+                    + String.join("|", AdminRuleCatalog.enumValues(control.rule.key())) + "]";
             case INTEGER, DECIMAL -> control.rule.key() + "  [" + compact(control.rule.minimum())
                     + ".." + compact(control.rule.maximum()) + "]";
         };
@@ -422,6 +425,14 @@ public final class SFGameAdminScreen extends Screen {
                 ? "sfgame.admin.badge.hot" : "sfgame.admin.badge.cold");
         int badgeX = panelRight - 266;
         graphics.drawString(font, badge, badgeX, y + 14, control.rule.hotReload() ? HOT : COLD, false);
+    }
+
+    private static Component enumLabel(String key, String value) {
+        String translationKey = "mapSnapshotMode".equals(key)
+                ? "sfgame.admin.snapshot_mode." + value
+                : "sfgame.admin.enum." + key + "." + value;
+        Component translated = Component.translatable(translationKey);
+        return translated.getString().equals(translationKey) ? Component.literal(value) : translated;
     }
 
     private void renderMapScrollHints(GuiGraphics graphics) {

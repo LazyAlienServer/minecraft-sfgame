@@ -271,7 +271,7 @@ public final class SFGameSavedData extends SavedData {
         int minimumTeams = devMode ? 1 : 2;
         if (GameModeRegistry.DOMINATION.equals(modeId)) return map.enabledTeams().size() >= minimumTeams && map.domination().configured();
         if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) return map.breakthrough().configured();
-        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) return map.captureTheFlag().validate(map.enabledTeams()).isEmpty();
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) return map.captureTheFlag().topologyConfigured(map.enabledTeams());
         return map.enabledTeams().size() >= minimumTeams;
     }
 

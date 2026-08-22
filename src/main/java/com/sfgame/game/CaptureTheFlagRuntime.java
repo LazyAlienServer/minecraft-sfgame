@@ -53,10 +53,15 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     private MinecraftServer server;
     private ArenaMap activeMap;
     private int attackerTickets;
+    private CtfVariant variant = CtfVariant.CLASSIC;
+    private CarrierRestriction restriction = CarrierRestriction.NORMAL;
+    private TeamSide attacker = TeamSide.RED;
+    private TeamSide defender = TeamSide.BLUE;
 
     @Override
-    public List<String> validate(MinecraftServer server, ArenaMap map) {
-        List<String> errors = new ArrayList<>(map.captureTheFlag().validate(map.enabledTeams()));
+    public List<String> validate(MinecraftServer server, ArenaMap map, MatchRules rules) {
+        List<String> errors = new ArrayList<>(map.captureTheFlag().validate(map.enabledTeams(), rules.ctfVariant(),
+                rules.ctfAttacker(), rules.ctfDefender()));
         CaptureTheFlagMapConfig config = map.captureTheFlag();
         for (CtfHomeFlagDefinition home : config.homes()) {
             checkPosition(server, home.flagPosition(), "Home flag " + home.team().id(), errors);
@@ -74,9 +79,13 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     public void start(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
         stop();
         this.server = server; this.activeMap = map;
+        this.variant = rules.ctfVariant();
+        this.restriction = rules.ctfCarrierRestriction();
+        this.attacker = rules.ctfAttacker();
+        this.defender = rules.ctfDefender();
         removeOrphanedDisplays(server);
         CaptureTheFlagMapConfig config = map.captureTheFlag();
-        for (TeamSide side : config.teams(map.enabledTeams())) {
+        for (TeamSide side : config.teams(map.enabledTeams(), variant, attacker, defender)) {
             CtfHomeFlagDefinition home = config.homeOptional(side).orElse(null);
             if (home == null || home.flagPosition() == null) continue;
             flags.put(homeKey(side), FlagState.home(home));
@@ -86,7 +95,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         attackerTickets = rules.attackerTickets();
         for (FlagState state : flags.values()) {
             state.reset();
-            if (state.home && config.variant() != CtfVariant.TERRITORY) state.unlocked = true;
+            if (state.home && variant != CtfVariant.TERRITORY) state.unlocked = true;
         }
         refreshDisplays(manager, map);
         refreshBossBars(manager, map, rules);
@@ -96,17 +105,16 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     @Override
     public ModeTickResult tick(MinecraftServer server, MatchManager manager, ArenaMap map, MatchRules rules) {
         this.server = server; this.activeMap = map;
-        CaptureTheFlagMapConfig config = map.captureTheFlag();
-        if (config.variant() == CtfVariant.TERRITORY) tickTerritory(manager, map, rules);
+        if (variant == CtfVariant.TERRITORY) tickTerritory(manager, map, rules);
         maintainCarriers(manager);
         tickDropped(manager, rules);
         handleInteractions(manager, map, rules);
-        applyCarrierRestrictions(manager, config.carrierRestriction());
+        applyCarrierRestrictions(manager, restriction);
         refreshDisplays(manager, map);
         refreshBossBars(manager, map, rules);
 
-        if (config.variant() == CtfVariant.ASSAULT && attackerTickets <= 0) {
-            return ModeTickResult.finish(config.defender());
+        if (variant == CtfVariant.ASSAULT && attackerTickets <= 0) {
+            return ModeTickResult.finish(defender);
         }
         for (TeamSide side : manager.savedData().enabledTeams()) {
             if (manager.score(side) >= rules.scoreLimit()) return ModeTickResult.finish(side);
@@ -126,8 +134,9 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
 
     @Override
     public void onPlayerDeath(ServerPlayer victim, TeamSide side, MatchManager manager) {
-        if (activeMap != null && activeMap.captureTheFlag().variant() == CtfVariant.ASSAULT
-                && side == activeMap.captureTheFlag().attacker()) attackerTickets = Math.max(0, attackerTickets - 1);
+        if (activeMap != null && variant == CtfVariant.ASSAULT && side == attacker) {
+            attackerTickets = Math.max(0, attackerTickets - 1);
+        }
         dropCarriedFlag(victim, manager);
     }
 
@@ -150,7 +159,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         if ("attackerTickets".equals(key)) attackerTickets = rules.attackerTickets();
     }
     public CarrierRestriction carrierRestriction() {
-        return activeMap == null ? CarrierRestriction.NORMAL : activeMap.captureTheFlag().carrierRestriction();
+        return activeMap == null ? CarrierRestriction.NORMAL : restriction;
     }
     public boolean isCarrier(UUID playerId) {
         return flags.values().stream().anyMatch(flag -> flag.location == Location.CARRIED && playerId.equals(flag.carrier));
@@ -176,6 +185,8 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         displays.values().forEach(ArmorStand::discard); displays.clear();
         bossBars.values().forEach(ServerBossEvent::removeAllPlayers); bossBars.clear();
         flags.clear(); homeCapture.clear(); server = null; activeMap = null; attackerTickets = 0;
+        variant = CtfVariant.CLASSIC; restriction = CarrierRestriction.NORMAL;
+        attacker = TeamSide.RED; defender = TeamSide.BLUE;
     }
 
     private static void removeOrphanedDisplays(MinecraftServer server) {
@@ -277,7 +288,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
                     if (isCarrier(player.getUUID())) continue;
                     if (!nearFlag(flag, player)) continue;
                     TeamSide side = manager.teams().sideOf(player, manager.savedData());
-                    if (side == TeamSide.NONE || !allowedToInteract(flag, side, map.captureTheFlag())) continue;
+                    if (side == TeamSide.NONE || !allowedToInteract(flag, side)) continue;
                     if (flag.location == Location.DROPPED && side == flag.owner) {
                         resetFlag(flag); announce(manager, Component.translatable("sfgame.ctf.recovered", displayId(flag.key)));
                         continue;
@@ -330,10 +341,10 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         }
     }
 
-    private boolean allowedToInteract(FlagState flag, TeamSide side, CaptureTheFlagMapConfig config) {
-        if (config.variant() == CtfVariant.ASSAULT) {
-            if (flag.owner != config.defender() && flag.home) return false;
-            if (side != config.attacker() && flag.location == Location.STAND) return false;
+    private boolean allowedToInteract(FlagState flag, TeamSide side) {
+        if (variant == CtfVariant.ASSAULT) {
+            if (flag.owner != defender && flag.home) return false;
+            if (side != attacker && flag.location == Location.STAND) return false;
         }
         if (flag.forward != null && flag.location == Location.STAND && side == flag.owner) return false;
         if (flag.location == Location.DEPOT) return side == flag.owner;
@@ -360,8 +371,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         clearCarrierAppearance(flag);
         flag.location = Location.STAND; flag.carrier = null; flag.depotTeam = TeamSide.NONE; flag.droppedPosition = null;
         flag.droppedDimension = null; flag.droppedTicks = 0;
-        flag.unlocked = flag.home && activeMap != null
-                && activeMap.captureTheFlag().variant() != CtfVariant.TERRITORY;
+        flag.unlocked = flag.home && activeMap != null && variant != CtfVariant.TERRITORY;
         if (flag.pointState != null) flag.pointState.reset(flag.owner);
         if (flag.home && homeCapture.containsKey(flag.owner)) homeCapture.get(flag.owner).reset();
     }
@@ -425,7 +435,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     }
 
     private void refreshBossBars(MatchManager manager, ArenaMap map, MatchRules rules) {
-        if (map.captureTheFlag().variant() != CtfVariant.TERRITORY) {
+        if (variant != CtfVariant.TERRITORY) {
             bossBars.values().forEach(ServerBossEvent::removeAllPlayers); bossBars.clear(); return;
         }
         for (FlagState flag : flags.values()) {

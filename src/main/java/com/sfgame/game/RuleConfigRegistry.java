@@ -9,6 +9,10 @@ import com.google.gson.JsonParser;
 import com.sfgame.SFGame;
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.MapSnapshotMode;
+import com.sfgame.data.BreakthroughVariant;
+import com.sfgame.data.CarrierRestriction;
+import com.sfgame.data.CtfVariant;
+import com.sfgame.data.PointActivationStrategy;
 import com.sfgame.data.SFGameId;
 import com.sfgame.data.SFGameSavedData;
 
@@ -42,14 +46,18 @@ public final class RuleConfigRegistry {
             "mapRestoreMaxPartitionsPerTick");
     private static final Set<String> CAPTURE = Set.of("captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier");
-    private static final Set<String> DOMINATION = Set.of("scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds");
-    private static final Set<String> BREAKTHROUGH = Set.of("attackerTickets", "sectorTransitionSeconds",
+    private static final Set<String> DOMINATION = Set.of("dominationStrategy", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds");
+    private static final Set<String> BREAKTHROUGH = Set.of("breakthroughVariant", "breakthroughLegs",
+            "breakthroughAttacker", "breakthroughDefender", "attackerTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
             "attackerCaptainCaptureWeight", "defenderCaptureWeight");
-    private static final Set<String> CTF = Set.of("attackerTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds");
+    private static final Set<String> CTF = Set.of("ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction",
+            "attackerTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds");
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
             "mapBlockBreaking", "mapRestoreAdaptiveThrottling");
-    private static final Set<String> STRING_RULES = Set.of("mapSnapshotMode");
+    private static final Set<String> STRING_RULES = Set.of("mapSnapshotMode", "dominationStrategy",
+            "breakthroughVariant", "breakthroughAttacker", "breakthroughDefender",
+            "ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction");
 
     private Path directory;
     private volatile Map<String, Profile> profiles = Map.of();
@@ -320,6 +328,12 @@ public final class RuleConfigRegistry {
                     case "scoreIntervalSeconds" -> rules.scoreIntervalSeconds(value.getAsInt());
                     case "scorePerPoint" -> rules.scorePerPoint(value.getAsInt());
                     case "syncHoldSeconds" -> rules.syncHoldSeconds(value.getAsInt());
+                    case "dominationStrategy" -> rules.dominationStrategy(PointActivationStrategy.parse(value.getAsString()));
+                    case "breakthroughVariant" -> rules.breakthroughVariant(BreakthroughVariant.valueOf(
+                            value.getAsString().toUpperCase(Locale.ROOT)));
+                    case "breakthroughLegs" -> rules.breakthroughLegs(value.getAsInt());
+                    case "breakthroughAttacker" -> rules.breakthroughAttacker(parseTeam(value.getAsString()));
+                    case "breakthroughDefender" -> rules.breakthroughDefender(parseTeam(value.getAsString()));
                     case "attackerTickets" -> rules.attackerTickets(value.getAsInt());
                     case "sectorTransitionSeconds" -> rules.sectorTransitionSeconds(value.getAsInt());
                     case "captainVoteSeconds" -> rules.captainVoteSeconds(value.getAsInt());
@@ -335,6 +349,10 @@ public final class RuleConfigRegistry {
                     case "defenderCaptureWeight" -> rules.defenderCaptureWeight(value.getAsDouble());
                     case "ctfFlagReturnSeconds" -> rules.ctfFlagReturnSeconds(value.getAsInt());
                     case "ctfHomeCaptureTimeSeconds" -> rules.ctfHomeCaptureTimeSeconds(value.getAsInt());
+                    case "ctfVariant" -> rules.ctfVariant(parseCtfVariant(value.getAsString()));
+                    case "ctfAttacker" -> rules.ctfAttacker(parseTeam(value.getAsString()));
+                    case "ctfDefender" -> rules.ctfDefender(parseTeam(value.getAsString()));
+                    case "ctfCarrierRestriction" -> rules.ctfCarrierRestriction(parseCarrierRestriction(value.getAsString()));
                     default -> problems.add(label + ": unsupported rule " + key);
                 }
             } catch (RuntimeException exception) {
@@ -381,11 +399,16 @@ public final class RuleConfigRegistry {
             object.addProperty("captureMaxMultiplier", r.captureMaxMultiplier());
         }
         if (GameModeRegistry.DOMINATION.equals(modeId)) {
+            object.addProperty("dominationStrategy", r.dominationStrategy().name().toLowerCase(Locale.ROOT));
             object.addProperty("scoreIntervalSeconds", r.scoreIntervalSeconds());
             object.addProperty("scorePerPoint", r.scorePerPoint());
             object.addProperty("syncHoldSeconds", r.syncHoldSeconds());
         }
         if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) {
+            object.addProperty("breakthroughVariant", r.breakthroughVariant().name().toLowerCase(Locale.ROOT));
+            object.addProperty("breakthroughLegs", r.breakthroughLegs());
+            object.addProperty("breakthroughAttacker", r.breakthroughAttacker().id());
+            object.addProperty("breakthroughDefender", r.breakthroughDefender().id());
             object.addProperty("attackerTickets", r.attackerTickets());
             object.addProperty("sectorTransitionSeconds", r.sectorTransitionSeconds());
             object.addProperty("captainVoteSeconds", r.captainVoteSeconds());
@@ -395,6 +418,10 @@ public final class RuleConfigRegistry {
             object.addProperty("defenderCaptureWeight", r.defenderCaptureWeight());
         }
         if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) {
+            object.addProperty("ctfVariant", r.ctfVariant().id());
+            object.addProperty("ctfAttacker", r.ctfAttacker().id());
+            object.addProperty("ctfDefender", r.ctfDefender().id());
+            object.addProperty("ctfCarrierRestriction", r.ctfCarrierRestriction().id());
             object.addProperty("attackerTickets", r.attackerTickets());
             object.addProperty("ctfFlagReturnSeconds", r.ctfFlagReturnSeconds());
             object.addProperty("ctfHomeCaptureTimeSeconds", r.ctfHomeCaptureTimeSeconds());
@@ -453,6 +480,20 @@ public final class RuleConfigRegistry {
 
     private static String message(Throwable throwable) {
         return throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();
+    }
+
+    private static TeamSide parseTeam(String value) {
+        TeamSide side = TeamSide.fromId(value);
+        if (side == TeamSide.NONE) throw new IllegalArgumentException("unknown team");
+        return side;
+    }
+
+    private static CtfVariant parseCtfVariant(String value) {
+        return CtfVariant.valueOf(value.trim().toUpperCase(Locale.ROOT));
+    }
+
+    private static CarrierRestriction parseCarrierRestriction(String value) {
+        return CarrierRestriction.valueOf(value.trim().toUpperCase(Locale.ROOT));
     }
 
     private record Scope(String id, String parent, JsonObject rules) { }

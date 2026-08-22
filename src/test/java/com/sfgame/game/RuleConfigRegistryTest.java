@@ -2,6 +2,9 @@ package com.sfgame.game;
 
 import com.sfgame.data.SFGameSavedData;
 import com.sfgame.data.MapSnapshotMode;
+import com.sfgame.data.BreakthroughVariant;
+import com.sfgame.data.CarrierRestriction;
+import com.sfgame.data.PointActivationStrategy;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -110,5 +113,33 @@ final class RuleConfigRegistryTest {
                 data.rules(GameModeRegistry.TEAM_DEATHMATCH)).mapSnapshotMode());
         assertThrows(IllegalArgumentException.class, () -> registry.setString(
                 GameModeRegistry.TEAM_DEATHMATCH, "child", "mapSnapshotMode", "unknown"));
+    }
+
+    @Test
+    void modeOptionsArePerMapRulesAndSupportInheritance() {
+        SFGameSavedData data = new SFGameSavedData();
+        RuleConfigRegistry registry = new RuleConfigRegistry(directory);
+        assertTrue(registry.reload(data).isEmpty());
+
+        registry.setString(GameModeRegistry.DOMINATION, "sync_parent", "dominationStrategy", "sync");
+        registry.setParent(GameModeRegistry.DOMINATION, "child", "sync_parent");
+        assertEquals(PointActivationStrategy.SYNC, registry.rules(GameModeRegistry.DOMINATION, "child",
+                data.rules(GameModeRegistry.DOMINATION)).dominationStrategy());
+
+        registry.setString(GameModeRegistry.BREAKTHROUGH, "arena", "breakthroughVariant", "captain");
+        registry.setInt(GameModeRegistry.BREAKTHROUGH, "arena", "breakthroughLegs", 2);
+        registry.setString(GameModeRegistry.BREAKTHROUGH, "arena", "breakthroughAttacker", "yellow");
+        assertEquals(BreakthroughVariant.CAPTAIN, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+                data.rules(GameModeRegistry.BREAKTHROUGH)).breakthroughVariant());
+        assertEquals(2, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+                data.rules(GameModeRegistry.BREAKTHROUGH)).breakthroughLegs());
+        assertEquals(TeamSide.YELLOW, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+                data.rules(GameModeRegistry.BREAKTHROUGH)).breakthroughAttacker());
+
+        registry.setString(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "ctfCarrierRestriction", "no_weapons");
+        assertEquals(CarrierRestriction.NO_WEAPONS, registry.rules(GameModeRegistry.CAPTURE_THE_FLAG, "arena",
+                data.rules(GameModeRegistry.CAPTURE_THE_FLAG)).ctfCarrierRestriction());
+        assertThrows(IllegalArgumentException.class, () -> registry.setString(
+                GameModeRegistry.TEAM_DEATHMATCH, "arena", "ctfVariant", "classic"));
     }
 }

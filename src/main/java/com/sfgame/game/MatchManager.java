@@ -301,11 +301,11 @@ public final class MatchManager {
         boolean devMode = data.devMode();
         if (!data.isArenaConfigured()) errors.add("Lobby and spawn points for the selected map must be set");
         if (!teams.bindingsValid(server, data)) errors.add("All four SFGame sides must bind different existing vanilla teams");
-        boolean captainMode = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.activeMap() != null
-                && data.activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN;
+        boolean captainMode = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())
+                && rules().breakthroughVariant() == BreakthroughVariant.CAPTAIN;
         List<TeamSide> enabledTeams = data.enabledTeams();
         errors.addAll(loadoutService.validate(classRegistry, data.selectedMode(), data.selectedMap(), enabledTeams, captainMode));
-        if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap()));
+        if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap(), rules()));
         if (rules().mapBlockBreaking() && data.activeMap() != null) {
             if (data.activeMap().build().region() == null) errors.add("Map build box must be set while mapBlockBreaking is enabled");
             else if (!MapBuildSnapshotService.exists(server, data.selectedMode(), data.activeMap(),
@@ -450,7 +450,7 @@ public final class MatchManager {
         boolean attackerElectionLocked = phase == MatchPhase.PREPARING
                 && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
                 && data().activeMap() != null
-                && data().activeMap().breakthrough().variant() == BreakthroughVariant.CAPTAIN
+                && rules().breakthroughVariant() == BreakthroughVariant.CAPTAIN
                 && breakthroughRuntime.electionSeconds() > 0
                 && teams.sideOf(player, data()) == breakthroughRuntime.attacker();
         if (state.participating() || attackerElectionLocked) {
@@ -718,9 +718,11 @@ public final class MatchManager {
 
     public void setRule(String key, String value) {
         ensureRuleChangeAllowed(key);
-        if (!"mapSnapshotMode".equals(key)) throw new IllegalArgumentException("Unknown enum rule " + key);
-        MapSnapshotMode mode = MapSnapshotMode.parse(value);
-        ruleConfigRegistry.setString(data().selectedMode(), data().selectedMap(), key, mode.id());
+        AdminRuleCatalog.Definition definition = AdminRuleCatalog.find(data().selectedMode(), key)
+                .filter(candidate -> candidate.type() == AdminRuleCatalog.ValueType.ENUM)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown enum rule " + key));
+        String normalized = (String) AdminRuleCatalog.parse(definition, value);
+        ruleConfigRegistry.setString(data().selectedMode(), data().selectedMap(), key, normalized);
         activeRuntime.onRuleChanged(key, rules());
         syncAll();
     }
@@ -781,9 +783,9 @@ public final class MatchManager {
                         c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo())).toList();
         boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode()) && data().activeMap() != null;
         TeamSide attackSide = breakthrough && (phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RUNNING)
-                ? breakthroughRuntime.attacker() : breakthrough ? data().activeMap().breakthrough().attacker() : TeamSide.NONE;
+                ? breakthroughRuntime.attacker() : breakthrough ? rules.breakthroughAttacker() : TeamSide.NONE;
         TeamSide defenseSide = breakthrough && (phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RUNNING)
-                ? breakthroughRuntime.defender() : breakthrough ? data().activeMap().breakthrough().defender() : TeamSide.NONE;
+                ? breakthroughRuntime.defender() : breakthrough ? rules.breakthroughDefender() : TeamSide.NONE;
         UUID captainId = breakthroughRuntime.captain();
         ServerPlayer captainPlayer = captainId == null || server == null ? null : server.getPlayerList().getPlayer(captainId);
         List<MatchSnapshot.CaptainCandidate> candidates = !breakthrough || breakthroughRuntime.electionSeconds() <= 0 || side != attackSide
@@ -793,8 +795,8 @@ public final class MatchManager {
         List<MatchSnapshot.RespawnOption> respawnOptions = breakthrough && state.awaitingRespawnSelection()
                 ? breakthroughRuntime.respawnOptions(viewer, this, data().activeMap()) : List.of();
         boolean ctf = GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode()) && data().activeMap() != null;
-        String ctfVariant = ctf ? data().activeMap().captureTheFlag().variant().id() : null;
-        String ctfRestriction = ctf ? data().activeMap().captureTheFlag().carrierRestriction().id() : null;
+        String ctfVariant = ctf ? rules.ctfVariant().id() : null;
+        String ctfRestriction = ctf ? rules.ctfCarrierRestriction().id() : null;
         List<MatchSnapshot.CtfFlagView> ctfFlags = ctf
                 ? captureTheFlagRuntime.flagViews(this).stream()
                 .map(flag -> new MatchSnapshot.CtfFlagView(flag.id(), flag.owner(), flag.state(), flag.carrier(), flag.unlocked(), flag.depotTeam()))
@@ -809,7 +811,7 @@ public final class MatchManager {
                 rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
                 countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(data().selectedMode(), classSide), state.pendingClass(data().selectedMode(), classSide),
                 state.participating(), state.queued(), classViews,
-                breakthrough ? data().activeMap().breakthrough().variant().name().toLowerCase(java.util.Locale.ROOT) : "",
+                breakthrough ? rules.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT) : "",
                 attackSide, defenseSide, breakthrough ? breakthroughRuntime.tickets() : 0,
                 breakthrough ? breakthroughRuntime.leg() : 0, breakthrough ? breakthroughRuntime.sectorNumber() : 0,
                 breakthrough ? breakthroughRuntime.sectorCount(data().activeMap()) : 0,
@@ -945,7 +947,7 @@ public final class MatchManager {
     }
 
     private void beginModePreparationOrCountdown() {
-        if (activeRuntime.needsPreparation(data().activeMap())) {
+        if (activeRuntime.needsPreparation(data().activeMap(), rules())) {
             phase = MatchPhase.PREPARING;
             modePreparationStarted = true;
             activeRuntime.prepare(server, this, data().activeMap(), rules());

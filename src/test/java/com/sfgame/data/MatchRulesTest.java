@@ -1,6 +1,7 @@
 package com.sfgame.data;
 
 import com.sfgame.game.GameModeRegistry;
+import com.sfgame.game.TeamSide;
 import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
@@ -87,6 +88,7 @@ final class MatchRulesTest {
         rules.captureDifferenceCoefficient(2.25);
         rules.captureUsePlayerDifference(false);
         rules.syncHoldSeconds(90);
+        rules.dominationStrategy(PointActivationStrategy.SYNC);
 
         MatchRules restored = new MatchRules(GameModeRegistry.DOMINATION);
         restored.load(rules.save());
@@ -94,6 +96,7 @@ final class MatchRulesTest {
         assertEquals(2.25, restored.captureDifferenceCoefficient());
         assertEquals(false, restored.captureUsePlayerDifference());
         assertEquals(90, restored.syncHoldSeconds());
+        assertEquals(PointActivationStrategy.SYNC, restored.dominationStrategy());
     }
 
     @Test
@@ -108,6 +111,10 @@ final class MatchRulesTest {
         rules.mapBlockBreaking(false);
         rules.attackerCaptainCaptureWeight(2.5);
         rules.defenderCaptureWeight(1.6);
+        rules.breakthroughVariant(BreakthroughVariant.CAPTAIN);
+        rules.breakthroughLegs(2);
+        rules.breakthroughAttacker(TeamSide.YELLOW);
+        rules.breakthroughDefender(TeamSide.GREEN);
 
         MatchRules restored = new MatchRules(GameModeRegistry.BREAKTHROUGH);
         restored.load(rules.save());
@@ -120,6 +127,10 @@ final class MatchRulesTest {
         assertEquals(false, restored.mapBlockBreaking());
         assertEquals(2.5, restored.attackerCaptainCaptureWeight());
         assertEquals(1.6, restored.defenderCaptureWeight());
+        assertEquals(BreakthroughVariant.CAPTAIN, restored.breakthroughVariant());
+        assertEquals(2, restored.breakthroughLegs());
+        assertEquals(TeamSide.YELLOW, restored.breakthroughAttacker());
+        assertEquals(TeamSide.GREEN, restored.breakthroughDefender());
     }
 
     @Test
@@ -129,9 +140,17 @@ final class MatchRulesTest {
         assertEquals(30, rules.ctfFlagReturnSeconds());
         rules.ctfFlagReturnSeconds(45);
         rules.ctfHomeCaptureTimeSeconds(20);
+        rules.ctfVariant(CtfVariant.ASSAULT);
+        rules.ctfAttacker(TeamSide.GREEN);
+        rules.ctfDefender(TeamSide.RED);
+        rules.ctfCarrierRestriction(CarrierRestriction.NO_WEAPONS);
         MatchRules restored = new MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
         restored.load(rules.save());
         assertEquals(45, restored.ctfFlagReturnSeconds());
         assertEquals(20, restored.ctfHomeCaptureTimeSeconds());
+        assertEquals(CtfVariant.ASSAULT, restored.ctfVariant());
+        assertEquals(TeamSide.GREEN, restored.ctfAttacker());
+        assertEquals(TeamSide.RED, restored.ctfDefender());
+        assertEquals(CarrierRestriction.NO_WEAPONS, restored.ctfCarrierRestriction());
     }
 }
