@@ -114,7 +114,10 @@ final class CapturePointMarkerService {
         tag.putInt("line_width", 1000);
         tag.putInt("background", 0xD0555555);
         tag.putByte("text_opacity", (byte) 0xFF);
-        tag.putBoolean("shadow", true);
+        // Text shadow offset is scaled together with the marker. At oblique
+        // viewing angles that enlarged offset looks like a second, malformed
+        // glyph, so capture-point labels deliberately render without it.
+        tag.putBoolean("shadow", false);
         tag.putBoolean("see_through", true);
         tag.putBoolean("default_background", false);
         tag.putString("alignment", "center");
