@@ -34,11 +34,12 @@ import java.util.Set;
  * Stores a map baseline as compressed 16x16 columns. Each column contains
  * independent 16-block-high restore partitions, so one server-tick step is
  * bounded while a tall arena does not create one file per vertical section.
- * Ordinary air is omitted from the structure payload and reconstructed by
- * clearing only cells that are absent from the saved partition.
+ * Full snapshots cover every partition. Allowlist snapshots are sparse and
+ * persist only partitions containing at least one matching baseline block.
+ * Ordinary air is omitted from the structure payload.
  */
 public final class MapBuildSnapshotService {
-    private static final int FORMAT = 4;
+    private static final int FORMAT = 5;
     private static final int PARTITION_SIZE = 16;
     private static final int RESTORE_FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_KNOWN_SHAPE
             | Block.UPDATE_SUPPRESS_DROPS;
@@ -91,11 +92,17 @@ public final class MapBuildSnapshotService {
                     CompoundTag templateTag = template.save(new CompoundTag());
                     if (snapshotMode == MapSnapshotMode.ALLOWLIST) {
                         templateTag = filterTemplateForAllowlist(templateTag, allowlist);
+                        // Allowlist snapshots are sparse. An empty partition
+                        // neither restores a baseline block nor needs to scan
+                        // its 4096 cells, so do not put it in the restore queue.
+                        if (!hasTemplateBlocks(templateTag)) continue;
                     }
                     part.put("Template", templateTag);
                     parts.add(part);
                     totalPartitions++;
                 }
+
+                if (snapshotMode == MapSnapshotMode.ALLOWLIST && parts.isEmpty()) continue;
 
                 String file = String.format("column_%07d.nbt", columnIndex++);
                 CompoundTag columnFile = new CompoundTag();
@@ -205,12 +212,16 @@ public final class MapBuildSnapshotService {
 
     private static int validateManifest(Path directory, Bounds bounds, CompoundTag manifest,
                                         ListTag columns) throws IOException {
+        MapSnapshotMode snapshotMode = MapSnapshotMode.byId(manifest.getString("SnapshotMode"));
+        boolean sparse = snapshotMode == MapSnapshotMode.ALLOWLIST;
         int expectedColumnsX = Mth.ceil((double) bounds.size().getX() / PARTITION_SIZE);
         int expectedColumnsZ = Mth.ceil((double) bounds.size().getZ() / PARTITION_SIZE);
         int expectedPartsPerColumn = Mth.ceil((double) bounds.size().getY() / PARTITION_SIZE);
         int expectedColumns = expectedColumnsX * expectedColumnsZ;
         int expectedTotal = expectedColumns * expectedPartsPerColumn;
-        if (columns.size() != expectedColumns || manifest.getInt("TotalPartitions") != expectedTotal) {
+        int manifestTotal = manifest.getInt("TotalPartitions");
+        if ((!sparse && (columns.size() != expectedColumns || manifestTotal != expectedTotal))
+                || (sparse && (columns.size() > expectedColumns || manifestTotal < 0))) {
             throw new IOException("Snapshot partition manifest is incomplete");
         }
 
@@ -237,18 +248,23 @@ public final class MapBuildSnapshotService {
             }
             int expectedSizeX = Math.min(PARTITION_SIZE, bounds.maxX() - x + 1);
             int expectedSizeZ = Math.min(PARTITION_SIZE, bounds.maxZ() - z + 1);
+            int partCount = column.getInt("PartCount");
             if (expectedSizeX <= 0 || expectedSizeZ <= 0 || column.getInt("SizeX") != expectedSizeX
                     || column.getInt("SizeZ") != expectedSizeZ
-                    || column.getInt("PartCount") != expectedPartsPerColumn) {
+                    || (!sparse && partCount != expectedPartsPerColumn)
+                    || (sparse && (partCount <= 0 || partCount > expectedPartsPerColumn))) {
                 throw new IOException("Snapshot column bounds do not match the build box");
             }
-            declaredTotal += column.getInt("PartCount");
+            declaredTotal += partCount;
         }
-        if (declaredTotal != expectedTotal) throw new IOException("Snapshot partition count is invalid");
-        return expectedTotal;
+        if (declaredTotal != manifestTotal || (!sparse && declaredTotal != expectedTotal)) {
+            throw new IOException("Snapshot partition count is invalid");
+        }
+        return declaredTotal;
     }
 
-    private static void validateColumn(CompoundTag fileTag, CompoundTag metadata, Bounds bounds) throws IOException {
+    private static void validateColumn(CompoundTag fileTag, CompoundTag metadata, Bounds bounds,
+                                       MapSnapshotMode snapshotMode) throws IOException {
         if (fileTag.getInt("Format") != FORMAT || fileTag.getInt("X") != metadata.getInt("X")
                 || fileTag.getInt("Z") != metadata.getInt("Z")
                 || fileTag.getInt("SizeX") != metadata.getInt("SizeX")
@@ -259,15 +275,28 @@ public final class MapBuildSnapshotService {
         if (parts.size() != metadata.getInt("PartCount")) {
             throw new IOException("Snapshot column has an invalid partition count");
         }
-        for (int i = 0; i < parts.size(); i++) validatePartitionMetadata(parts.getCompound(i), metadata, bounds, i);
+        Set<Integer> verticalOrigins = new HashSet<>();
+        for (int i = 0; i < parts.size(); i++) {
+            CompoundTag part = parts.getCompound(i);
+            validatePartitionMetadata(part, metadata, bounds);
+            if (!verticalOrigins.add(part.getInt("Y"))) {
+                throw new IOException("Snapshot column contains duplicate vertical partitions");
+            }
+            if (snapshotMode == MapSnapshotMode.ALLOWLIST
+                    && !hasTemplateBlocks(part.getCompound("Template"))) {
+                throw new IOException("Allowlist snapshot contains an empty partition; save it again");
+            }
+        }
     }
 
-    private static void validatePartitionMetadata(CompoundTag part, CompoundTag column, Bounds bounds,
-                                                  int verticalIndex) throws IOException {
-        int expectedY = bounds.origin().getY() + verticalIndex * PARTITION_SIZE;
+    private static void validatePartitionMetadata(CompoundTag part, CompoundTag column,
+                                                  Bounds bounds) throws IOException {
+        int expectedY = part.getInt("Y");
+        boolean alignedY = expectedY >= bounds.origin().getY() && expectedY <= bounds.maxY()
+                && (expectedY - bounds.origin().getY()) % PARTITION_SIZE == 0;
         int expectedSizeY = Math.min(PARTITION_SIZE, bounds.maxY() - expectedY + 1);
         if (part.getInt("X") != column.getInt("X") || part.getInt("Z") != column.getInt("Z")
-                || part.getInt("Y") != expectedY || part.getInt("SizeX") != column.getInt("SizeX")
+                || !alignedY || part.getInt("SizeX") != column.getInt("SizeX")
                 || part.getInt("SizeZ") != column.getInt("SizeZ") || part.getInt("SizeY") != expectedSizeY
                 || !part.contains("Template", Tag.TAG_COMPOUND)) {
             throw new IOException("Snapshot partition metadata is invalid");
@@ -341,6 +370,10 @@ public final class MapBuildSnapshotService {
         }
         filtered.put("blocks", kept);
         return filtered;
+    }
+
+    static boolean hasTemplateBlocks(CompoundTag template) {
+        return !template.getList("blocks", Tag.TAG_COMPOUND).isEmpty();
     }
 
     private static boolean[] occupiedCells(CompoundTag template, Vec3i size) throws IOException {
@@ -532,7 +565,7 @@ public final class MapBuildSnapshotService {
             CompoundTag metadata = columns.getCompound(nextColumn);
             Path path = resolveColumn(directory, metadata.getString("File"));
             CompoundTag fileTag = NbtIo.readCompressed(path.toFile());
-            validateColumn(fileTag, metadata, bounds);
+            validateColumn(fileTag, metadata, bounds, snapshotMode);
             currentParts = fileTag.getList("Parts", Tag.TAG_COMPOUND);
         }
 

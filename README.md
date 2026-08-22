@@ -731,7 +731,7 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 /sfgame rule build snapshot clear
 ```
 
-地图复原属于地图本身，不再属于 CTF，因此 TDM、占点、突破和夺旗都使用同一套配置。快照保存到世界 `data/sfgame/maps/<模式ID>/<地图ID>/`。系统会按 X/Z 方向自动拆成 16×16 的分区 NBT；大型地图不会构造单个超大结构 NBT。只有 `mapBlockBreaking=true` 时才会在开赛前自动恢复，结算和返回大厅期间不会再次恢复。
+地图复原属于地图本身，不再属于 CTF，因此 TDM、占点、突破和夺旗都使用同一套配置。快照保存到世界 `data/sfgame/maps/<模式ID>/<地图ID>/`。系统会按 X/Z 方向自动拆成 16×16 的分区 NBT；大型地图不会构造单个超大结构 NBT。`allowlist` 模式使用稀疏分区，只保存和排队还原实际包含白名单母版方块的分区；空分区不会产生文件、进度或等待时间。例如 500×500 地图中只有一个白名单方块时，快照通常只有一个分区。只有 `mapBlockBreaking=true` 时才会在开赛前自动恢复，结算和返回大厅期间不会再次恢复。
 
 将准星分别对准两个对角方块并执行 `/sfgame pos1` 与 `/sfgame pos2`，再执行 `rule build setbox`。`allow`/`disallow` 使用完整方块资源 ID（例如 `minecraft:white_wool`）。默认 `mapBlockBreaking=true`、`mapSnapshotMode=allowlist`、白名单为空，所以默认不会误伤地图；加入白名单后，该方块才可由玩家挖掘/放置，也可被原版爆炸、TACZ 枪械、卓越前线枪械或载具破坏。`snapshot save` 保存母版，`restore` 按当前快照模式恢复选区，`status` 查看状态，`clear` 删除母版。规则开启但未设置 build box 或未保存兼容母版时，`/sfgame start` 会拒绝开赛。
 
@@ -771,7 +771,7 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 
 `/sfgame rule build snapshot` 是地图“母版快照”命令组，本身不能单独执行，后面必须添加 `save`、`restore`、`status` 或 `clear`。母版快照记录比赛开始前地图应有的方块状态及方块实体数据，例如箱子内容；它不保存玩家、载具、掉落物或其他普通实体。实际保存范围由规则 `mapSnapshotMode` 决定：
 
-- `allowlist`（默认）：只保存和还原 build box 内白名单中的方块。还原时只清除选区内当前属于该白名单的方块，再写回快照；选区内其他地形方块和选区外所有方块都不会被修改。
+- `allowlist`（默认）：只保存和还原 build box 内白名单中的母版方块。系统只为实际含有这些方块的 16×16×16 区域创建稀疏分区；没有白名单方块的区域不会进入还原队列。还原时清除这些分区内当前属于该白名单的方块，再写回母版；选区内其他地形方块和选区外所有方块都不会被修改。
 - `full`：保存和还原 build box 内的全部方块，包含快照中的空气位置；手动还原时会把整个选区恢复到母版状态。
 
 设置命令为 `/sfgame rule set mapSnapshotMode <allowlist|full>`。这是按模式、地图保存且支持继承的下局规则，比赛期间不能修改。切换模式，或在 `allowlist` 模式下增删白名单后，已有快照会失效，必须重新执行 `snapshot save`。

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class MapBuildSnapshotServiceTest {
     @Test
@@ -27,6 +29,7 @@ final class MapBuildSnapshotServiceTest {
         ListTag kept = filtered.getList("blocks", CompoundTag.TAG_COMPOUND);
         assertEquals(1, kept.size());
         assertEquals(1, kept.getCompound(0).getInt("state"));
+        assertTrue(MapBuildSnapshotService.hasTemplateBlocks(filtered));
         assertEquals(2, template.getList("blocks", CompoundTag.TAG_COMPOUND).size());
     }
 
@@ -42,6 +45,7 @@ final class MapBuildSnapshotServiceTest {
 
         CompoundTag filtered = MapBuildSnapshotService.filterTemplateForAllowlist(template, Set.of());
         assertEquals(0, filtered.getList("blocks", CompoundTag.TAG_COMPOUND).size());
+        assertFalse(MapBuildSnapshotService.hasTemplateBlocks(filtered));
     }
 
     private static CompoundTag paletteEntry(String name) {
