@@ -7,6 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Pure-string tests for {@link ItemStrings#parse(String)}.  Stack-level
+ * behaviour of {@code stack}/{@code applyTag} needs bootstrapped registries
+ * and is covered by the server-side loadout/shop code paths plus
+ * {@code ./gradlew.bat test} compilation against mapped Minecraft classes.
+ */
 final class ItemStringsTest {
     @Test
     void splitsInlineNbtAndKeepsItsCase() {
@@ -35,5 +41,13 @@ final class ItemStringsTest {
         assertNull(ItemStrings.parse(null).id());
         assertNull(ItemStrings.parse("").id());
         assertNull(ItemStrings.parse("not an id").id());
+    }
+
+    @Test
+    void malformedSnbtStillYieldsTheResourceIdForStackValidation() {
+        ItemStrings.Parsed parsed = ItemStrings.parse("minecraft:diamond{Count:notanumber");
+        assertEquals("minecraft:diamond", parsed.id().toString());
+        assertEquals("{Count:notanumber", parsed.nbt());
+        assertTrue(parsed.hasNbt());
     }
 }
