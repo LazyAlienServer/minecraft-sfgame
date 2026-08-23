@@ -326,6 +326,8 @@ SFGame 自有 ID（地图、模式、sector、点位、职业及职业配置继�
 同一池中相同 ID 的职业对象会整体替换模式内置职业，不是逐字段合并；实际使用时应填写完整的职业字段。职业选择、`/sfgame class set` 和开赛校验都会按玩家当前地图与阵营读取对应池；如果玩家原先选的 ID 在新地图/队伍中不存在，会在下一次部署时自动回退到该池第一个有效职业。`teams.<阵营>` 支持 `parent` 和同样的 `classes`/`captainClasses` 字段，可用于在地图内继续组织队伍覆盖。
 TDM 与占点使用内置 `assault`、`sniper`；突破模式额外提供 `medic`、`tank`、`smg_assault` 及队长职业。CTF 默认使用 TDM 职业池。地图 `classes.json` 可以只填写需要替换的完整职业对象。
 
+物品选择器统一支持 `资源ID{SNBT}` 内联 NBT 写法，例如 `"tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}"` 可让图标直接显示指定枪械模型。JSON 中内部引号需要转义；NBT 键名区分大小写，资源 ID 部分会自动转为小写。
+
 职业 JSON 字段含义如下：
 
 | 字段 | 类型/示例 | 作用 |
@@ -333,7 +335,7 @@ TDM 与占点使用内置 `assault`、`sniper`；突破模式额外提供 `medic
 | `id` | `"assault"` | 配置和命令使用的职业 ID；同一模式中必须唯一。 |
 | `displayName` | `"突击兵"` | 菜单、HUD 和提示中显示的人类可读名称。 |
 | `description` | `"中近距离持续作战"` | 职业卡片 Tooltip 的说明文字。 |
-| `icon` | `"minecraft:iron_sword"` | 职业卡片图标物品资源 ID。 |
+| `icon` | `"tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}"` | 职业卡片图标物品；支持 `资源ID{NBT}` 内联 NBT，无效时显示屏障图标。 |
 | `maxHealth` | `20.0` | 部署时的最大生命值，范围由服务端限制为 1～2048。 |
 | `movementSpeedMultiplier` | `1.05` | 移动速度倍率；`1.0` 为正常速度，`0.95` 为慢 5%。 |
 | `gunId` | `"tacz:hk416d"` | TACZ 主武器资源 ID；必须能被 `TimelessAPI` 索引。 |
@@ -342,8 +344,8 @@ TDM 与占点使用内置 `assault`、`sniper`；突破模式额外提供 `medic
 | `reserveAmmo` | `180` | 备用弹药数量；服务端装入一个 TACZ 钻石级弹药箱，放在槽位 9。 |
 | `fireMode` | `"AUTO"` | TACZ 射击模式，例如 `AUTO`、`SEMI`；无效值会阻止开赛。 |
 | `attachments` | `{ "SCOPE": "tacz:..." }` | TACZ 附件类型到资源 ID 的映射；附件类型和资源都必须有效。 |
-| `inventory` | `[ {"item":"minecraft:...", "count":1} ]` | 普通物品栏配装；每项可写 `item`、`count`、可选 `nbt`。 |
-| `armor` | `{ "head": {...}, "chest": {...} }` | `head`、`chest`、`legs`、`feet` 四个盔甲槽的物品定义。 |
+| `inventory` | `[ {"item":"minecraft:...", "count":1} ]` | 普通物品栏配装；`item` 支持内联 NBT（如 `"superbwarfare:ammo_box{...}"`），也可写可选 `nbt` 字段，两者同时存在时内联优先。 |
+| `armor` | `{ "head": {...}, "chest": {...} }` | `head`、`chest`、`legs`、`feet` 四个盔甲槽的物品定义；`item` 同样支持内联 NBT。 |
 | `offhand` | `{ "item":"minecraft:..." }` | 副手物品；未填写则为空。 |
 | `effects` | `[ {"id":"minecraft:...", "durationTicks":200, "amplifier":0} ]` | 部署时添加的药水效果；`visible:false` 可隐藏状态图标。 |
 | `allowDrop` | `false` | 是否允许玩家丢弃该职业配装；比赛内通常保持 `false`。 |
@@ -832,7 +834,7 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 /sfgame shop reload
 ```
 
-`shop buy` 只能由当前参赛且不在死亡倒计时的玩家执行；`<商品ID>` 必须来自当前 `ctf.json`。商品字段为 `id`（唯一 ID）、`name`（菜单名称）、`icon`（菜单图标资源）、`price`（货币价格）、`item`（实际发放物品）、`count`（数量）和可选 `nbt`（物品 NBT 字符串）。每局开始货币归零，死亡后购买物品不会保留。
+`shop buy` 只能由当前参赛且不在死亡倒计时的玩家执行；`<商品ID>` 必须来自当前 `ctf.json`。商品字段为 `id`（唯一 ID）、`name`（菜单名称）、`icon`（菜单图标资源）、`price`（货币价格）、`item`（实际发放物品）、`count`（数量）和可选 `nbt`（物品 NBT 字符串）。`icon` 与 `item` 均支持 `资源ID{NBT}` 内联 NBT 写法，例如 `"tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}"`；内联与 `nbt` 字段同时存在时内联优先。每局开始货币归零，死亡后购买物品不会保留。
 
 ## 验证
 

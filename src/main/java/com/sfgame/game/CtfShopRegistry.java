@@ -7,8 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sfgame.SFGame;
-import net.minecraft.nbt.TagParser;
-import net.minecraft.resources.ResourceLocation;
+import com.sfgame.data.ItemStrings;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -95,20 +94,15 @@ public final class CtfShopRegistry {
         }
 
         ItemStack stack() {
-            ResourceLocation resource = ResourceLocation.tryParse(item);
-            if (resource == null || !BuiltInRegistries.ITEM.containsKey(resource)) return ItemStack.EMPTY;
-            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(resource), count);
-            if (!nbt.isBlank()) {
-                try { stack.setTag(TagParser.parseTag(nbt)); }
-                catch (Exception exception) { return ItemStack.EMPTY; }
-            }
-            return stack;
+            ItemStrings.Parsed parsed = ItemStrings.parse(item);
+            if (parsed.id() == null || !BuiltInRegistries.ITEM.containsKey(parsed.id())) return ItemStack.EMPTY;
+            ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(parsed.id()), count);
+            String nbt = parsed.hasNbt() ? parsed.nbt() : this.nbt;
+            return ItemStrings.applyTag(stack, nbt) ? stack : ItemStack.EMPTY;
         }
 
         ItemStack iconStack() {
-            ResourceLocation resource = ResourceLocation.tryParse(icon);
-            return resource != null && BuiltInRegistries.ITEM.containsKey(resource)
-                    ? new ItemStack(BuiltInRegistries.ITEM.get(resource)) : new ItemStack(Items.PAPER);
+            return ItemStrings.stack(icon, 1, new ItemStack(Items.PAPER));
         }
     }
 }

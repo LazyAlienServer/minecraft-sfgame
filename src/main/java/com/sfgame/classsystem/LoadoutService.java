@@ -1,6 +1,7 @@
 package com.sfgame.classsystem;
 
 import com.sfgame.SFGame;
+import com.sfgame.data.ItemStrings;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.TeamSide;
 import com.tacz.guns.api.TimelessAPI;
@@ -11,7 +12,6 @@ import com.tacz.guns.api.item.nbt.AmmoBoxItemDataAccessor;
 import com.tacz.guns.init.ModItems;
 import com.tacz.guns.item.AmmoBoxItem;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.nbt.TagParser;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffect;
@@ -181,16 +181,14 @@ public final class LoadoutService {
 
     private ItemStack buildItem(ItemDefinition definition) {
         if (definition == null) return ItemStack.EMPTY;
-        ResourceLocation id = ResourceLocation.tryParse(definition.item());
-        if (id == null || !BuiltInRegistries.ITEM.containsKey(id)) return ItemStack.EMPTY;
-        Item item = BuiltInRegistries.ITEM.get(id);
-        ItemStack stack = new ItemStack(item, definition.count());
-        if (!definition.nbt().isBlank()) {
-            try {
-                stack.setTag(TagParser.parseTag(definition.nbt()));
-            } catch (Exception exception) {
-                SFGame.LOGGER.warn("Invalid item NBT in class config: {}", definition.nbt());
-            }
+        ItemStrings.Parsed parsed = ItemStrings.parse(definition.item());
+        if (parsed.id() == null || !BuiltInRegistries.ITEM.containsKey(parsed.id())) return ItemStack.EMPTY;
+        ItemStack stack = new ItemStack(BuiltInRegistries.ITEM.get(parsed.id()), definition.count());
+        String nbt = parsed.hasNbt() ? parsed.nbt() : definition.nbt();
+        // A tagless TACZ gun or ammo box is worse than no item at all; skip it.
+        if (!ItemStrings.applyTag(stack, nbt)) {
+            SFGame.LOGGER.warn("Invalid item NBT in class config: {}", nbt);
+            return ItemStack.EMPTY;
         }
         return stack;
     }

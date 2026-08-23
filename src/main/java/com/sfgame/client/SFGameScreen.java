@@ -1,5 +1,6 @@
 package com.sfgame.client;
 
+import com.sfgame.data.ItemStrings;
 import com.sfgame.game.MatchPhase;
 import com.sfgame.game.TeamSide;
 import com.sfgame.network.ClientActionPacket;
@@ -10,9 +11,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -383,12 +382,7 @@ public final class SFGameScreen extends Screen {
     }
 
     private static ItemStack iconStack(String iconId) {
-        ResourceLocation id = ResourceLocation.tryParse(iconId);
-        if (id == null) return new ItemStack(Items.BARRIER);
-        return BuiltInRegistries.ITEM.getOptional(id)
-                .filter(item -> item != Items.AIR)
-                .map(ItemStack::new)
-                .orElseGet(() -> new ItemStack(Items.BARRIER));
+        return ItemStrings.stack(iconId, 1, new ItemStack(Items.BARRIER));
     }
 
     private void renderClassTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
