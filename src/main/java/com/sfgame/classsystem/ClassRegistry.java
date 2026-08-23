@@ -11,6 +11,7 @@ import com.sfgame.SFGame;
 import com.sfgame.data.SFGameId;
 import com.sfgame.data.SFGameSavedData;
 import com.sfgame.game.GameModeRegistry;
+import com.sfgame.game.MapParentRef;
 import com.sfgame.game.TeamSide;
 
 import java.io.IOException;
@@ -86,30 +87,20 @@ public final class ClassRegistry {
         try {
             for (var mode : GameModeRegistry.all()) {
                 Map<String, MapOverride> modeOverrides = new LinkedHashMap<>();
+                Path baseTarget = mapProfilesPath.resolve(mode.id()).resolve("base").resolve("classes.json");
+                ensureBaseProfile(baseTarget, mode.id());
+                modeOverrides.put("base", readMapOverride(baseTarget, mode.id(), "base", true, errors));
                 for (var map : data.maps(mode.id())) {
                     Path target = mapProfilesPath.resolve(mode.id()).resolve(map.id()).resolve("classes.json");
                     ensureMapProfile(target, mode.id(), map.id(), errors);
-                    try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
-                        ClassFile file = GSON.fromJson(reader, ClassFile.class);
-                        if (file == null) throw new JsonParseException("The root JSON object is missing");
-                        String parent = normalizeParent(file.parent(), map.id(), "map", errors);
-                        if (parent == null) parent = "base";
-                        Pool pool = readPool(mode.id() + "/" + map.id(), "classes",
-                                file.classes(), file.captainClasses(), errors, false);
-                        Map<String, RawScope> teams = readScopes(mode.id() + "/" + map.id(), "teams",
-                                file.teams(), errors, true);
-                        modeOverrides.put(map.id(), new MapOverride(parent, pool, teams));
-                    } catch (JsonParseException | IOException | IllegalStateException exception) {
-                        errors.add(mode.id() + "/" + map.id() + ": " + message(exception));
-                        mapErrors = true;
-                    }
+                    modeOverrides.put(map.id(), readMapOverride(target, mode.id(), map.id(), false, errors));
                 }
-                int beforeParentErrors = errors.size();
-                validateMapOverrideParents(mode.id(), modeOverrides, errors);
-                if (errors.size() != beforeParentErrors) mapErrors = true;
                 loaded.put(mode.id(), Collections.unmodifiableMap(modeOverrides));
             }
-        } catch (IOException exception) {
+            int beforeParentErrors = errors.size();
+            validateMapOverrideParents(loaded, errors);
+            if (errors.size() != beforeParentErrors) mapErrors = true;
+        } catch (IOException | JsonParseException | IllegalStateException exception) {
             errors.add(message(exception));
             mapErrors = true;
         }
@@ -165,6 +156,17 @@ public final class ClassRegistry {
     public Collection<ClassDefinition> all() { return all(GameModeRegistry.TEAM_DEATHMATCH); }
     public Optional<ClassDefinition> defaultClass() { return defaultClass(GameModeRegistry.TEAM_DEATHMATCH); }
     public List<String> loadErrors() { return loadErrors; }
+    public List<String> referencesTo(String modeId, String mapId) {
+        String target = new MapParentRef(modeId, mapId).canonical();
+        List<String> references = new ArrayList<>();
+        for (Map.Entry<String, Map<String, MapOverride>> mode : mapOverrides.entrySet()) {
+            for (Map.Entry<String, MapOverride> map : mode.getValue().entrySet()) {
+                if (target.equals(map.getValue().parent)) references.add(mode.getKey() + "/" + map.getKey());
+            }
+        }
+        return List.copyOf(references);
+    }
+
     public Path configPath() { return profilesPath; }
 
     public synchronized void useConfigRoot(Path root) {
@@ -172,7 +174,7 @@ public final class ClassRegistry {
         profilesPath = root.resolve("classes");
         mapProfilesPath = root.resolve("maps");
     }
-    public synchronized void ensureMapProfile(String modeId, String mapId) {
+    public synchronized void createMapProfile(String modeId, String mapId) {
         if (mapProfilesPath == null) return;
         try {
             ensureMapProfile(mapProfilesPath.resolve(modeId).resolve(mapId).resolve("classes.json"),
@@ -182,34 +184,48 @@ public final class ClassRegistry {
         }
     }
 
+    public synchronized void ensureMapProfile(String modeId, String mapId) {
+        createMapProfile(modeId, mapId);
+    }
+
+    private void ensureBaseProfile(Path target, String modeId) throws IOException {
+        if (!Files.exists(target)) writeMapProfile(target, defaultMapProfile(modeId));
+    }
+
     private void ensureMapProfile(Path target, String modeId, String mapId, List<String> errors) throws IOException {
-        JsonObject defaults = defaultMapProfile(modeId);
         if (!Files.exists(target)) {
-            writeMapProfile(target, defaults);
+            JsonObject document = new JsonObject();
+            document.addProperty("parent", new MapParentRef(modeId, "base").canonical());
+            writeMapProfile(target, document);
             return;
         }
-        JsonObject current;
+        JsonObject document;
         try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
             JsonElement parsed = JsonParser.parseReader(reader);
             if (!parsed.isJsonObject()) throw new JsonParseException("root must be an object");
-            current = parsed.getAsJsonObject();
+            document = parsed.getAsJsonObject();
         } catch (JsonParseException exception) {
             errors.add(modeId + "/" + mapId + ": " + message(exception));
             return;
         }
-        boolean hasDefinitions = arraySize(current, "classes") > 0
-                || arraySize(current, "captainClasses") > 0
-                || current.has("teams") && current.get("teams").isJsonObject() && current.getAsJsonObject("teams").size() > 0;
-        boolean hasParent = current.has("parent") || current.has("Parent");
-        String parent = normalizeParent(string(current, "parent", null), mapId, "map", errors);
-        if (parent == null) parent = "base";
-        JsonObject normalized = "base".equals(parent) && (!hasParent || !hasDefinitions)
-                ? mergeMapProfile(defaults, current) : current.deepCopy();
-        normalized.addProperty("parent", parent);
-        if (!normalized.has("classes")) normalized.add("classes", new JsonArray());
-        if (!normalized.has("captainClasses")) normalized.add("captainClasses", new JsonArray());
-        if (!normalized.has("teams")) normalized.add("teams", new JsonObject());
-        if (!GSON.toJson(normalized).equals(GSON.toJson(current))) writeMapProfile(target, normalized);
+        if (!document.has("parent") && !document.has("Parent")) {
+            document.addProperty("parent", new MapParentRef(modeId, "base").canonical());
+            writeMapProfile(target, document);
+        }
+    }
+
+    private MapOverride readMapOverride(Path target, String modeId, String mapId, boolean base,
+                                        List<String> errors) throws IOException {
+        try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
+            ClassFile file = GSON.fromJson(reader, ClassFile.class);
+            if (file == null) throw new JsonParseException("The root JSON object is missing");
+            String parent = base ? null : MapParentRef.parse(file.parent(), modeId).canonical();
+            Pool pool = readPool(modeId + "/" + mapId, "classes",
+                    file.classes(), file.captainClasses(), errors, false);
+            Map<String, RawScope> teams = readScopes(modeId + "/" + mapId, "teams",
+                    file.teams(), errors, true);
+            return new MapOverride(parent, pool, teams);
+        }
     }
 
     private JsonObject defaultMapProfile(String modeId) throws IOException {
@@ -220,8 +236,6 @@ public final class ClassRegistry {
                 source = JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8)).getAsJsonObject();
             }
         }
-        JsonObject object = new JsonObject();
-        object.addProperty("parent", "base");
         JsonArray classes = new JsonArray(), captains = new JsonArray();
         String parent = source.has("parent") ? source.get("parent").getAsString() : "base";
         if (!isDefaultParent(parent)) {
@@ -229,29 +243,11 @@ public final class ClassRegistry {
             classes = inherited.getAsJsonArray("classes").deepCopy();
             captains = inherited.getAsJsonArray("captainClasses").deepCopy();
         }
-        classes = mergeDefinitions(classes, source.get("classes"));
-        captains = mergeDefinitions(captains, source.get("captainClasses"));
-        object.add("classes", classes);
-        object.add("captainClasses", captains);
-        object.add("teams", new JsonObject());
+        JsonObject object = new JsonObject();
+        object.add("classes", mergeDefinitions(classes, source.get("classes")));
+        object.add("captainClasses", mergeDefinitions(captains, source.get("captainClasses")));
+        object.add("teams", source.has("teams") ? source.get("teams").deepCopy() : new JsonObject());
         return object;
-    }
-
-    private static int arraySize(JsonObject object, String key) {
-        return object.has(key) && object.get(key).isJsonArray() ? object.getAsJsonArray(key).size() : 0;
-    }
-
-    private static JsonObject mergeMapProfile(JsonObject defaults, JsonObject current) {
-        JsonObject merged = defaults.deepCopy();
-        for (Map.Entry<String, JsonElement> entry : current.entrySet()) {
-            if (!Set.of("parent", "classes", "captainClasses", "teams").contains(entry.getKey())) {
-                merged.add(entry.getKey(), entry.getValue().deepCopy());
-            }
-        }
-        merged.add("classes", mergeDefinitions(defaults.getAsJsonArray("classes"), current.get("classes")));
-        merged.add("captainClasses", mergeDefinitions(defaults.getAsJsonArray("captainClasses"), current.get("captainClasses")));
-        if (current.has("teams")) merged.add("teams", current.get("teams").deepCopy());
-        return merged;
     }
 
     private static JsonArray mergeDefinitions(JsonArray defaults, JsonElement overrides) {
@@ -284,27 +280,35 @@ public final class ClassRegistry {
         Files.writeString(target, GSON.toJson(object) + System.lineSeparator(), StandardCharsets.UTF_8);
     }
 
-    private static String string(JsonObject object, String key, String fallback) {
-        try { return object.has(key) ? object.get(key).getAsString() : fallback; }
-        catch (RuntimeException exception) { return fallback; }
-    }
-
-    private static void validateMapOverrideParents(String modeId, Map<String, MapOverride> overrides,
+    private static void validateMapOverrideParents(Map<String, Map<String, MapOverride>> overrides,
                                                    List<String> errors) {
-        for (Map.Entry<String, MapOverride> entry : overrides.entrySet()) {
-            String parent = entry.getValue().parent;
-            if (!"base".equals(parent) && !overrides.containsKey(parent)) {
-                errors.add(modeId + "/" + entry.getKey() + ": missing class parent " + parent);
-            }
-            Set<String> visited = new LinkedHashSet<>();
-            String current = entry.getKey();
-            while (current != null && !"base".equals(overrides.get(current) == null ? "base" : overrides.get(current).parent)) {
-                if (!visited.add(current)) {
-                    errors.add(modeId + ": class inheritance cycle at " + current);
-                    break;
+        for (Map.Entry<String, Map<String, MapOverride>> mode : overrides.entrySet()) {
+            for (Map.Entry<String, MapOverride> entry : mode.getValue().entrySet()) {
+                String key = mode.getKey() + "/" + entry.getKey();
+                String parent = entry.getValue().parent;
+                if (parent == null) continue;
+                MapParentRef ref;
+                try {
+                    ref = MapParentRef.parse(parent, mode.getKey());
+                } catch (IllegalArgumentException exception) {
+                    errors.add(key + ": " + exception.getMessage());
+                    continue;
                 }
-                MapOverride scope = overrides.get(current);
-                current = scope == null || "base".equals(scope.parent) ? null : scope.parent;
+                if (!overrides.getOrDefault(ref.modeId(), Map.of()).containsKey(ref.mapId())) {
+                    errors.add(key + ": missing class parent " + ref.canonical());
+                    continue;
+                }
+                Set<String> visited = new LinkedHashSet<>();
+                String current = key;
+                while (current != null) {
+                    if (!visited.add(current)) {
+                        errors.add(key + ": class inheritance cycle at " + current);
+                        break;
+                    }
+                    String[] parts = current.split("/", 2);
+                    MapOverride scope = overrides.getOrDefault(parts[0], Map.of()).get(parts[1]);
+                    current = scope == null ? null : scope.parent;
+                }
             }
         }
     }
@@ -312,14 +316,13 @@ public final class ClassRegistry {
         String profileId = profileIdForMode(modeId);
         String normalizedMap = mapId == null ? "" : mapId.trim().toLowerCase(Locale.ROOT);
         if (!normalizedMap.isBlank()) {
-            Map<String, MapOverride> overrides = mapOverrides.getOrDefault(profileId, Map.of());
-            if (overrides.isEmpty()) return Scope.EMPTY;
-            MapOverride mapOverride = overrides.get(normalizedMap);
+            MapParentRef ref = new MapParentRef(profileId, normalizedMap);
+            MapOverride mapOverride = override(ref);
             if (mapOverride == null) return Scope.EMPTY;
-            Scope mapScope = resolveMapOverride(normalizedMap, overrides, new LinkedHashSet<>());
+            Scope mapScope = resolveMapOverride(ref, new LinkedHashSet<>());
             if (side == null || side == TeamSide.NONE) return mapScope;
             Map<String, RawScope> teams = new LinkedHashMap<>();
-            collectMapOverrideTeams(normalizedMap, overrides, teams, new LinkedHashSet<>());
+            collectMapOverrideTeams(ref, teams, new LinkedHashSet<>());
             RawScope team = teams.get(side.id());
             return team == null ? mapScope : resolveScope(team.name, teams, mapScope, new LinkedHashSet<>(), true);
         }
@@ -330,23 +333,30 @@ public final class ClassRegistry {
                 : resolveScope(side.id(), profile.teams, profile.root, new LinkedHashSet<>(), true);
     }
 
-    private Scope resolveMapOverride(String id, Map<String, MapOverride> overrides, Set<String> stack) {
-        MapOverride current = overrides.get(id);
-        if (current == null || !stack.add(id)) return Scope.EMPTY;
-        Scope parent = "base".equals(current.parent) ? Scope.EMPTY
-                : resolveMapOverride(current.parent, overrides, stack);
+    private Scope resolveMapOverride(MapParentRef ref, Set<String> stack) {
+        MapOverride current = override(ref);
+        String key = ref.canonical();
+        if (current == null || !stack.add(key)) return Scope.EMPTY;
+        Scope parent = current.parent == null ? Scope.EMPTY
+                : resolveMapOverride(MapParentRef.parse(current.parent, ref.modeId()), stack);
         Scope result = merge(parent, current.pool);
-        stack.remove(id);
+        stack.remove(key);
         return result;
     }
 
-    private void collectMapOverrideTeams(String id, Map<String, MapOverride> overrides,
-                                         Map<String, RawScope> destination, Set<String> stack) {
-        MapOverride current = overrides.get(id);
-        if (current == null || !stack.add(id)) return;
-        if (!"base".equals(current.parent)) collectMapOverrideTeams(current.parent, overrides, destination, stack);
+    private void collectMapOverrideTeams(MapParentRef ref, Map<String, RawScope> destination, Set<String> stack) {
+        MapOverride current = override(ref);
+        String key = ref.canonical();
+        if (current == null || !stack.add(key)) return;
+        if (current.parent != null) {
+            collectMapOverrideTeams(MapParentRef.parse(current.parent, ref.modeId()), destination, stack);
+        }
         destination.putAll(current.teams);
-        stack.remove(id);
+        stack.remove(key);
+    }
+
+    private MapOverride override(MapParentRef ref) {
+        return mapOverrides.getOrDefault(ref.modeId(), Map.of()).get(ref.mapId());
     }
 
     private void collectMapTeams(RawScope map, Map<String, RawScope> maps,

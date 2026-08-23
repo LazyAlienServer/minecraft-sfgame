@@ -78,6 +78,19 @@ public final class MapConfigRegistry {
     public Path mapPath(String modeId, String mapId) {
         return mapDirectory(modeId, mapId).resolve(MAP_FILE);
     }
+    public synchronized void createMap(String modeId, String mapId) {
+        if (directory == null) return;
+        Path target = mapPath(modeId, mapId);
+        if (Files.exists(target)) return;
+        JsonObject document = new JsonObject();
+        document.addProperty("parent", MapParentRef.parse("base", modeId).canonical());
+        try {
+            writeDocument(target, document);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not create map " + modeId + "/" + mapId + ": " + message(exception), exception);
+        }
+    }
+
 
     /** Writes only the map portion and preserves rules or other companion data in map.json. */
     public synchronized void saveMap(String modeId, ArenaMap map) {
@@ -86,7 +99,9 @@ public final class MapConfigRegistry {
         try {
             JsonObject document = readDocument(target);
             JsonObject mapObject = MapConfigJson.write(map);
-            if (!document.has("parent") && !document.has("Parent")) mapObject.addProperty("parent", "base");
+            if (!document.has("parent") && !document.has("Parent")) {
+                mapObject.addProperty("parent", MapParentRef.parse("base", modeId).canonical());
+            }
             for (Map.Entry<String, JsonElement> entry : document.entrySet()) {
                 if (!mapObject.has(entry.getKey())) mapObject.add(entry.getKey(), entry.getValue().deepCopy());
             }
@@ -124,12 +139,15 @@ public final class MapConfigRegistry {
                 Path path = mapDirectory.resolve(MAP_FILE);
                 if (!Files.isRegularFile(path)) continue;
                 String folderId = mapDirectory.getFileName().toString().toLowerCase(Locale.ROOT);
+                if ("base".equals(folderId)) continue;
                 if (!SFGameId.isValid(folderId)) {
                     problems.add(modeId + ": invalid map directory " + mapDirectory.getFileName());
                     continue;
                 }
                 try {
-                    ArenaMap map = MapConfigJson.read(readDocument(path));
+                    JsonObject document = readDocument(path);
+                    if (!document.has("id") && !document.has("Id")) document.addProperty("id", folderId);
+                    ArenaMap map = MapConfigJson.read(document);
                     if (!folderId.equals(map.id())) {
                         problems.add(modeId + "/" + folderId + ": map.json id is " + map.id());
                         continue;
@@ -146,12 +164,13 @@ public final class MapConfigRegistry {
         for (ArenaMap legacy : legacyMaps) {
             if (loaded.containsKey(legacy.id())) continue;
             loaded.put(legacy.id(), legacy);
-            saveMap(modeId, legacy);
+            if (legacy.hasLocalConfiguration()) saveMap(modeId, legacy);
+            else createMap(modeId, legacy.id());
         }
         if (loaded.isEmpty()) {
             ArenaMap fallback = new ArenaMap("default");
             loaded.put(fallback.id(), fallback);
-            saveMap(modeId, fallback);
+            createMap(modeId, fallback.id());
         }
         data.replaceMaps(modeId, loaded.values());
     }

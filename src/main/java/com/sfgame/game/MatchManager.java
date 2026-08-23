@@ -240,6 +240,22 @@ public final class MatchManager {
         classRegistry.ensureMapProfile(data.selectedMode(), map.id());
         data.setDirty();
     }
+    public void createMapConfiguration(String modeId, String mapId) {
+        mapConfigRegistry.createMap(modeId, mapId);
+        classRegistry.createMapProfile(modeId, mapId);
+        reloadMapOwnedConfigurations();
+    }
+
+    public void ensureMapConfigurationRemovable(String modeId, String mapId) {
+        List<String> references = new ArrayList<>();
+        references.addAll(ruleConfigRegistry.referencesTo(modeId, mapId));
+        references.addAll(classRegistry.referencesTo(modeId, mapId));
+        if (!references.isEmpty()) {
+            throw new IllegalStateException("Map " + modeId + "/" + mapId
+                    + " is inherited by: " + String.join(", ", new java.util.LinkedHashSet<>(references)));
+        }
+    }
+
 
     public void saveMapConfiguration(String modeId, ArenaMap map) {
         mapConfigRegistry.saveMap(modeId, map);
@@ -247,6 +263,16 @@ public final class MatchManager {
 
     public void removeMapConfiguration(String modeId, String mapId) {
         mapConfigRegistry.deleteMap(modeId, mapId);
+        reloadMapOwnedConfigurations();
+    }
+
+    private void reloadMapOwnedConfigurations() {
+        SFGameSavedData data = data();
+        List<String> problems = new ArrayList<>(ruleConfigRegistry.reload(data));
+        for (String problem : classRegistry.reload(data)) if (!problems.contains(problem)) problems.add(problem);
+        if (!problems.isEmpty()) {
+            throw new IllegalStateException("Could not reload map configuration: " + String.join("; ", problems));
+        }
     }
 
 

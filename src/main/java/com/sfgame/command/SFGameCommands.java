@@ -95,9 +95,15 @@ public final class SFGameCommands {
     private static final SuggestionProvider<CommandSourceStack> MAP_SUGGESTIONS = (context, builder) ->
             SharedSuggestionProvider.suggest(SFGameSavedData.get(context.getSource().getServer()).maps().stream()
                     .map(ArenaMap::id), builder);
-    private static final SuggestionProvider<CommandSourceStack> RULE_PARENT_SUGGESTIONS = (context, builder) ->
-            SharedSuggestionProvider.suggest(java.util.stream.Stream.concat(java.util.stream.Stream.of("base"),
-                    SFGameSavedData.get(context.getSource().getServer()).maps().stream().map(ArenaMap::id)), builder);
+    private static final SuggestionProvider<CommandSourceStack> RULE_PARENT_SUGGESTIONS = (context, builder) -> {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        java.util.stream.Stream<String> canonical = GameModeRegistry.all().stream().flatMap(mode ->
+                java.util.stream.Stream.concat(java.util.stream.Stream.of(mode.id() + "/base"),
+                        data.maps(mode.id()).stream().map(map -> mode.id() + "/" + map.id())));
+        java.util.stream.Stream<String> local = java.util.stream.Stream.concat(java.util.stream.Stream.of("base"),
+                data.maps().stream().map(ArenaMap::id));
+        return SharedSuggestionProvider.suggest(java.util.stream.Stream.concat(local, canonical), builder);
+    };
     private static final SuggestionProvider<CommandSourceStack> BREAKTHROUGH_VEHICLE_SUGGESTIONS = (context, builder) -> {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         return SharedSuggestionProvider.suggest(data.activeMap() == null ? java.util.stream.Stream.empty()
@@ -1620,7 +1626,6 @@ public final class SFGameCommands {
         String modeId = StringArgumentType.getString(context, "mode");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!data.selectMode(modeId)) return failure(context, "Unknown game mode: " + modeId);
-        MatchManager.get().saveActiveMapConfiguration();
         MatchManager.get().arenaSelectionChanged();
         MatchManager.get().refreshCommandTree();
         return success(context, "Selected mode " + modeId + " with map " + data.selectedMap());
@@ -1653,7 +1658,11 @@ public final class SFGameCommands {
         String mapId = StringArgumentType.getString(context, "map");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!data.createMap(mapId)) return failure(context, "Invalid or duplicate map id: " + mapId);
-        MatchManager.get().saveActiveMapConfiguration();
+        try {
+            MatchManager.get().createMapConfiguration(data.selectedMode(), data.selectedMap());
+        } catch (IllegalStateException exception) {
+            return failure(context, exception.getMessage());
+        }
         MatchManager.get().arenaSelectionChanged();
         return success(context, "Created and selected map " + data.selectedMode() + "/" + mapId);
     }
@@ -1671,8 +1680,13 @@ public final class SFGameCommands {
         if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot remove a map during a match");
         String mapId = StringArgumentType.getString(context, "map");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        if (!data.removeMap(mapId)) return failure(context, "Map does not exist or is the last map for this mode");
-        MatchManager.get().removeMapConfiguration(data.selectedMode(), mapId);
+        try {
+            MatchManager.get().ensureMapConfigurationRemovable(data.selectedMode(), mapId);
+            if (!data.removeMap(mapId)) return failure(context, "Map does not exist or is the last map for this mode");
+            MatchManager.get().removeMapConfiguration(data.selectedMode(), mapId);
+        } catch (IllegalStateException exception) {
+            return failure(context, exception.getMessage());
+        }
         MatchManager.get().arenaSelectionChanged();
         return success(context, "Removed map " + mapId + "; selected " + data.selectedMap());
     }

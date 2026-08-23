@@ -52,6 +52,12 @@ public final class ArenaMap {
     public BreakthroughMapConfig breakthrough() { return breakthrough; }
     public CaptureTheFlagMapConfig captureTheFlag() { return captureTheFlag; }
     public MapBuildConfig build() { return build; }
+    public boolean hasLocalConfiguration() {
+        return lobby != null || enabledTeams().size() > 0 || !domination.points().isEmpty()
+                || !breakthrough.sectors().isEmpty() || !breakthrough.vehicles().isEmpty()
+                || !captureTheFlag.homes().isEmpty() || !captureTheFlag.forwardFlags().isEmpty()
+                || build.region() != null || build.snapshotSaved();
+    }
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();

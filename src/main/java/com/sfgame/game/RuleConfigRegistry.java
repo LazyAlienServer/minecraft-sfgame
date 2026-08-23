@@ -171,18 +171,21 @@ public final class RuleConfigRegistry {
 
     public synchronized void setParent(String modeId, String mapId, String parent) {
         String normalizedMap = normalizeMap(mapId);
+        if (mapLayout) {
+            MapParentRef parentRef = MapParentRef.parse(parent, modeId);
+            MapParentRef currentRef = new MapParentRef(modeId, normalizedMap);
+            if (currentRef.equals(parentRef)) throw new IllegalArgumentException("A map cannot inherit itself");
+            if (!mapScopeExists(parentRef)) {
+                throw new IllegalArgumentException("Unknown rule parent map: " + parentRef.canonical());
+            }
+            setMapParent(modeId, normalizedMap, parentRef);
+            return;
+        }
         String normalizedParent = parent == null ? "base" : parent.trim().toLowerCase(Locale.ROOT);
         if (!"base".equals(normalizedParent) && !SFGameId.isValid(normalizedParent)) {
             throw new IllegalArgumentException("Invalid rule parent: " + parent);
         }
         if (normalizedMap.equals(normalizedParent)) throw new IllegalArgumentException("A map cannot inherit itself");
-        if (mapLayout) {
-            if (!"base".equals(normalizedParent) && !mapScopeExists(modeId, normalizedParent)) {
-                throw new IllegalArgumentException("Unknown rule parent map: " + normalizedParent);
-            }
-            setMapParent(modeId, normalizedMap, normalizedParent);
-            return;
-        }
         mutate(modeId, document -> {
             JsonObject maps = object(document, "maps", true);
             if (!"base".equals(normalizedParent) && !maps.has(normalizedParent)) {
@@ -203,6 +206,17 @@ public final class RuleConfigRegistry {
         Scope scope = profile == null ? null : profile.scopes().get(normalizeMap(mapId));
         return scope == null ? "base" : scope.parent();
     }
+    public List<String> referencesTo(String modeId, String mapId) {
+        String target = new MapParentRef(modeId, mapId).canonical();
+        List<String> references = new ArrayList<>();
+        for (Map.Entry<String, MapModeProfile> mode : mapProfiles.entrySet()) {
+            for (Scope scope : mode.getValue().scopes().values()) {
+                if (target.equals(scope.parent())) references.add(mode.getKey() + "/" + scope.id());
+            }
+        }
+        return List.copyOf(references);
+    }
+
 
     public List<String> errors() { return errors; }
     public Path directory() { return mapLayout ? mapDirectory : directory; }
@@ -248,35 +262,35 @@ public final class RuleConfigRegistry {
         profiles = Collections.unmodifiableMap(updated);
         errors = List.of();
     }
-    private List<String> reloadMapLayout(SFGameSavedData legacyData) {
+    private List<String> reloadMapLayout(SFGameSavedData data) {
         List<String> problems = new ArrayList<>();
         if (mapDirectory == null) return List.of("SFGame map rule config root is not initialized");
-        Map<String, MapModeProfile> loaded = new LinkedHashMap<>(mapProfiles);
-        Map<String, MatchRules> bases = new LinkedHashMap<>();
+        Map<String, MapModeProfile> loaded = new LinkedHashMap<>();
         try {
             Files.createDirectories(mapDirectory);
             for (GameModeDefinition mode : GameModeRegistry.all()) {
                 String modeId = mode.id();
-                Collection<com.sfgame.data.ArenaMap> knownMaps = legacyData == null ? List.of() : legacyData.maps(modeId);
-                boolean migrate = mapDocumentsNeedMigration(modeId, knownMaps);
-                MatchRules base = new MatchRules(modeId);
-                if (migrate) migrateMapDocuments(modeId, knownMaps, base, problems);
-                // After migration, map.json is the only file-backed source for this map.
-                MapModeProfile profile = readMapMode(modeId, new MatchRules(modeId), knownMaps, problems);
-                if (profile != null) loaded.put(modeId, profile);
-                bases.put(modeId, new MatchRules(modeId));
+                ensureBaseRuleDocument(modeId);
+                MatchRules base = readBaseRules(modeId, problems);
+                Collection<com.sfgame.data.ArenaMap> knownMaps = data == null ? List.of() : data.maps(modeId);
+                loaded.put(modeId, readMapMode(modeId, base, knownMaps, problems));
             }
+            validateMapParents(loaded, problems);
+            loaded = resolveMapProfiles(loaded, problems);
         } catch (IOException exception) {
             problems.add(message(exception));
             SFGame.LOGGER.error("Could not load map rule profiles from {}", mapDirectory, exception);
         }
-        mapProfiles = Collections.unmodifiableMap(loaded);
-        mapBaseRules = Collections.unmodifiableMap(bases);
+        if (problems.isEmpty()) mapProfiles = Collections.unmodifiableMap(loaded);
+        mapBaseRules = Collections.unmodifiableMap(loaded.entrySet().stream().collect(
+                java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().base(),
+                        (left, right) -> left, LinkedHashMap::new)));
         errors = List.copyOf(problems);
         return errors;
     }
 
-    private MapModeProfile readMapMode(String modeId, MatchRules base, Collection<com.sfgame.data.ArenaMap> knownMaps,
+    private MapModeProfile readMapMode(String modeId, MatchRules base,
+                                       Collection<com.sfgame.data.ArenaMap> knownMaps,
                                        List<String> problems) throws IOException {
         Path modeDirectory = mapDirectory.resolve(modeId);
         Files.createDirectories(modeDirectory);
@@ -284,38 +298,56 @@ public final class RuleConfigRegistry {
         if (knownMaps != null) for (var map : knownMaps) if (map != null) ids.add(map.id());
         try (var paths = Files.list(modeDirectory)) {
             paths.filter(Files::isDirectory).map(path -> path.getFileName().toString().toLowerCase(Locale.ROOT))
-                    .filter(SFGameId::isValid).forEach(ids::add);
+                    .filter(id -> !"base".equals(id) && SFGameId.isValid(id)).forEach(ids::add);
         }
         if (ids.isEmpty()) ids.add("default");
-
         Map<String, Scope> scopes = new LinkedHashMap<>();
         for (String id : ids) {
             Path path = mapPath(modeId, id);
-            JsonObject document = readMapDocument(path, id, problems);
-            String parent = stringAny(document, "parent", "base").toLowerCase(Locale.ROOT);
-            if (!"base".equals(parent) && !SFGameId.isValid(parent)) {
-                problems.add(modeId + "/" + id + ": invalid rule parent " + parent);
-                parent = "base";
+            JsonObject document = readMapDocument(path, modeId, id, problems);
+            String rawParent = stringAny(document, "parent", modeId + "/base");
+            String parent;
+            try {
+                parent = MapParentRef.parse(rawParent, modeId).canonical();
+            } catch (IllegalArgumentException exception) {
+                problems.add(modeId + "/" + id + ": " + exception.getMessage());
+                parent = modeId + "/base";
             }
             JsonObject overrides = readObjectAny(document, "rules", modeId + "/" + id + "/rules", problems);
-            MatchRules validation = base.copy();
+            MatchRules validation = new MatchRules(modeId);
             apply(overrides, validation, modeId, modeId + "/" + id + "/rules", problems);
             scopes.put(id, new Scope(id, parent, overrides.deepCopy()));
         }
-        validateMapParents(modeId, scopes, problems);
-        Map<String, MatchRules> effective = new LinkedHashMap<>();
-        int errorCount = problems.size();
-        for (String id : scopes.keySet()) resolveMap(id, modeId, base, scopes, effective, new LinkedHashSet<>(), problems);
-        if (problems.size() != errorCount) return null;
-        return new MapModeProfile(base, Collections.unmodifiableMap(scopes), Collections.unmodifiableMap(effective));
+        return new MapModeProfile(base, Collections.unmodifiableMap(scopes), Map.of());
     }
 
-    private JsonObject readMapDocument(Path path, String mapId, List<String> problems) throws IOException {
+    private void ensureBaseRuleDocument(String modeId) throws IOException {
+        Path target = mapPath(modeId, "base");
+        if (Files.exists(target)) return;
+        JsonObject document = new JsonObject();
+        document.add("rules", ruleObject(modeId, new MatchRules(modeId)));
+        writeDocument(target, document);
+    }
+
+    private MatchRules readBaseRules(String modeId, List<String> problems) throws IOException {
+        Path target = mapPath(modeId, "base");
+        try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
+            JsonElement parsed = JsonParser.parseReader(reader);
+            if (!parsed.isJsonObject()) throw new JsonParseException("root must be a JSON object");
+            JsonObject rules = readObjectAny(parsed.getAsJsonObject(), "rules", modeId + "/base/rules", problems);
+            MatchRules result = new MatchRules(modeId);
+            apply(rules, result, modeId, modeId + "/base/rules", problems);
+            return result;
+        } catch (JsonParseException exception) {
+            problems.add(modeId + "/base: " + message(exception));
+            return new MatchRules(modeId);
+        }
+    }
+
+    private JsonObject readMapDocument(Path path, String modeId, String mapId, List<String> problems) throws IOException {
         if (!Files.exists(path)) {
             JsonObject document = new JsonObject();
-            document.addProperty("id", mapId);
-            document.addProperty("parent", "base");
-            document.add("rules", new JsonObject());
+            document.addProperty("parent", new MapParentRef(modeId, "base").canonical());
             writeDocument(path, document);
             return document;
         }
@@ -323,127 +355,103 @@ public final class RuleConfigRegistry {
             JsonElement parsed = JsonParser.parseReader(reader);
             if (!parsed.isJsonObject()) throw new JsonParseException("root must be a JSON object");
             JsonObject document = parsed.getAsJsonObject();
-            boolean changed = false;
             if (!document.has("parent") && !document.has("Parent")) {
-                document.addProperty("parent", "base");
-                changed = true;
+                document.addProperty("parent", new MapParentRef(modeId, "base").canonical());
+                writeDocument(path, document);
             }
-            if (!document.has("rules") && !document.has("Rules")) {
-                document.add("rules", new JsonObject());
-                changed = true;
-            }
-            if (changed) writeDocument(path, document);
             return document;
         } catch (JsonParseException exception) {
-            problems.add(mapId + ": " + message(exception));
+            problems.add(modeId + "/" + mapId + ": " + message(exception));
             return new JsonObject();
         }
     }
 
-    private boolean mapDocumentsNeedMigration(String modeId, Collection<com.sfgame.data.ArenaMap> knownMaps) {
-        Set<String> ids = new LinkedHashSet<>();
-        if (knownMaps != null) for (var map : knownMaps) if (map != null) ids.add(map.id());
-        Path modeDirectory = mapDirectory.resolve(modeId);
-        if (Files.isDirectory(modeDirectory)) {
-            try (var paths = Files.list(modeDirectory)) {
-                paths.filter(Files::isDirectory).map(path -> path.getFileName().toString().toLowerCase(Locale.ROOT))
-                        .filter(SFGameId::isValid).forEach(ids::add);
-            } catch (IOException ignored) {
-                return true;
-            }
-        }
-        if (ids.isEmpty()) ids.add("default");
-        for (String id : ids) {
-            Path path = mapPath(modeId, id);
-            if (!Files.isRegularFile(path)) return true;
-            try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-                JsonElement parsed = JsonParser.parseReader(reader);
-                if (!parsed.isJsonObject()) return true;
-                JsonObject document = parsed.getAsJsonObject();
-                if (!document.has("parent") && !document.has("Parent")) return true;
-                JsonElement rules = document.has("rules") ? document.get("rules") : document.get("Rules");
-                if (rules == null || !rules.isJsonObject() || rules.getAsJsonObject().size() == 0) return true;
-            } catch (IOException | JsonParseException exception) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private void migrateMapDocuments(String modeId, Collection<com.sfgame.data.ArenaMap> knownMaps,
-                                     MatchRules base, List<String> problems) {
-        Set<String> ids = new LinkedHashSet<>();
-        if (knownMaps != null) for (var map : knownMaps) if (map != null) ids.add(map.id());
-        Path modeDirectory = mapDirectory.resolve(modeId);
-        if (Files.isDirectory(modeDirectory)) {
-            try (var paths = Files.list(modeDirectory)) {
-                paths.filter(Files::isDirectory).map(path -> path.getFileName().toString().toLowerCase(Locale.ROOT))
-                        .filter(SFGameId::isValid).forEach(ids::add);
-            } catch (IOException exception) {
-                problems.add(modeId + ": " + message(exception));
-            }
-        }
-        if (ids.isEmpty()) ids.add("default");
-        for (String id : ids) {
-            Path path = mapPath(modeId, id);
-            try {
-                JsonObject document = readMapDocument(path, id, problems);
-                String parent = stringAny(document, "parent", "base").toLowerCase(Locale.ROOT);
-                if (!"base".equals(parent)) continue;
-                JsonObject existing = readObjectAny(document, "rules", modeId + "/" + id + "/rules", problems);
-                MatchRules effective = base.copy();
-                apply(existing, effective, modeId, modeId + "/" + id + "/rules", problems);
-                JsonObject full = ruleObject(modeId, effective);
-                if (!full.equals(existing)) {
-                    document.addProperty("parent", "base");
-                    document.add("rules", full);
-                    writeDocument(path, document);
+    private void validateMapParents(Map<String, MapModeProfile> profiles, List<String> problems) {
+        for (Map.Entry<String, MapModeProfile> mode : profiles.entrySet()) {
+            for (Scope scope : mode.getValue().scopes().values()) {
+                String key = mode.getKey() + "/" + scope.id();
+                MapParentRef parent;
+                try {
+                    parent = MapParentRef.parse(scope.parent(), mode.getKey());
+                } catch (IllegalArgumentException exception) {
+                    problems.add(key + ": " + exception.getMessage());
+                    continue;
                 }
-            } catch (IOException | IllegalStateException exception) {
-                problems.add(modeId + "/" + id + ": " + message(exception));
+                if (!parent.isBase() && !profiles.getOrDefault(parent.modeId(),
+                        new MapModeProfile(new MatchRules(parent.modeId()), Map.of(), Map.of()))
+                        .scopes().containsKey(parent.mapId())) {
+                    problems.add(key + ": missing rule parent " + parent.canonical());
+                }
+                Set<String> visited = new LinkedHashSet<>();
+                String current = key;
+                while (current != null) {
+                    if (!visited.add(current)) {
+                        problems.add(key + ": rule inheritance cycle at " + current);
+                        break;
+                    }
+                    String[] parts = current.split("/", 2);
+                    Scope currentScope = profiles.getOrDefault(parts[0],
+                            new MapModeProfile(new MatchRules(parts[0]), Map.of(), Map.of())).scopes().get(parts[1]);
+                    if (currentScope == null) break;
+                    MapParentRef next = MapParentRef.parse(currentScope.parent(), parts[0]);
+                    current = next.isBase() ? null : next.canonical();
+                }
             }
         }
     }
 
-    private MatchRules resolveMap(String id, String modeId, MatchRules base, Map<String, Scope> scopes,
-                                  Map<String, MatchRules> resolved, Set<String> stack, List<String> problems) {
-        MatchRules cached = resolved.get(id);
-        if (cached != null) return cached;
-        Scope scope = scopes.get(id);
-        if (scope == null) return base;
-        if (!stack.add(id)) {
-            problems.add(modeId + ": rule inheritance cycle at " + id);
-            return base;
+    private Map<String, MapModeProfile> resolveMapProfiles(Map<String, MapModeProfile> raw,
+                                                           List<String> problems) {
+        Map<String, MatchRules> cache = new LinkedHashMap<>();
+        Map<String, MapModeProfile> resolved = new LinkedHashMap<>();
+        for (Map.Entry<String, MapModeProfile> mode : raw.entrySet()) {
+            Map<String, MatchRules> effective = new LinkedHashMap<>();
+            for (String mapId : mode.getValue().scopes().keySet()) {
+                effective.put(mapId, resolveMapRule(new MapParentRef(mode.getKey(), mapId), raw,
+                        cache, new LinkedHashSet<>(), problems));
+            }
+            resolved.put(mode.getKey(), new MapModeProfile(mode.getValue().base(), mode.getValue().scopes(),
+                    Collections.unmodifiableMap(effective)));
         }
-        MatchRules result = "base".equals(scope.parent()) ? base.copy()
-                : resolveMap(scope.parent(), modeId, base, scopes, resolved, stack, problems).copy();
-        apply(scope.rules(), result, modeId, modeId + "/" + id + "/rules", problems);
-        stack.remove(id);
-        resolved.put(id, result);
+        return resolved;
+    }
+
+    private MatchRules resolveMapRule(MapParentRef ref, Map<String, MapModeProfile> profiles,
+                                      Map<String, MatchRules> cache, Set<String> stack,
+                                      List<String> problems) {
+        MatchRules cached = cache.get(ref.canonical());
+        if (cached != null) return cached;
+        MapModeProfile profile = profiles.get(ref.modeId());
+        if (profile == null) return new MatchRules(ref.modeId());
+        if (ref.isBase()) return profile.base();
+        Scope scope = profile.scopes().get(ref.mapId());
+        if (scope == null || !stack.add(ref.canonical())) return new MatchRules(ref.modeId());
+        MapParentRef parent = MapParentRef.parse(scope.parent(), ref.modeId());
+        MatchRules parentRules = parent.isBase() ? profiles.get(parent.modeId()).base()
+                : resolveMapRule(parent, profiles, cache, stack, problems);
+        MatchRules result = inheritRules(parentRules, parent.modeId(), ref.modeId(), problems);
+        apply(scope.rules(), result, ref.modeId(), ref.canonical() + "/rules", problems);
+        stack.remove(ref.canonical());
+        cache.put(ref.canonical(), result);
         return result;
     }
 
-    private void validateMapParents(String modeId, Map<String, Scope> scopes, List<String> problems) {
-        for (Scope scope : scopes.values()) {
-            if (!"base".equals(scope.parent()) && !scopes.containsKey(scope.parent())) {
-                problems.add(modeId + "/" + scope.id() + ": missing parent " + scope.parent());
-            }
-            Set<String> visited = new LinkedHashSet<>();
-            Scope current = scope;
-            while (current != null && !"base".equals(current.parent())) {
-                if (!visited.add(current.id())) {
-                    problems.add(modeId + ": rule inheritance cycle at " + current.id());
-                    break;
-                }
-                current = scopes.get(current.parent());
-            }
-        }
+    private MatchRules inheritRules(MatchRules parent, String parentMode, String childMode,
+                                    List<String> problems) {
+        MatchRules result = new MatchRules(childMode);
+        JsonObject compatible = ruleObject(parentMode, parent);
+        compatible.entrySet().removeIf(entry -> !allowed(childMode).contains(entry.getKey()));
+        apply(compatible, result, childMode, parentMode + "/inherited", problems);
+        return result;
     }
 
-    private void setMapParent(String modeId, String mapId, String parent) {
+
+    private void setMapParent(String modeId, String mapId, MapParentRef parent) {
         MatchRules current = rules(modeId, mapId, new MatchRules(modeId));
-        MatchRules inherited = "base".equals(parent)
-                ? new MatchRules(modeId) : rules(modeId, parent, new MatchRules(modeId));
+        MatchRules parentRules = rules(parent.modeId(), parent.mapId(), new MatchRules(parent.modeId()));
+        List<String> problems = new ArrayList<>();
+        MatchRules inherited = inheritRules(parentRules, parent.modeId(), modeId, problems);
+        if (!problems.isEmpty()) throw new IllegalArgumentException(String.join("; ", problems));
         JsonObject currentObject = ruleObject(modeId, current);
         JsonObject inheritedObject = ruleObject(modeId, inherited);
         JsonObject overrides = new JsonObject();
@@ -453,7 +461,7 @@ public final class RuleConfigRegistry {
             }
         }
         mutateMap(modeId, mapId, document -> {
-            document.addProperty("parent", parent);
+            document.addProperty("parent", parent.canonical());
             document.add("rules", overrides);
         });
     }
@@ -465,31 +473,27 @@ public final class RuleConfigRegistry {
         Path target = mapPath(modeId, normalizedMap);
         JsonObject previous;
         try {
-            previous = readMapDocument(target, normalizedMap, new ArrayList<>());
+            previous = readMapDocument(target, modeId, normalizedMap, new ArrayList<>());
             JsonObject candidate = previous.deepCopy();
             mutation.accept(candidate);
             writeDocument(target, candidate);
-            List<String> problems = new ArrayList<>();
-            MatchRules base = mapBaseRules.getOrDefault(modeId, new MatchRules(modeId));
-            MapModeProfile rebuilt = readMapMode(modeId, base, List.of(), problems);
-            if (!problems.isEmpty() || rebuilt == null) {
+            List<String> problems = reloadMapLayout(null);
+            if (!problems.isEmpty()) {
                 writeDocument(target, previous);
+                reloadMapLayout(null);
                 throw new IllegalArgumentException(String.join("; ", problems));
             }
-            Map<String, MapModeProfile> updated = new LinkedHashMap<>(mapProfiles);
-            updated.put(modeId, rebuilt);
-            mapProfiles = Collections.unmodifiableMap(updated);
-            errors = List.of();
         } catch (IOException exception) {
             throw new IllegalStateException("Could not save " + modeId + "/" + normalizedMap + " rules: "
                     + message(exception), exception);
         }
     }
 
-    private boolean mapScopeExists(String modeId, String mapId) {
-        MapModeProfile profile = mapProfiles.get(modeId);
-        if (profile != null && profile.scopes().containsKey(mapId)) return true;
-        return Files.isRegularFile(mapPath(modeId, mapId));
+    private boolean mapScopeExists(MapParentRef ref) {
+        if (ref.isBase()) return Files.isRegularFile(mapPath(ref.modeId(), "base"));
+        MapModeProfile profile = mapProfiles.get(ref.modeId());
+        if (profile != null && profile.scopes().containsKey(ref.mapId())) return true;
+        return Files.isRegularFile(mapPath(ref.modeId(), ref.mapId()));
     }
 
     private static boolean hasRules(JsonObject document) {

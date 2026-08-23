@@ -40,6 +40,35 @@ final class MapConfigRegistryTest {
     }
 
     @Test
+    void generatesBaseDocumentsAndParentOnlyMapDocuments() throws Exception {
+        SFGameSavedData data = new SFGameSavedData();
+        MapConfigRegistry maps = new MapConfigRegistry();
+        maps.useConfigRoot(directory);
+        assertTrue(maps.reload(data).isEmpty());
+
+        RuleConfigRegistry rules = new RuleConfigRegistry();
+        rules.useConfigRoot(directory);
+        assertTrue(rules.reload(data).isEmpty());
+        ClassRegistry classes = new ClassRegistry();
+        classes.useConfigRoot(directory);
+        assertTrue(classes.reload(data).isEmpty());
+
+        Path modeDirectory = directory.resolve("maps").resolve("tdm");
+        com.google.gson.JsonObject mapDocument = com.google.gson.JsonParser.parseString(
+                Files.readString(modeDirectory.resolve("default").resolve("map.json"))).getAsJsonObject();
+        com.google.gson.JsonObject classDocument = com.google.gson.JsonParser.parseString(
+                Files.readString(modeDirectory.resolve("default").resolve("classes.json"))).getAsJsonObject();
+        assertEquals(1, mapDocument.size());
+        assertEquals("tdm/base", mapDocument.get("parent").getAsString());
+        assertEquals(1, classDocument.size());
+        assertEquals("tdm/base", classDocument.get("parent").getAsString());
+        assertTrue(Files.readString(modeDirectory.resolve("base").resolve("map.json")).contains("\"rules\""));
+        assertTrue(Files.readString(modeDirectory.resolve("base").resolve("classes.json")).contains("\"classes\""));
+        assertFalse(data.maps(GameModeRegistry.TEAM_DEATHMATCH).stream()
+                .anyMatch(map -> "base".equals(map.id())));
+    }
+
+    @Test
     void roundTripsModeSpecificTopologyInsideMapJson() {
         SFGameSavedData source = new SFGameSavedData();
         assertTrue(source.selectMode(GameModeRegistry.DOMINATION));
@@ -135,7 +164,7 @@ final class MapConfigRegistryTest {
         assertEquals(77, rules.rules(GameModeRegistry.TEAM_DEATHMATCH, "child",
                 data.rules(GameModeRegistry.TEAM_DEATHMATCH)).scoreLimit());
         assertTrue(Files.readString(directory.resolve("maps").resolve("tdm").resolve("child").resolve("map.json"))
-                .contains("\"parent\": \"default\""));
+                .contains("\"parent\": \"tdm/default\""));
 
         ClassRegistry classes = new ClassRegistry();
         classes.useConfigRoot(directory);
@@ -174,5 +203,126 @@ final class MapConfigRegistryTest {
         assertTrue(classes.containsForTeam(GameModeRegistry.TEAM_DEATHMATCH, "child", TeamSide.RED, "default_only"),
                 Files.readString(defaultClasses));
         assertTrue(classes.containsForTeam(GameModeRegistry.TEAM_DEATHMATCH, "child", TeamSide.RED, "child_only"));
+    }
+    @Test
+    void supportsCrossModeRuleAndClassParents() throws Exception {
+        SFGameSavedData data = new SFGameSavedData();
+        MapConfigRegistry maps = new MapConfigRegistry();
+        maps.useConfigRoot(directory);
+        assertTrue(maps.reload(data).isEmpty());
+        assertTrue(data.createMap("source"));
+        maps.createMap(GameModeRegistry.TEAM_DEATHMATCH, "source");
+        assertTrue(data.selectMode(GameModeRegistry.DOMINATION));
+        assertTrue(data.createMap("child"));
+        maps.createMap(GameModeRegistry.DOMINATION, "child");
+
+        RuleConfigRegistry rules = new RuleConfigRegistry();
+        rules.useConfigRoot(directory);
+        assertTrue(rules.reload(data).isEmpty());
+        rules.setInt(GameModeRegistry.TEAM_DEATHMATCH, "source", "scoreLimit", 77);
+        rules.setParent(GameModeRegistry.DOMINATION, "child", "tdm/source");
+        rules.resetMap(GameModeRegistry.DOMINATION, "child");
+        assertEquals(77, rules.rules(GameModeRegistry.DOMINATION, "child",
+                data.rules(GameModeRegistry.DOMINATION)).scoreLimit());
+
+        ClassRegistry classes = new ClassRegistry();
+        classes.useConfigRoot(directory);
+        assertTrue(classes.reload(data).isEmpty());
+        Path sourceClasses = directory.resolve("maps").resolve("tdm").resolve("source").resolve("classes.json");
+        Files.writeString(sourceClasses, """
+                {
+                  "parent": "tdm/base",
+                  "classes": [
+                    {
+                      "id": "cross_mode",
+                      "displayName": "Cross Mode",
+                      "gunId": "tacz:hk416d",
+                      "ammoId": "tacz:556x45"
+                    }
+                  ]
+                }
+                """);
+        Path childClasses = directory.resolve("maps").resolve("domination").resolve("child").resolve("classes.json");
+        Files.writeString(childClasses, "{\"parent\":\"tdm/source\"}\n");
+        assertTrue(classes.reload(data).isEmpty());
+        assertTrue(classes.containsForTeam(GameModeRegistry.DOMINATION, "child", TeamSide.RED, "cross_mode"));
+    }
+    @Test
+    void commandStyleCreationRefreshesBaseRulesAndClassesImmediately() throws Exception {
+        SFGameSavedData data = new SFGameSavedData();
+        MapConfigRegistry maps = new MapConfigRegistry();
+        maps.useConfigRoot(directory);
+        assertTrue(maps.reload(data).isEmpty());
+        RuleConfigRegistry rules = new RuleConfigRegistry();
+        rules.useConfigRoot(directory);
+        assertTrue(rules.reload(data).isEmpty());
+        ClassRegistry classes = new ClassRegistry();
+        classes.useConfigRoot(directory);
+        assertTrue(classes.reload(data).isEmpty());
+
+        Path baseMap = directory.resolve("maps").resolve("tdm").resolve("base").resolve("map.json");
+        com.google.gson.JsonObject baseRules = com.google.gson.JsonParser.parseString(Files.readString(baseMap)).getAsJsonObject();
+        baseRules.getAsJsonObject("rules").addProperty("scoreLimit", 83);
+        Files.writeString(baseMap, baseRules.toString());
+        Path baseClasses = directory.resolve("maps").resolve("tdm").resolve("base").resolve("classes.json");
+        Files.writeString(baseClasses, """
+                {
+                  "classes": [
+                    {
+                      "id": "base_live",
+                      "displayName": "Base Live",
+                      "gunId": "tacz:hk416d",
+                      "ammoId": "tacz:556x45"
+                    }
+                  ]
+                }
+                """);
+        assertTrue(rules.reload(data).isEmpty());
+        assertTrue(classes.reload(data).isEmpty());
+
+        assertTrue(data.createMap("fresh"));
+        maps.createMap(GameModeRegistry.TEAM_DEATHMATCH, "fresh");
+        classes.createMapProfile(GameModeRegistry.TEAM_DEATHMATCH, "fresh");
+        // MatchManager.createMapConfiguration performs these refreshes itself.
+        assertTrue(rules.reload(data).isEmpty());
+        assertTrue(classes.reload(data).isEmpty());
+        assertEquals(83, rules.rules(GameModeRegistry.TEAM_DEATHMATCH, "fresh",
+                data.rules(GameModeRegistry.TEAM_DEATHMATCH)).scoreLimit());
+        assertTrue(classes.containsForTeam(GameModeRegistry.TEAM_DEATHMATCH, "fresh",
+                TeamSide.RED, "base_live"));
+    }
+
+    @Test
+    void parentReferencesBlockDeletionAndRemovedScopesDisappearAfterRefresh() {
+        SFGameSavedData data = new SFGameSavedData();
+        MapConfigRegistry maps = new MapConfigRegistry();
+        maps.useConfigRoot(directory);
+        assertTrue(maps.reload(data).isEmpty());
+        RuleConfigRegistry rules = new RuleConfigRegistry();
+        rules.useConfigRoot(directory);
+        assertTrue(rules.reload(data).isEmpty());
+        ClassRegistry classes = new ClassRegistry();
+        classes.useConfigRoot(directory);
+        assertTrue(classes.reload(data).isEmpty());
+
+        assertTrue(data.createMap("parent"));
+        maps.createMap(GameModeRegistry.TEAM_DEATHMATCH, "parent");
+        classes.createMapProfile(GameModeRegistry.TEAM_DEATHMATCH, "parent");
+        assertTrue(data.createMap("child"));
+        maps.createMap(GameModeRegistry.TEAM_DEATHMATCH, "child");
+        classes.createMapProfile(GameModeRegistry.TEAM_DEATHMATCH, "child");
+        assertTrue(rules.reload(data).isEmpty());
+        assertTrue(classes.reload(data).isEmpty());
+        rules.setParent(GameModeRegistry.TEAM_DEATHMATCH, "child", "parent");
+        assertEquals(java.util.List.of("tdm/child"),
+                rules.referencesTo(GameModeRegistry.TEAM_DEATHMATCH, "parent"));
+
+        rules.setParent(GameModeRegistry.TEAM_DEATHMATCH, "child", "base");
+        assertTrue(data.removeMap("child"));
+        maps.deleteMap(GameModeRegistry.TEAM_DEATHMATCH, "child");
+        assertTrue(rules.reload(data).isEmpty());
+        assertTrue(classes.reload(data).isEmpty());
+        assertEquals("base", rules.parent(GameModeRegistry.TEAM_DEATHMATCH, "child"));
+        assertTrue(classes.allForTeam(GameModeRegistry.TEAM_DEATHMATCH, "child", TeamSide.RED).isEmpty());
     }
 }

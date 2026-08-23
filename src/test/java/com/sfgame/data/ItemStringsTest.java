@@ -12,9 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * entry points {@code stack}/{@code applyTag} are NOT unit-testable here:
  * touching {@code ItemStack} initializes {@code BuiltInRegistries}, which
  * fails headless ("not bootstrapped"), and {@code Bootstrap.bootStrap()}
- * fails under ForgeGradle's test JVM.  Those runtime paths (fallback on
- * malformed SNBT) are verified by the mapped-class compile plus the server
- * loadout/shop code paths.
+ * fails under ForgeGradle's test JVM. Those runtime paths are not unit-tested
+ * here; their callers are compiled against mapped Minecraft classes.
  */
 final class ItemStringsTest {
     @Test
