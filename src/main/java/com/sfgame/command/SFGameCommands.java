@@ -620,7 +620,7 @@ public final class SFGameCommands {
             com.sfgame.game.MapBuildSnapshotService.clear(context.getSource().getServer(),
                     data.selectedMode(), data.activeMap());
             data.activeMap().build().clearRegion();
-            data.setDirty();
+            dirty(context);
             return success(context, "Cleared map build box and snapshot");
         } catch (Exception exception) {
             return failure(context, exception.getMessage() == null
@@ -640,7 +640,7 @@ public final class SFGameCommands {
             MatchManager.get().ruleConfigs().setStringSet(data.selectedMode(), data.selectedMap(),
                     "mapBlockAllowlist", allowlist);
             data.activeMap().build().snapshotSaved(false);
-            data.setDirty();
+            dirty(context);
             return success(context, "Allowed block selector " + selector);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
@@ -657,7 +657,7 @@ public final class SFGameCommands {
             MatchManager.get().ruleConfigs().setStringSet(data.selectedMode(), data.selectedMap(),
                     "mapBlockAllowlist", allowlist);
             data.activeMap().build().snapshotSaved(false);
-            data.setDirty();
+            dirty(context);
             return success(context, "Disallowed block selector " + selector);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
@@ -674,7 +674,7 @@ public final class SFGameCommands {
         try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
             int parts = com.sfgame.game.MapBuildSnapshotService.save(context.getSource().getServer(),
                     data.selectedMode(), data.activeMap(), MatchManager.get().rules().mapSnapshotMode(),
-                    MatchManager.get().rules().mapBlockAllowlist()); data.setDirty();
+                    MatchManager.get().rules().mapBlockAllowlist()); dirty(context);
             return success(context, "Saved map snapshot in " + parts + " partition(s)");
         } catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not save map snapshot" : exception.getMessage()); }
     }
@@ -717,7 +717,7 @@ public final class SFGameCommands {
 
     private static int ctfSnapshotClear(CommandContext<CommandSourceStack> context) {
         if (!checkMapBuildEdit(context)) return 0;
-        try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer()); com.sfgame.game.MapBuildSnapshotService.clear(context.getSource().getServer(), data.selectedMode(), data.activeMap()); data.setDirty(); return success(context, "Cleared map snapshot"); }
+        try { SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer()); com.sfgame.game.MapBuildSnapshotService.clear(context.getSource().getServer(), data.selectedMode(), data.activeMap()); dirty(context); return success(context, "Cleared map snapshot"); }
         catch (Exception exception) { return failure(context, exception.getMessage() == null ? "Could not clear map snapshot" : exception.getMessage()); }
     }
 
@@ -1066,7 +1066,7 @@ public final class SFGameCommands {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         int order = data.activeMap().domination().points().stream().mapToInt(CapturePointDefinition::order).max().orElse(0) + 1;
         data.activeMap().domination().add(new CapturePointDefinition(id, region, order));
-        data.setDirty(); MatchManager.get().arenaSelectionChanged();
+        dirty(context); MatchManager.get().arenaSelectionChanged();
         context.getSource().sendSuccess(() -> Component.literal("Added capture point " + id).withStyle(ChatFormatting.GREEN), true);
     }
 
@@ -1115,7 +1115,7 @@ public final class SFGameCommands {
         try {
             CapturePointDefinition point = data.activeMap().domination().point(id)
                     .orElseThrow(() -> new IllegalArgumentException("Unknown capture point: " + id));
-            data.activeMap().domination().replace(id, point.withOrder(order)); data.setDirty();
+            data.activeMap().domination().replace(id, point.withOrder(order)); dirty(context);
             MatchManager.get().arenaSelectionChanged();
             return success(context, "Set " + id + " order to " + order);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
@@ -1145,7 +1145,7 @@ public final class SFGameCommands {
         String id = StringArgumentType.getString(context, "point");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!data.activeMap().domination().remove(id)) return failure(context, "Unknown capture point: " + id);
-        data.setDirty(); MatchManager.get().arenaSelectionChanged();
+        dirty(context); MatchManager.get().arenaSelectionChanged();
         return success(context, "Removed capture point " + id);
     }
 
@@ -1153,7 +1153,7 @@ public final class SFGameCommands {
         if (!checkPointEdit(context)) return 0;
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         int count = data.activeMap().domination().points().size();
-        data.activeMap().domination().clear(); data.setDirty(); MatchManager.get().arenaSelectionChanged();
+        data.activeMap().domination().clear(); dirty(context); MatchManager.get().arenaSelectionChanged();
         return success(context, "Cleared " + count + " capture point(s)");
     }
 
@@ -1165,7 +1165,7 @@ public final class SFGameCommands {
             CapturePointDefinition point = data.activeMap().domination().point(id)
                     .orElseThrow(() -> new IllegalArgumentException("Unknown capture point: " + id));
             data.activeMap().domination().replace(id, point.withRegion(replacement.apply(point)));
-            data.setDirty(); MatchManager.get().arenaSelectionChanged();
+            dirty(context); MatchManager.get().arenaSelectionChanged();
             return success(context, "Updated capture point " + id);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
@@ -1393,7 +1393,7 @@ public final class SFGameCommands {
         String id = StringArgumentType.getString(context, "sector");
         int order = data.activeMap().breakthrough().sectors().stream().mapToInt(BreakthroughSectorDefinition::order).max().orElse(0) + 1;
         try {
-            data.activeMap().breakthrough().addSector(new BreakthroughSectorDefinition(id, order)); data.setDirty();
+            data.activeMap().breakthrough().addSector(new BreakthroughSectorDefinition(id, order)); dirty(context);
             MatchManager.get().arenaSelectionChanged(); return success(context, "Added sector " + id);
         } catch (IllegalArgumentException exception) { return failure(context, exception.getMessage()); }
     }
@@ -1591,7 +1591,10 @@ public final class SFGameCommands {
         return SFGameSavedData.get(context.getSource().getServer()).activeMap().breakthrough().sector(id).orElse(null);
     }
     private static void dirty(CommandContext<CommandSourceStack> context) {
-        SFGameSavedData.get(context.getSource().getServer()).setDirty(); MatchManager.get().arenaSelectionChanged();
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        data.setDirty();
+        MatchManager.get().saveActiveMapConfiguration();
+        MatchManager.get().arenaSelectionChanged();
     }
     private static String displayPoint(CapturePointDefinition point) {
         return point.id() + " " + regionText(point.region()) + " respawn="
@@ -1617,6 +1620,7 @@ public final class SFGameCommands {
         String modeId = StringArgumentType.getString(context, "mode");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!data.selectMode(modeId)) return failure(context, "Unknown game mode: " + modeId);
+        MatchManager.get().saveActiveMapConfiguration();
         MatchManager.get().arenaSelectionChanged();
         MatchManager.get().refreshCommandTree();
         return success(context, "Selected mode " + modeId + " with map " + data.selectedMap());
@@ -1649,6 +1653,7 @@ public final class SFGameCommands {
         String mapId = StringArgumentType.getString(context, "map");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!data.createMap(mapId)) return failure(context, "Invalid or duplicate map id: " + mapId);
+        MatchManager.get().saveActiveMapConfiguration();
         MatchManager.get().arenaSelectionChanged();
         return success(context, "Created and selected map " + data.selectedMode() + "/" + mapId);
     }
@@ -1667,6 +1672,7 @@ public final class SFGameCommands {
         String mapId = StringArgumentType.getString(context, "map");
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         if (!data.removeMap(mapId)) return failure(context, "Map does not exist or is the last map for this mode");
+        MatchManager.get().removeMapConfiguration(data.selectedMode(), mapId);
         MatchManager.get().arenaSelectionChanged();
         return success(context, "Removed map " + mapId + "; selected " + data.selectedMap());
     }
@@ -1774,8 +1780,8 @@ public final class SFGameCommands {
     }
 
     private static int classReload(CommandContext<CommandSourceStack> context) {
-        List<String> errors = new ArrayList<>(MatchManager.get().classes().reload());
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        List<String> errors = new ArrayList<>(MatchManager.get().classes().reload(data));
         boolean captains = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())
                 && MatchManager.get().rules().breakthroughVariant() == BreakthroughVariant.CAPTAIN;
         errors.addAll(MatchManager.get().loadouts().validate(MatchManager.get().classes(), data.selectedMode(), data.selectedMap(), data.enabledTeams(), captains)

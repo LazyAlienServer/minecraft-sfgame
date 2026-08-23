@@ -11,5 +11,8 @@ public final class SFGameServerConfigPaths {
     public static Path root(MinecraftServer server) {
         return server.getWorldPath(LevelResource.ROOT).resolve("serverconfig").resolve("sfgame");
     }
+    public static Path maps(MinecraftServer server) {
+        return root(server).resolve("maps");
+    }
 
 }

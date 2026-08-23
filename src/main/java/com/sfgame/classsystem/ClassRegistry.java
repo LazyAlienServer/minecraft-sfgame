@@ -9,6 +9,7 @@ import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
 import com.sfgame.SFGame;
 import com.sfgame.data.SFGameId;
+import com.sfgame.data.SFGameSavedData;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.TeamSide;
 
@@ -33,8 +34,8 @@ import java.util.Set;
 
 /**
  * Loads class pools with the following overlay order:
- * mode defaults -> map override -> team override.
- * Existing flat mode files remain valid; missing blocks simply fall back.
+ * mode defaults -> map-folder classes.json -> team override.
+ * Legacy flat mode files remain a read-only fallback for existing worlds.
  */
 public final class ClassRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -42,6 +43,8 @@ public final class ClassRegistry {
 
     private Path legacyPath;
     private Path profilesPath;
+    private Path mapProfilesPath;
+    private volatile Map<String, Map<String, MapOverride>> mapOverrides = Map.of();
     private volatile Map<String, Profile> profiles = Map.of();
     private volatile List<String> loadErrors = List.of();
 
@@ -61,6 +64,51 @@ public final class ClassRegistry {
             errors.add(message(exception));
             SFGame.LOGGER.error("Could not load SFGame class profiles from {}", profilesPath, exception);
         }
+        loadErrors = List.copyOf(errors);
+        return loadErrors;
+    }
+    public synchronized List<String> reload(SFGameSavedData data) {
+        List<String> errors = new ArrayList<>();
+        if (mapProfilesPath == null || data == null) return reload();
+        try {
+            Map<String, RawProfile> raw = readBundledOrLegacyProfiles(errors);
+            Map<String, Profile> resolved = new LinkedHashMap<>();
+            for (String id : raw.keySet()) resolve(id, raw, resolved, new LinkedHashSet<>(), errors);
+            for (Map.Entry<String, Profile> entry : resolved.entrySet()) validateScopes(entry.getKey(), entry.getValue(), errors);
+            if (errors.isEmpty()) profiles = Collections.unmodifiableMap(new LinkedHashMap<>(resolved));
+        } catch (IOException | JsonParseException exception) {
+            errors.add(message(exception));
+            SFGame.LOGGER.error("Could not load bundled SFGame class profiles", exception);
+        }
+
+        Map<String, Map<String, MapOverride>> loaded = new LinkedHashMap<>();
+        boolean mapErrors = false;
+        try {
+            for (var mode : GameModeRegistry.all()) {
+                Map<String, MapOverride> modeOverrides = new LinkedHashMap<>();
+                for (var map : data.maps(mode.id())) {
+                    Path target = mapProfilesPath.resolve(mode.id()).resolve(map.id()).resolve("classes.json");
+                    if (!Files.exists(target)) writeEmptyMapProfile(target);
+                    try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
+                        ClassFile file = GSON.fromJson(reader, ClassFile.class);
+                        if (file == null) throw new JsonParseException("The root JSON object is missing");
+                        Pool pool = readPool(mode.id() + "/" + map.id(), "classes",
+                                file.classes(), file.captainClasses(), errors, false);
+                        Map<String, RawScope> teams = readScopes(mode.id() + "/" + map.id(), "teams",
+                                file.teams(), errors, true);
+                        modeOverrides.put(map.id(), new MapOverride(pool, teams));
+                    } catch (JsonParseException | IOException | IllegalStateException exception) {
+                        errors.add(mode.id() + "/" + map.id() + ": " + message(exception));
+                        mapErrors = true;
+                    }
+                }
+                loaded.put(mode.id(), Collections.unmodifiableMap(modeOverrides));
+            }
+        } catch (IOException exception) {
+            errors.add(message(exception));
+            mapErrors = true;
+        }
+        if (!mapErrors) mapOverrides = Collections.unmodifiableMap(loaded);
         loadErrors = List.copyOf(errors);
         return loadErrors;
     }
@@ -117,18 +165,36 @@ public final class ClassRegistry {
     public synchronized void useConfigRoot(Path root) {
         legacyPath = root.resolve("classes.json");
         profilesPath = root.resolve("classes");
+        mapProfilesPath = root.resolve("maps");
     }
-
+    public synchronized void ensureMapProfile(String modeId, String mapId) {
+        if (mapProfilesPath == null) return;
+        Path target = mapProfilesPath.resolve(modeId).resolve(mapId).resolve("classes.json");
+        if (Files.exists(target)) return;
+        try {
+            writeEmptyMapProfile(target);
+        } catch (IOException exception) {
+            throw new IllegalStateException("Could not create map class profile: " + message(exception), exception);
+        }
+    }
     private Scope scope(String modeId, String mapId, TeamSide side) {
-        Profile profile = profiles.get(profileIdForMode(modeId));
+        String profileId = profileIdForMode(modeId);
+        Profile profile = profiles.get(profileId);
         if (profile == null) return Scope.EMPTY;
         Scope mapScope = profile.root;
         String normalizedMap = mapId == null ? "" : mapId.trim().toLowerCase(Locale.ROOT);
         RawScope rawMap = normalizedMap.isBlank() ? null : profile.maps.get(normalizedMap);
         if (rawMap != null) mapScope = resolveScope(rawMap.name, profile.maps, profile.root, new LinkedHashSet<>(), false);
-        if (side == null || side == TeamSide.NONE) return mapScope;
+
         Map<String, RawScope> teams = new LinkedHashMap<>(profile.teams);
         if (rawMap != null) collectMapTeams(rawMap, profile.maps, teams, new LinkedHashSet<>());
+        MapOverride mapOverride = normalizedMap.isBlank()
+                ? null : mapOverrides.getOrDefault(profileId, Map.of()).get(normalizedMap);
+        if (mapOverride != null) {
+            mapScope = merge(mapScope, mapOverride.pool);
+            teams.putAll(mapOverride.teams);
+        }
+        if (side == null || side == TeamSide.NONE) return mapScope;
         RawScope team = teams.get(side.id());
         return team == null ? mapScope : resolveScope(team.name, teams, mapScope, new LinkedHashSet<>(), true);
     }
@@ -226,6 +292,37 @@ public final class ClassRegistry {
         for (var mode : GameModeRegistry.all()) if (!result.containsKey(mode.id())) errors.add("Missing class profile: " + mode.id() + ".json");
         return result;
     }
+    private Map<String, RawProfile> readBundledOrLegacyProfiles(List<String> errors) throws IOException {
+        Map<String, RawProfile> result = new LinkedHashMap<>();
+        for (var mode : GameModeRegistry.all()) {
+            String id = mode.id();
+            JsonObject object = bundledProfile(id);
+            if (object == null) {
+                try (InputStream input = ClassRegistry.class.getResourceAsStream("/defaults/classes.json")) {
+                    if (input == null) throw new IOException("Bundled defaults/classes.json is missing");
+                    object = JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8)).getAsJsonObject();
+                }
+            }
+            Path legacyProfile = profilesPath == null ? null : profilesPath.resolve(id + ".json");
+            if (legacyProfile != null && Files.isRegularFile(legacyProfile)) {
+                try (Reader reader = Files.newBufferedReader(legacyProfile, StandardCharsets.UTF_8)) {
+                    JsonElement parsed = JsonParser.parseReader(reader);
+                    if (!parsed.isJsonObject()) throw new JsonParseException("root must be an object");
+                    object = parsed.getAsJsonObject();
+                } catch (JsonParseException exception) {
+                    errors.add(id + ": " + message(exception));
+                }
+            }
+            ClassFile file = GSON.fromJson(object, ClassFile.class);
+            if (file == null) throw new JsonParseException(id + ": the root JSON object is missing");
+            String parent = normalizeParent(file.parent(), id, "profile", errors);
+            Pool pool = readPool(id, "classes", file.classes(), file.captainClasses(), errors, false);
+            Map<String, RawScope> teams = readScopes(id, "teams", file.teams(), errors, true);
+            Map<String, RawScope> maps = readScopes(id, "maps", file.maps(), errors, false);
+            result.put(id, new RawProfile(parent, pool, teams, maps));
+        }
+        return result;
+    }
 
     private Map<String, RawScope> readScopes(String profile, String label, Map<String, ClassScopeFile> source,
                                               List<String> errors, boolean teamScope) {
@@ -290,6 +387,10 @@ public final class ClassRegistry {
         classes.putAll(child.classes); captains.putAll(child.captains);
         return new Pool(Collections.unmodifiableMap(classes), Collections.unmodifiableMap(captains));
     }
+    private static Scope merge(Scope parent, Pool child) {
+        Pool merged = merge(new Pool(parent.classes, parent.captains), child);
+        return new Scope(merged.classes, merged.captains);
+    }
 
     private Map<String, ClassDefinition> validateDefinitions(String profile, String pool,
                                                               List<ClassDefinition> definitions, List<String> errors,
@@ -304,6 +405,14 @@ public final class ClassRegistry {
         }
         if ("classes".equals(pool) && requireNonEmpty && loaded.isEmpty()) errors.add(profile + ": no valid normal classes were loaded");
         return loaded;
+    }
+    private static void writeEmptyMapProfile(Path target) throws IOException {
+        JsonObject object = new JsonObject();
+        object.add("classes", new JsonArray());
+        object.add("captainClasses", new JsonArray());
+        object.add("teams", new JsonObject());
+        Files.createDirectories(target.getParent());
+        Files.writeString(target, GSON.toJson(object) + System.lineSeparator(), StandardCharsets.UTF_8);
     }
 
     private void createLegacyFileIfMissing() throws IOException {
@@ -389,6 +498,7 @@ public final class ClassRegistry {
 
     private static String profileIdForMode(String modeId) { return modeId == null ? GameModeRegistry.TEAM_DEATHMATCH : modeId.toLowerCase(Locale.ROOT); }
     private static boolean validProfileId(String id) { return SFGameId.isValid(id); }
+    private record MapOverride(Pool pool, Map<String, RawScope> teams) { }
     private static String message(Exception exception) { return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(); }
 
     private record Pool(Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains) {

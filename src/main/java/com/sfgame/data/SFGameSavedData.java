@@ -130,6 +130,21 @@ public final class SFGameSavedData extends SavedData {
         if (GameModeRegistry.get(modeId).isEmpty()) return List.of();
         return Collections.unmodifiableCollection(mapsFor(modeId).values());
     }
+    /** Replaces the in-memory maps after the external map JSON has been loaded. */
+    public void replaceMaps(String modeId, Collection<ArenaMap> replacements) {
+        if (GameModeRegistry.get(modeId).isEmpty()) return;
+        LinkedHashMap<String, ArenaMap> maps = mapsFor(modeId);
+        maps.clear();
+        if (replacements != null) {
+            for (ArenaMap map : replacements) {
+                if (map != null) maps.putIfAbsent(map.id(), map);
+            }
+        }
+        if (maps.isEmpty()) maps.put(DEFAULT_MAP, new ArenaMap(DEFAULT_MAP));
+        if (selectedMode.equals(modeId) && !maps.containsKey(selectedMap)) selectedMap = maps.keySet().iterator().next();
+        setDirty();
+    }
+
 
     @Nullable public ArenaMap activeMap() {
         return mapsFor(selectedMode).get(selectedMap);

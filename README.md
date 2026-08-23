@@ -105,7 +105,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame class set <玩家> <职业ID>
 ```
 
-规则统一通过 `/sfgame rule` 管理，并按“模式 → 地图”保存。每个模式拥有一个 JSON 文件和一套基础规则，每张地图可以覆盖部分参数，也可以继承同模式的另一张地图；`list`、`get` 和命令补全只显示当前模式适用的规则，其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。
+规则统一通过 `/sfgame rule` 管理，并按“模式目录 → 地图目录”保存。模式基线位于 `maps/<模式>/defaults.json`，每张地图的覆盖值位于该地图目录的 `map.json`；地图可以继承同模式的另一张地图。`list`、`get` 和命令补全只显示当前模式适用的规则，其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。
 
 ### 规则参数完整说明
 
@@ -164,54 +164,47 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame rule reset
 ```
 
-`rule set` 修改当前选中模式和地图的覆盖值并立即写入 JSON。实时规则可在当前对局中生效；管理面板标记为“下局”的规则会在比赛期间锁定，只能回到大厅后修改。`rule get` 与 `rule list` 显示继承合并后的最终值。`rule reset` 只清除当前地图的覆盖值并重新使用父级，不会重置模式基础规则；`rule inherit base` 继承本模式基础规则，`rule inherit <地图ID>` 继承同模式另一张已配置规则的地图。
+`rule set` 修改当前选中模式和地图的覆盖值并立即写入该地图目录的 `map.json`。实时规则可在当前对局中生效；管理面板标记为“下局”的规则会在比赛期间锁定，只能回到大厅后修改。`rule get` 与 `rule list` 显示继承合并后的最终值。`rule reset` 只清除当前地图的覆盖值并重新使用父级；`rule inherit base` 继承模式默认规则，`rule inherit <地图ID>` 继承同模式另一张地图。
 
-规则配置文件位于：
+配置按“模式目录 → 地图目录”组织：
 
 ```text
-<存档>/serverconfig/sfgame/rules/tdm.json
-<存档>/serverconfig/sfgame/rules/domination.json
-<存档>/serverconfig/sfgame/rules/breakthrough.json
-<存档>/serverconfig/sfgame/rules/ctf.json
+<存档>/serverconfig/sfgame/maps/tdm/default/map.json
+<存档>/serverconfig/sfgame/maps/tdm/default/classes.json
+<存档>/serverconfig/sfgame/maps/tdm/defaults.json
+
+<存档>/serverconfig/sfgame/maps/domination/desert/map.json
+<存档>/serverconfig/sfgame/maps/domination/desert/classes.json
 ```
 
-文件结构如下。`rules` 是该模式基础规则；`maps` 中只需填写地图需要覆盖的参数。`parent: "base"` 表示继承基础规则，也可以填写同文件内另一个地图 ID。父级缺失或形成循环时，`/sfgame reload` 会报告错误并继续使用上一次有效配置。
+`map.json` 放地图坐标、出生点、模式点位/旗帜、破坏区域以及体积较小的 `rules`。`classes.json` 专门放职业池、队伍职业覆盖和突破队长职业等较长配置；文件缺少职业覆盖时使用该模式内置职业。`defaults.json` 是模式规则基线，地图 `map.json` 的 `parent` 和 `rules` 只保存该地图的覆盖值。地图目录还可以放快照等体积较大的伴随数据。
 
 ```json
 {
-  "rules": {
-    "maxPlayers": 10,
-    "scoreLimit": 50,
-    "timeLimitSeconds": 600,
-    "mapBlockAllowlist": [
-      "minecraft:glass",
-      "#minecraft:logs"
-    ]
+  "id": "desert",
+  "lobby": {
+    "dimension": "minecraft:overworld",
+    "x": 12.5,
+    "y": 64.0,
+    "z": -8.5,
+    "yaw": 180.0,
+    "pitch": 0.0
   },
-  "maps": {
-    "default": {
-      "parent": "base",
-      "rules": {
-        "scoreLimit": 75,
-        "mapBlockAllowlist": [
-          "minecraft:white_wool",
-          "#minecraft:leaves"
-        ]
-      }
-    },
-    "night": {
-      "parent": "default",
-      "rules": {
-        "timeLimitSeconds": 900
-      }
-    }
+  "redSpawns": [],
+  "blueSpawns": [],
+  "rules": {
+    "scoreLimit": 75,
+    "mapBlockAllowlist": [
+      "minecraft:white_wool",
+      "#minecraft:leaves"
+    ]
   }
 }
 ```
 
-`mapBlockAllowlist` 的数组会像其他地图规则一样继承：子地图未填写时完整继承父级；子地图一旦填写，就用自己的完整数组覆盖父级，而不是把两个数组自动合并。`rule build allow/disallow` 会读取当前继承后的最终数组，修改后把新的完整数组写入当前地图覆盖。
+`mapBlockAllowlist` 的数组会像其他地图规则一样继承：子地图未填写时完整继承父级；子地图一旦填写，就用自己的完整数组覆盖父级，而不是把两个数组自动合并。`rule build allow/disallow` 会读取当前继承后的最终数组，修改后把新的完整数组写入当前地图 `map.json`。
 
-管理员手动编辑 JSON 后在大厅执行 `/sfgame reload` 重载；对局内需要实时修改标量规则时使用 `/sfgame rule set`，不允许在比赛中整体重载规则文件。配置按存档隔离，缺失时会从模组内置默认值生成。旧版全局 `config/sfgame/` 下的 JSON 不会读取或迁移，需要时请管理员手动复制。
+管理员手动编辑地图目录中的 JSON 后在大厅执行 `/sfgame reload` 重载；对局内需要实时修改标量规则时使用 `/sfgame rule set`，不允许在比赛中整体重载规则文件。首次加载会把旧版 SavedData 中的地图写入 `maps/<mode>/<map>/map.json`；旧的规则/职业文件仍可作为一次迁移期间的回退来源，新建或修改的配置统一写入地图目录。
 
 单人开发测试使用全局命令 `/sfgame dev`。每次执行会切换开启/关闭状态；状态写入当前世界，切换模式或地图后仍然保持。开启后允许只有一名参赛玩家开局，但地图、出生点、队伍绑定、职业/TACZ 资源和模式配置仍必须有效：
 
@@ -261,7 +254,7 @@ SFGame 自有 ID（地图、模式、sector、点位、职业及职业配置继�
 ### 大厅、出生点和原版队伍参数
 
 `<阵营>` 只能是 `red`、`blue`、`yellow`、`green`。它代表 SFGame 阵营，不是颜色文字本身；SFGame 会把它绑定到一个原版 `/team` 名称。
-
+地图按照“模式目录 → 地图目录”保存，主文档路径为 `<存档>/serverconfig/sfgame/maps/<模式>/<地图>/map.json`。当前内置模式 ID 为 `tdm`、`domination`、`breakthrough` 和 `ctf`，每个模式可以拥有多张地图。`/sfgame spawn setdefault lobby` 将管理员当前位置保存为全局默认大厅；世界首次加载时若尚未配置，会自动使用主世界原版出生点。`/sfgame spawn set lobby` 为当前地图设置覆盖点，`/sfgame spawn clear lobby` 清除覆盖并恢复使用全局默认大厅。长方形区域统一将准星对准两个角方块，依次执行根命令 `/sfgame pos1`、`/sfgame pos2`，再执行对应模式的 `set box` 或 `add box` 命令；两个端点方块都会完整包含在区域内。团队竞技和占点地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营；也支持 `/sfgame team set random @a` 的随机参数顺序。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。突破模式地图改用每个 sector 的攻守角色出生点，配置方法见下文。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
 ```text
 /sfgame spawn setdefault lobby
 /sfgame spawn set lobby
@@ -287,80 +280,51 @@ SFGame 自有 ID（地图、模式、sector、点位、职业及职业配置继�
 
 ## 职业配置
 
-首次加载存档时会在该存档的 `serverconfig/sfgame/` 下生成职业配置：
+首次加载存档时会在每个地图目录中生成职业配置：
 
 ```text
-<存档>/serverconfig/sfgame/classes/tdm.json
-<存档>/serverconfig/sfgame/classes/domination.json
-<存档>/serverconfig/sfgame/classes/breakthrough.json
-<存档>/serverconfig/sfgame/classes/ctf.json
+<存档>/serverconfig/sfgame/maps/tdm/default/classes.json
+<存档>/serverconfig/sfgame/maps/domination/default/classes.json
+<存档>/serverconfig/sfgame/maps/breakthrough/default/classes.json
+<存档>/serverconfig/sfgame/maps/ctf/default/classes.json
 ```
 
-首次生成时会为四个模式建立独立文件，不默认建立继承关系。TDM 与占点的内置来源位于 `src/main/resources/defaults/classes.json`；突破模式的完整默认来源位于 `src/main/resources/defaults/classes/breakthrough.json`；CTF 默认继承 TDM。已有的突破配置会执行一次增量升级：保留管理员已填写的字段，补入缺失的内置职业，并为内置职业补齐为空的 `inventory` 与 `armor`。
+职业配置按“模式内置职业 → 当前地图 `classes.json` → 当前原版阵营”覆盖。职业对象较长，因此独立放在地图目录；`map.json` 只保存坐标、模式拓扑和短规则。空的 `classes.json` 表示不覆盖该模式内置职业，新建地图会自动创建该文件。
 
-TDM 与占点默认包含：
-
-- `assault`：HK416、180 发备用弹药、105% 移速（TACZ 1.1.8-hotfix 资源 ID 为 `tacz:hk416d`）。
-- `sniper`：M107、30 发备用弹药、95% 移速。
-
-每个模式文件支持可选的 `parent`、普通 `classes`、队长 `captainClasses`，以及按队伍和地图覆盖职业池的 `teams`、`maps`：
+每个地图的 `classes.json` 支持普通 `classes`、突破队长 `captainClasses`，以及按队伍覆盖职业池的 `teams`：
 
 ```json
 {
-  "parent": "tdm",
-  "classes": [],
+  "classes": [
+    {
+      "id": "assault",
+      "displayName": "沙漠突击兵",
+      "description": "当前地图的中近距离职业",
+      "icon": "minecraft:iron_sword",
+      "gunId": "tacz:hk416d",
+      "ammoId": "tacz:556x45",
+      "initialMagazine": 30,
+      "reserveAmmo": 180
+    }
+  ],
   "captainClasses": [],
   "teams": {
-    "red": {
-      "parent": "default",
-      "classes": [],
-      "captainClasses": []
-    },
     "blue": {
-      "parent": "red",
-      "classes": []
-    }
-  },
-  "maps": {
-    "desert": {
-      "parent": "default",
-      "classes": [],
-      "teams": {
-        "blue": {
-          "parent": "default",
-          "classes": []
+      "classes": [
+        {
+          "id": "sniper",
+          "displayName": "蓝队狙击手",
+          "gunId": "tacz:m107",
+          "ammoId": "tacz:50bmg"
         }
-      }
+      ]
     }
   }
 }
 ```
 
-覆盖顺序固定为“模式默认 → 当前地图 → 当前原版阵营”：玩家在 `desert` 地图的红队会使用 `maps.desert.teams.red`；未填写的字段继续从上一级继承。`parent: "default"`（也可写 `base`）表示继承上一级默认池；队伍可以把 `parent` 写成另一个队伍 ID，地图也可以把 `parent` 写成同一文件中的另一个地图 ID。所有 `parent` 只能引用当前模式文件内部的安全 ID，缺失父级、循环继承、重复职业 ID 和无效 ID 会在重载时报告错误。地图 ID 使用 `/sfgame map create` 创建的 ID，队伍键使用 `red`、`blue`、`yellow`、`green`。
-
-如果每个队伍都完全不对称，模式根对象的 `classes` 可以为空，只要 `teams` 或 `maps.<地图>.teams` 至少提供一个普通职业池；仍然建议保留一个根池作为未分队玩家和新地图的回退。
-
-例如，下面的配置让红队在所有地图使用步枪池，让 `desert` 地图的蓝队改用狙击池，同时保留其他模式默认职业（示例中的职业对象必须按上表填写完整字段）：
-
-```json
-{
-  "classes": [{ "id": "assault", "displayName": "红队步枪手", "gunId": "tacz:hk416d", "ammoId": "tacz:556x45" }],
-  "teams": {
-    "red": { "classes": [{ "id": "assault", "displayName": "红队步枪手", "gunId": "tacz:hk416d", "ammoId": "tacz:556x45" }] }
-  },
-  "maps": {
-    "desert": {
-      "teams": {
-        "blue": { "classes": [{ "id": "sniper", "displayName": "蓝队狙击手", "gunId": "tacz:m107", "ammoId": "tacz:50bmg" }] }
-      }
-    }
-  }
-}
-```
-
-同一池中相同 ID 的职业对象会整体替换父池对象，不是逐字段合并；实际使用时应填写完整的职业字段。职业选择、`/sfgame class set` 和开赛校验都会按玩家当前队伍与当前地图读取对应池；如果玩家原先选的 ID 在新地图/队伍中不存在，会在下一次部署时自动回退到该池第一个有效职业。
-
-突破模式的默认普通职业包括 `assault`、`sniper`、`medic`（医疗兵）、`tank`（坦克）和 `smg_assault`（冲锋手）；队长职业包括 `heavy_captain`（重装队长）与 `captain_tank`（坦克）。当前 TACZ 1.1.8-hotfix 默认包只提供枪械、枪械近战动作和弹药，没有独立的手雷、烟雾弹、闪光弹或近战物品；因此职业暂时使用配置中的普通物品占位，待提供包含这些资源的枪包后再接入四选一投掷物和 TACZ 近战物品。护甲和其他物品仍可通过 `inventory` 与 `armor` 修改。
+同一池中相同 ID 的职业对象会整体替换模式内置职业，不是逐字段合并；实际使用时应填写完整的职业字段。职业选择、`/sfgame class set` 和开赛校验都会按玩家当前地图与阵营读取对应池；如果玩家原先选的 ID 在新地图/队伍中不存在，会在下一次部署时自动回退到该池第一个有效职业。`teams.<阵营>` 支持 `parent` 和同样的 `classes`/`captainClasses` 字段，可用于在地图内继续组织队伍覆盖。
+TDM 与占点使用内置 `assault`、`sniper`；突破模式额外提供 `medic`、`tank`、`smg_assault` 及队长职业。CTF 默认使用 TDM 职业池。地图 `classes.json` 可以只填写需要替换的完整职业对象。
 
 职业 JSON 字段含义如下：
 
@@ -384,7 +348,7 @@ TDM 与占点默认包含：
 | `effects` | `[ {"id":"minecraft:...", "durationTicks":200, "amplifier":0} ]` | 部署时添加的药水效果；`visible:false` 可隐藏状态图标。 |
 | `allowDrop` | `false` | 是否允许玩家丢弃该职业配装；比赛内通常保持 `false`。 |
 
-模式文件根对象的 `parent` 只能引用同目录的另一个模式配置 ID；`classes` 是普通职业池，`captainClasses` 是突破队长职业池。`teams` 和 `maps` 中的职业池使用相同字段结构，且可以继续嵌套地图下的 `teams`。子配置中相同 `id` 会覆盖父池定义，未覆盖的职业继续继承。玩家在不同模式的选择相互隔离，地图/队伍职业池只影响当前地图与阵营。
+`classes.json` 的根对象只描述当前地图；`classes` 是普通职业池，`captainClasses` 是突破队长职业池，`teams` 中可以按阵营覆盖。子配置中相同 `id` 会整体替换父池定义，未覆盖的职业继续使用模式内置池。玩家在不同模式和地图的职业选择相互隔离，地图/队伍职业池只影响当前地图与阵营。
 
 修改 JSON 后执行 `/sfgame class reload`。SFGame 会通过 TACZ API 校验枪械、弹药和附件资源；发现无效资源时保留上一份有效配置，并阻止比赛在配装无效时开始。重载不会替换存活玩家的装备，新配置在下一次部署时生效。
 
@@ -681,7 +645,7 @@ TDM 与占点默认包含：
 
 ## 夺旗（CTF）模式
 
-使用 `/sfgame mode select ctf` 选择夺旗模式。CTF 包含三个子模式：`classic`（多队经典夺旗）、`assault`（固定进攻/防守的一攻一守）和 `territory`（前线旗先占点解锁，再夺旗）。CTF 地图沿用当前地图的大厅、队伍出生点和原版 `/team` 绑定；职业配置独立保存在 `<存档>/serverconfig/sfgame/classes/ctf.json`，默认继承 TDM 配置。
+使用 `/sfgame mode select ctf` 选择夺旗模式。CTF 包含三个子模式：`classic`（多队经典夺旗）、`assault`（固定进攻/防守的一攻一守）和 `territory`（前线旗先占点解锁，再夺旗）。CTF 地图沿用当前地图目录中的大厅、队伍出生点和原版 `/team` 绑定；职业覆盖保存在 `<存档>/serverconfig/sfgame/maps/ctf/<地图>/classes.json`，未填写覆盖时使用 TDM 内置职业池。
 
 ### 模式与队伍
 

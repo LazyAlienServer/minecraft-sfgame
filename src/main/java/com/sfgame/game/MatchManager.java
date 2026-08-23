@@ -54,6 +54,7 @@ public final class MatchManager {
     private final BreakthroughRuntime breakthroughRuntime = new BreakthroughRuntime();
     private final CaptureTheFlagRuntime captureTheFlagRuntime = new CaptureTheFlagRuntime();
     private final CtfShopRegistry ctfShopRegistry = new CtfShopRegistry();
+    private final MapConfigRegistry mapConfigRegistry = new MapConfigRegistry();
     private final RuleConfigRegistry ruleConfigRegistry = new RuleConfigRegistry();
     private final Map<String, MatchModeRuntime> runtimes = Map.of(
             GameModeRegistry.TEAM_DEATHMATCH, teamDeathmatchRuntime,
@@ -87,6 +88,7 @@ public final class MatchManager {
     public VanillaTeamBindingService teams() { return teams; }
     public BreakthroughRuntime breakthrough() { return breakthroughRuntime; }
     public CaptureTheFlagRuntime captureTheFlag() { return captureTheFlagRuntime; }
+    public MapConfigRegistry mapConfigs() { return mapConfigRegistry; }
     public CtfShopRegistry ctfShop() { return ctfShopRegistry; }
     public RuleConfigRegistry ruleConfigs() { return ruleConfigRegistry; }
     public MatchRules rules() {
@@ -228,6 +230,25 @@ public final class MatchManager {
                 ? MatchPhase.LOBBY : MatchPhase.UNCONFIGURED;
         syncAll();
     }
+    /** Persists the selected map after a command mutates its in-memory topology. */
+    public void saveActiveMapConfiguration() {
+        if (server == null) return;
+        SFGameSavedData data = data();
+        ArenaMap map = data.activeMap();
+        if (map == null) return;
+        mapConfigRegistry.saveMap(data.selectedMode(), map);
+        classRegistry.ensureMapProfile(data.selectedMode(), map.id());
+        data.setDirty();
+    }
+
+    public void saveMapConfiguration(String modeId, ArenaMap map) {
+        mapConfigRegistry.saveMap(modeId, map);
+    }
+
+    public void removeMapConfiguration(String modeId, String mapId) {
+        mapConfigRegistry.deleteMap(modeId, mapId);
+    }
+
 
     /**
      * Re-send the vanilla Brigadier command tree after a mode change.  The
@@ -245,11 +266,14 @@ public final class MatchManager {
         this.server = server;
         SFGameSavedData data = data();
         Path configRoot = SFGameServerConfigPaths.root(server);
+        mapConfigRegistry.useConfigRoot(configRoot);
+        ruleConfigRegistry.useConfigRoot(configRoot);
         classRegistry.useConfigRoot(configRoot);
         ctfShopRegistry.useConfigRoot(configRoot);
-        ruleConfigRegistry.useConfigRoot(configRoot);
         teams.ensureDefaultTeams(server, data);
-        List<String> errors = classRegistry.reload();
+        List<String> mapErrors = mapConfigRegistry.reload(data);
+        if (!mapErrors.isEmpty()) SFGame.LOGGER.warn("SFGame map configuration errors: {}", mapErrors);
+        List<String> errors = classRegistry.reload(data);
         if (!errors.isEmpty()) SFGame.LOGGER.warn("SFGame class configuration errors: {}", errors);
         List<String> shopErrors = ctfShopRegistry.reload();
         if (!shopErrors.isEmpty()) SFGame.LOGGER.warn("SFGame CTF shop configuration errors: {}", shopErrors);
