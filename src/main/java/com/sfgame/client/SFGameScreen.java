@@ -1,5 +1,10 @@
 package com.sfgame.client;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.platform.NativeImage;
+import com.tacz.guns.api.item.IGun;
+import com.tacz.guns.api.TimelessAPI;
+import com.sfgame.SFGame;
 import com.sfgame.data.ItemStrings;
 import com.sfgame.game.MatchPhase;
 import com.sfgame.game.TeamSide;
@@ -12,11 +17,14 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.lwjgl.glfw.GLFW;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -385,6 +393,76 @@ public final class SFGameScreen extends Screen {
         return ItemStrings.stack(iconId, 1, new ItemStack(Items.BARRIER));
     }
 
+    private static TextureCrop gunHud(ItemStack icon) {
+        if (!(icon.getItem() instanceof IGun)) return null;
+        ResourceLocation texture = TimelessAPI.getGunDisplay(icon)
+                .map(display -> display.getHUDTexture())
+                .orElse(null);
+        return texture == null ? null : textureCrop(texture);
+    }
+
+    private static TextureCrop pngIcon(String textureId) {
+        ResourceLocation texture = ResourceLocation.tryParse(textureId);
+        if (texture == null) {
+            SFGame.LOGGER.warn("Invalid profession icon texture: {}", textureId);
+            return null;
+        }
+        return textureCrop(texture);
+    }
+
+    private static TextureCrop textureCrop(ResourceLocation texture) {
+        try (InputStream input = Minecraft.getInstance().getResourceManager()
+                .getResourceOrThrow(texture).open();
+             NativeImage image = NativeImage.read(input)) {
+            int minX = image.getWidth();
+            int minY = image.getHeight();
+            int maxX = -1;
+            int maxY = -1;
+            for (int y = 0; y < image.getHeight(); y++) {
+                for (int x = 0; x < image.getWidth(); x++) {
+                    if ((image.getPixelRGBA(x, y) >>> 24) == 0) continue;
+                    minX = Math.min(minX, x);
+                    minY = Math.min(minY, y);
+                    maxX = Math.max(maxX, x);
+                    maxY = Math.max(maxY, y);
+                }
+            }
+            if (maxX < minX || maxY < minY) return null;
+            return new TextureCrop(texture, image.getWidth(), image.getHeight(),
+                    minX, minY, maxX - minX + 1, maxY - minY + 1);
+        } catch (IOException | RuntimeException exception) {
+            SFGame.LOGGER.warn("Could not read profession icon texture {}", texture, exception);
+            return null;
+        }
+    }
+
+    private static void renderIcon(GuiGraphics graphics, ItemStack icon, TextureCrop texture,
+                                   int x, int y, int size) {
+        if (texture != null) {
+            float scale = Math.min((float) size / texture.width(), (float) size / texture.height());
+            int width = Math.max(1, Math.round(texture.width() * scale));
+            int height = Math.max(1, Math.round(texture.height() * scale));
+            graphics.blit(texture.texture(), x + (size - width) / 2, y + (size - height) / 2,
+                    width, height, texture.x(), texture.y(), texture.width(), texture.height(),
+                    texture.textureWidth(), texture.textureHeight());
+            return;
+        }
+
+        float scale = size / 16.0F;
+        graphics.pose().pushPose();
+        graphics.pose().translate(x, y, 100.0F);
+        graphics.pose().scale(scale, scale, 1.0F);
+        graphics.renderItem(icon, 0, 0);
+        graphics.pose().popPose();
+        RenderSystem.applyModelViewMatrix();
+    }
+
+
+    private record TextureCrop(ResourceLocation texture, int textureWidth, int textureHeight,
+                               int x, int y, int width, int height) {
+    }
+
+
     private void renderClassTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
         for (ClassCardButton card : classCards) {
             if (!card.isMouseOver(mouseX, mouseY)) continue;
@@ -445,12 +523,18 @@ public final class SFGameScreen extends Screen {
 
     private static final class ClassCardButton extends DarkButton {
         private final ItemStack icon;
+        private final TextureCrop texture;
         private final boolean selected;
         private final List<Component> tooltipLines;
 
         private ClassCardButton(int x, int y, MatchSnapshot.ClassView view, boolean selected, OnPress onPress) {
             super(x, y, CLASS_CARD_SIZE, CLASS_CARD_SIZE, Component.empty(), onPress);
             this.icon = iconStack(view.icon());
+            this.texture = switch (view.iconRender()) {
+                case "hud" -> gunHud(icon);
+                case "png" -> pngIcon(view.iconTexture());
+                default -> null;
+            };
             this.selected = selected;
             this.tooltipLines = classTooltip(view);
         }
@@ -458,11 +542,7 @@ public final class SFGameScreen extends Screen {
         @Override
         protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.renderWidget(graphics, mouseX, mouseY, partialTick);
-            graphics.pose().pushPose();
-            graphics.pose().translate(getX() + 6, getY() + 6, 100.0F);
-            graphics.pose().scale(2.0F, 2.0F, 1.0F);
-            graphics.renderItem(icon, 0, 0);
-            graphics.pose().popPose();
+            renderIcon(graphics, icon, texture, getX() + 6, getY() + 6, 32);
             if (selected) {
                 int color = 0xFFFFD54F;
                 graphics.fill(getX(), getY(), getX() + width, getY() + 2, color);
@@ -490,11 +570,7 @@ public final class SFGameScreen extends Screen {
         @Override
         protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.renderWidget(graphics, mouseX, mouseY, partialTick);
-            graphics.pose().pushPose();
-            graphics.pose().translate(getX() + 20, getY() + 6, 100.0F);
-            graphics.pose().scale(2.0F, 2.0F, 1.0F);
-            graphics.renderItem(icon, 0, 0);
-            graphics.pose().popPose();
+            renderIcon(graphics, icon, null, getX() + 20, getY() + 6, 32);
 
             String displayName = Minecraft.getInstance().font.plainSubstrByWidth(name, SHOP_CARD_WIDTH - 6);
             graphics.drawCenteredString(Minecraft.getInstance().font, Component.literal(displayName),

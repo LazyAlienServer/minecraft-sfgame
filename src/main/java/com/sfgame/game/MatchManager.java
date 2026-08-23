@@ -826,12 +826,12 @@ public final class MatchManager {
                 ? classRegistry.captainClassesForMode(data().selectedMode(), data().selectedMap())
                 : classRegistry.captainClassesForTeam(data().selectedMode(), data().selectedMap(), classSide);
         List<MatchSnapshot.ClassView> classViews = visibleClasses.stream()
-                .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
-                        c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo()))
+                .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.iconRender(),
+                        c.iconTexture(), c.gunId(), c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo()))
                 .toList();
         List<MatchSnapshot.ClassView> captainClassViews = visibleCaptainClasses.stream()
-                .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.gunId(),
-                        c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo())).toList();
+                .map(c -> new MatchSnapshot.ClassView(c.id(), c.displayName(), c.description(), c.icon(), c.iconRender(),
+                        c.iconTexture(), c.gunId(), c.maxHealth(), c.movementSpeedMultiplier(), c.reserveAmmo())).toList();
         boolean breakthrough = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode()) && data().activeMap() != null;
         TeamSide attackSide = breakthrough && (phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RUNNING)
                 ? breakthroughRuntime.attacker() : breakthrough ? rules.breakthroughAttacker() : TeamSide.NONE;

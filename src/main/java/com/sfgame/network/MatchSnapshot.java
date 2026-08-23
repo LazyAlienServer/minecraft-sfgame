@@ -18,15 +18,16 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
                             List<CaptainCandidate> captainCandidates, boolean awaitingRespawnSelection,
                             List<RespawnOption> respawnOptions, String ctfVariant, String ctfCarrierRestriction,
                             int ctfCurrency, List<CtfFlagView> ctfFlags, List<ShopView> ctfShopItems) {
-    public record ClassView(String id, String name, String description, String icon, String gunId,
-                            double health, double speed, int reserveAmmo) {
+    public record ClassView(String id, String name, String description, String icon, String iconRender,
+                            String iconTexture, String gunId, double health, double speed, int reserveAmmo) {
         void encode(FriendlyByteBuf buffer) {
             buffer.writeUtf(id); buffer.writeUtf(name); buffer.writeUtf(description); buffer.writeUtf(icon);
-            buffer.writeUtf(gunId); buffer.writeDouble(health); buffer.writeDouble(speed); buffer.writeVarInt(reserveAmmo);
+            buffer.writeUtf(iconRender); buffer.writeUtf(iconTexture); buffer.writeUtf(gunId);
+            buffer.writeDouble(health); buffer.writeDouble(speed); buffer.writeVarInt(reserveAmmo);
         }
         static ClassView decode(FriendlyByteBuf buffer) {
             return new ClassView(buffer.readUtf(), buffer.readUtf(), buffer.readUtf(), buffer.readUtf(), buffer.readUtf(),
-                    buffer.readDouble(), buffer.readDouble(), buffer.readVarInt());
+                    buffer.readUtf(), buffer.readUtf(), buffer.readDouble(), buffer.readDouble(), buffer.readVarInt());
         }
     }
 

@@ -293,7 +293,8 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
       "id": "assault",
       "displayName": "沙漠突击兵",
       "description": "当前地图覆盖的突击职业",
-      "icon": "minecraft:iron_sword",
+      "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}",
+      "iconRender": "item",
       "gunId": "tacz:hk416d",
       "ammoId": "tacz:556x45",
       "initialMagazine": 30,
@@ -317,7 +318,16 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 相同 ID 的职业对象整体替换 parent 池中的职业，不做逐字段合并；不同 ID 会追加。parent 可写当前模式地图或 `<模式>/<地图>` 跨模式引用。`teams.<阵营>.parent` 只处理当前最终职业池中的队伍 scope 继承。职业选择、`/sfgame class set` 和开赛校验都会按当前地图完整 parent 链读取；链上缺失或循环会使重载失败并保留上一份有效配置。
 
-物品选择器统一支持 `资源ID{SNBT}` 内联 NBT 写法，例如 `"tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}"` 可让图标直接显示指定枪械模型。JSON 中内部引号需要转义；NBT 键名区分大小写，资源 ID 部分会自动转为小写。
+物品选择器统一支持 `资源ID{SNBT}` 内联 NBT 写法，例如 `"tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}"` 可让图标指向指定枪械。JSON 中内部引号需要转义；NBT 键名区分大小写，资源 ID 部分会自动转为小写。职业卡保持 44×44；默认 `"iconRender":"item"` 使用原版 GUI 物品渲染。设置 `"iconRender":"hud"` 时改用枪械包的 HUD 纹理，并按实际纹理尺寸和非透明区域自动裁切、居中。
+
+自定义 PNG 必须由模组或服务端资源包提供给所有客户端。设置 `"iconRender":"png"`，并让 `iconTexture` 指向完整纹理资源位置：
+
+```json
+"iconRender": "png",
+"iconTexture": "mypack:textures/gui/classes/hk416d.png"
+```
+
+例如上面的文件应位于资源包 `assets/mypack/textures/gui/classes/hk416d.png`。PNG 尺寸不限；透明边缘会自动裁切。资源缺失或无法读取时回退到 `icon` 的原版物品渲染。
 
 职业 JSON 字段含义如下：
 
@@ -327,6 +337,8 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 | `displayName` | `"突击兵"` | 菜单、HUD 和提示中显示的人类可读名称。 |
 | `description` | `"中近距离持续作战"` | 职业卡片 Tooltip 的说明文字。 |
 | `icon` | `"tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}"` | 职业卡片图标物品；支持 `资源ID{NBT}` 内联 NBT，无效时显示屏障图标。 |
+| `iconRender` | `"item"`、`"hud"` 或 `"png"` | 图标渲染方式；默认 `item`，`hud` 使用 TACZ HUD 纹理，`png` 使用 `iconTexture`。其他值按 `item` 处理。 |
+| `iconTexture` | `"mypack:textures/gui/classes/hk416d.png"` | `iconRender` 为 `png` 时使用的客户端资源包 PNG；必须写完整纹理资源位置。 |
 | `maxHealth` | `20.0` | 部署时的最大生命值，范围由服务端限制为 1～2048。 |
 | `movementSpeedMultiplier` | `1.05` | 移动速度倍率；`1.0` 为正常速度，`0.95` 为慢 5%。 |
 | `gunId` | `"tacz:hk416d"` | TACZ 主武器资源 ID；必须能被 `TimelessAPI` 索引。 |
