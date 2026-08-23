@@ -8,10 +8,13 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pure-string tests for {@link ItemStrings#parse(String)}.  Stack-level
- * behaviour of {@code stack}/{@code applyTag} needs bootstrapped registries
- * and is covered by the server-side loadout/shop code paths plus
- * {@code ./gradlew.bat test} compilation against mapped Minecraft classes.
+ * Pure-string tests for {@link ItemStrings#parse(String)}.  The stack-level
+ * entry points {@code stack}/{@code applyTag} are NOT unit-testable here:
+ * touching {@code ItemStack} initializes {@code BuiltInRegistries}, which
+ * fails headless ("not bootstrapped"), and {@code Bootstrap.bootStrap()}
+ * fails under ForgeGradle's test JVM.  Those runtime paths (fallback on
+ * malformed SNBT) are verified by the mapped-class compile plus the server
+ * loadout/shop code paths.
  */
 final class ItemStringsTest {
     @Test
