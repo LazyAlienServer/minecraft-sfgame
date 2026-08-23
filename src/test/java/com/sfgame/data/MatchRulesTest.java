@@ -6,6 +6,7 @@ import net.minecraft.nbt.CompoundTag;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class MatchRulesTest {
@@ -72,12 +73,23 @@ final class MatchRulesTest {
         assertEquals(MatchRules.DEFAULT_RESPAWN_SECONDS, rules.respawnSeconds());
         assertEquals(MatchRules.DEFAULT_RESPAWN_PROTECTION_SECONDS, rules.respawnProtectionSeconds());
         assertEquals(MatchRules.DEFAULT_RESULT_SECONDS, rules.resultSeconds());
-        assertTrue(rules.mapBlockBreaking());
+        assertFalse(rules.mapBlockBreaking());
         assertTrue(rules.mapBlockAllowlist().isEmpty());
         assertEquals(0, rules.mapRestorePartitionDelayTicks());
         assertTrue(rules.mapRestoreAdaptiveThrottling());
         assertEquals(40, rules.mapRestoreTargetTickMillis());
         assertEquals(8, rules.mapRestoreMaxPartitionsPerTick());
+    }
+
+    @Test
+    void blockBreakingDefaultsToDisabledForEveryMode() {
+        for (String modeId : java.util.List.of(
+                GameModeRegistry.TEAM_DEATHMATCH,
+                GameModeRegistry.DOMINATION,
+                GameModeRegistry.BREAKTHROUGH,
+                GameModeRegistry.CAPTURE_THE_FLAG)) {
+            assertFalse(new MatchRules(modeId).mapBlockBreaking(), modeId);
+        }
     }
 
     @Test

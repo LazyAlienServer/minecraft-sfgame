@@ -184,7 +184,7 @@ public final class MatchRules {
         captainVoteSeconds = 15;
         captainReplacementVoteSeconds = 10;
         attackerCaptainGlowing = true;
-        mapBlockBreaking = true;
+        mapBlockBreaking = false;
         mapBlockAllowlist(Set.of());
         mapSnapshotMode = MapSnapshotMode.ALLOWLIST;
         mapRestorePartitionDelayTicks = DEFAULT_MAP_RESTORE_DELAY_TICKS;

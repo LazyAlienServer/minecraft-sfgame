@@ -137,7 +137,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `captainVoteSeconds` | 15 | 1～120 | 突破 captain | 首次队长投票时长。 |
 | `captainReplacementVoteSeconds` | 10 | 1～120 | 突破 captain | 队长掉线、离队或换队后的补选时长。 |
 | `attackerCaptainGlowing` | true | true/false | 突破 captain | 是否让进攻方队长使用发光轮廓；队长不占用头盔栏。 |
-| `mapBlockBreaking` | true | true/false | 全部 | 是否启用当前地图的白名单方块破坏与放置。仅 build box 内、allowlist 中的方块可编辑；爆炸、TACZ 枪械、卓越前线枪械与载具同样受此规则限制。 |
+| `mapBlockBreaking` | false | true/false | 全部 | 是否启用当前地图的白名单方块破坏与放置。默认关闭；启用后仅 build box 内、allowlist 中的方块可编辑，爆炸、TACZ 枪械、卓越前线枪械与载具同样受此规则限制。 |
 | `mapBlockAllowlist` | `[]` | JSON 字符串数组 | 全部 | 当前模式/地图允许改变的方块选择器。支持方块 ID（如 `minecraft:glass`）和方块标签（如 `#minecraft:logs`），支持地图规则继承。使用 `rule build allow/disallow/allowlist` 管理，或直接编辑规则 JSON。 |
 | `mapSnapshotMode` | allowlist | allowlist/full | 全部 | 地图快照的保存和还原方式。`allowlist` 只保存、清除和还原选区内白名单方块；`full` 保存并还原完整选区。该规则只能在大厅修改，修改后必须重新保存快照。 |
 | `attackerCaptainCaptureWeight` | 2.0 | 1.0～10.0 | 突破 captain | 进攻队长在点内的占领权重。 |
@@ -622,7 +622,7 @@ TDM 与占点默认包含：
 - 单赛段中，攻陷最后 sector 则进攻方获胜；票数归零或超时则防守方获胜。
 - 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
 - 阶段整备期间全员无敌，不能通过开火提前解除保护。
-- `mapBlockBreaking` 默认开启；实际只能编辑地图 build box 内的白名单方块。突破模式的投票、倒计时和 sector 整备期间仍暂停编辑。规则可在比赛中修改并立即生效。
+- `mapBlockBreaking` 默认关闭；管理员启用后，实际只能编辑地图 build box 内的白名单方块。突破模式的投票、倒计时和 sector 整备期间仍暂停编辑。规则可在比赛中修改并立即生效。
 - 突破模式默认死亡重生倒计时为 10 秒。倒计时结束后自动打开位置选择，可选择当前 sector 的队伍出生点，或当前由本队占领的点位；安全点位使用 `inside` 坐标，人数并列或敌方正在中立化/夺取时使用 `nearby` 坐标。按钮点击时会再次校验归属，已经失守的点不能重生。
 
 突破模式规则：
@@ -765,7 +765,7 @@ CTF 旗帜状态是 `STAND`（旗座）、`CARRIED`（玩家头盔栏持有）�
 
 地图复原属于地图本身，不再属于 CTF，因此 TDM、占点、突破和夺旗都使用同一套配置。快照保存到世界 `data/sfgame/maps/<模式ID>/<地图ID>/`。系统会按 X/Z 方向自动拆成 16×16 的分区 NBT；大型地图不会构造单个超大结构 NBT。`allowlist` 模式使用稀疏分区，只保存和排队还原实际包含白名单母版方块的分区；空分区不会产生文件、进度或等待时间。例如 500×500 地图中只有一个白名单方块时，快照通常只有一个分区。只有 `mapBlockBreaking=true` 时才会在开赛前自动恢复，结算和返回大厅期间不会再次恢复。
 
-将准星分别对准两个对角方块并执行 `/sfgame pos1` 与 `/sfgame pos2`，再执行 `rule build setbox`。`allow`/`disallow` 接受完整方块资源 ID（例如 `minecraft:white_wool`）或以 `#` 开头的方块标签（例如 `#minecraft:logs`），并提供原版资源/标签补全。默认 `mapBlockBreaking=true`、`mapSnapshotMode=allowlist`、白名单为空，所以默认不会误伤地图；加入白名单后，匹配的方块才可由玩家挖掘/放置，也可被原版爆炸、TACZ 枪械、卓越前线枪械或载具破坏。白名单写在当前模式的规则 JSON 中，而不是地图 SavedData NBT。`snapshot save` 保存母版，`restore` 按当前快照模式恢复选区，`build status` 查看 setbox 两个边界坐标、快照有效性与实际分区数。规则开启但未设置 build box 或未保存兼容母版时，`/sfgame start` 会拒绝开赛。
+将准星分别对准两个对角方块并执行 `/sfgame pos1` 与 `/sfgame pos2`，再执行 `rule build setbox`。`allow`/`disallow` 接受完整方块资源 ID（例如 `minecraft:white_wool`）或以 `#` 开头的方块标签（例如 `#minecraft:logs`），并提供原版资源/标签补全。所有模式默认 `mapBlockBreaking=false`，因此未主动配置的地图不会恢复或开放破坏；需要地图破坏时，先设置 build box、白名单并保存快照，再将规则设为 `true`。启用后，匹配的方块才可由玩家挖掘/放置，也可被原版爆炸、TACZ 枪械、卓越前线枪械或载具破坏。白名单写在当前模式的规则 JSON 中，而不是地图 SavedData NBT。`snapshot save` 保存母版，`restore` 按当前快照模式恢复选区，`build status` 查看 setbox 两个边界坐标、快照有效性与实际分区数。规则开启但未设置 build box 或未保存兼容母版时，`/sfgame start` 会拒绝开赛。
 
 #### `setbox` 是什么
 
