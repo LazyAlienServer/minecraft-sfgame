@@ -70,7 +70,7 @@ final class MapConfigRegistryTest {
 
         RuleConfigRegistry rules = new RuleConfigRegistry();
         rules.useConfigRoot(directory);
-        assertTrue(rules.reload(data).isEmpty());
+        assertTrue(rules.reload(data).isEmpty(), () -> rules.errors().toString());
         rules.setInt(GameModeRegistry.TEAM_DEATHMATCH, "default", "scoreLimit", 77);
 
         ClassRegistry classes = new ClassRegistry();
@@ -98,14 +98,81 @@ final class MapConfigRegistryTest {
                 """);
         assertTrue(classes.reload(data).isEmpty());
         assertTrue(classes.containsForTeam(GameModeRegistry.TEAM_DEATHMATCH, "default", TeamSide.RED, "map_scout"));
+        Files.createDirectories(directory.resolve("rules"));
+        Files.writeString(directory.resolve("rules").resolve("tdm.json"),
+                "{\"rules\":{\"scoreLimit\":999},\"maps\":{}}\n");
+        Files.createDirectories(directory.resolve("classes"));
+        Files.writeString(directory.resolve("classes").resolve("tdm.json"),
+                "{\"classes\":[{\"id\":\"legacy_only\",\"displayName\":\"Legacy\",\"gunId\":\"tacz:hk416d\",\"ammoId\":\"tacz:556x45\"}]}\n");
+        assertTrue(classes.reload(data).isEmpty());
+        assertFalse(classes.containsForTeam(GameModeRegistry.TEAM_DEATHMATCH, "default", TeamSide.RED, "legacy_only"));
         RuleConfigRegistry restoredRules = new RuleConfigRegistry();
         restoredRules.useConfigRoot(directory);
         SFGameSavedData restoredData = new SFGameSavedData();
         assertTrue(restoredRules.reload(restoredData).isEmpty());
         assertEquals(77, restoredRules.rules(GameModeRegistry.TEAM_DEATHMATCH, "default",
                 restoredData.rules(GameModeRegistry.TEAM_DEATHMATCH)).scoreLimit());
-        assertTrue(Files.isRegularFile(directory.resolve("maps").resolve("tdm").resolve("defaults.json")));
-        assertFalse(Files.exists(directory.resolve("rules").resolve("tdm.json")));
-        assertFalse(Files.exists(directory.resolve("classes").resolve("tdm.json")));
+        assertTrue(Files.readString(mapDirectory.resolve("map.json")).contains("\"parent\""));
+        assertTrue(Files.readString(mapDirectory.resolve("classes.json")).contains("\"parent\""));
+        assertFalse(Files.exists(directory.resolve("maps").resolve("tdm").resolve("defaults.json")));
+    }
+    @Test
+    void mapParentFieldsControlRuleAndClassInheritance() throws Exception {
+        SFGameSavedData data = new SFGameSavedData();
+        MapConfigRegistry maps = new MapConfigRegistry();
+        maps.useConfigRoot(directory);
+        assertTrue(maps.reload(data).isEmpty());
+
+        RuleConfigRegistry rules = new RuleConfigRegistry();
+        rules.useConfigRoot(directory);
+        assertTrue(rules.reload(data).isEmpty());
+        rules.setInt(GameModeRegistry.TEAM_DEATHMATCH, "default", "scoreLimit", 77);
+        assertTrue(data.createMap("child"));
+        maps.saveMap(GameModeRegistry.TEAM_DEATHMATCH, data.activeMap());
+        assertTrue(rules.reload(data).isEmpty());
+        rules.setParent(GameModeRegistry.TEAM_DEATHMATCH, "child", "default");
+        rules.resetMap(GameModeRegistry.TEAM_DEATHMATCH, "child");
+        assertEquals(77, rules.rules(GameModeRegistry.TEAM_DEATHMATCH, "child",
+                data.rules(GameModeRegistry.TEAM_DEATHMATCH)).scoreLimit());
+        assertTrue(Files.readString(directory.resolve("maps").resolve("tdm").resolve("child").resolve("map.json"))
+                .contains("\"parent\": \"default\""));
+
+        ClassRegistry classes = new ClassRegistry();
+        classes.useConfigRoot(directory);
+        assertTrue(classes.reload(data).isEmpty());
+        Path defaultClasses = directory.resolve("maps").resolve("tdm").resolve("default").resolve("classes.json");
+        Files.writeString(defaultClasses, """
+                {
+                  "parent": "base",
+                  "classes": [
+                    {
+                      "id": "default_only",
+                      "displayName": "Default Only",
+                      "gunId": "tacz:hk416d",
+                      "ammoId": "tacz:556x45"
+                    }
+                  ],
+                  "teams": {}
+                }
+                """);
+        Path childClasses = directory.resolve("maps").resolve("tdm").resolve("child").resolve("classes.json");
+        Files.writeString(childClasses, """
+                {
+                  "parent": "default",
+                  "classes": [
+                    {
+                      "id": "child_only",
+                      "displayName": "Child Only",
+                      "gunId": "tacz:hk416d",
+                      "ammoId": "tacz:556x45"
+                    }
+                  ],
+                  "teams": {}
+                }
+                """);
+        assertTrue(classes.reload(data).isEmpty());
+        assertTrue(classes.containsForTeam(GameModeRegistry.TEAM_DEATHMATCH, "child", TeamSide.RED, "default_only"),
+                Files.readString(defaultClasses));
+        assertTrue(classes.containsForTeam(GameModeRegistry.TEAM_DEATHMATCH, "child", TeamSide.RED, "child_only"));
     }
 }

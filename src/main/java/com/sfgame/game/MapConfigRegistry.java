@@ -86,6 +86,7 @@ public final class MapConfigRegistry {
         try {
             JsonObject document = readDocument(target);
             JsonObject mapObject = MapConfigJson.write(map);
+            if (!document.has("parent") && !document.has("Parent")) mapObject.addProperty("parent", "base");
             for (Map.Entry<String, JsonElement> entry : document.entrySet()) {
                 if (!mapObject.has(entry.getKey())) mapObject.add(entry.getKey(), entry.getValue().deepCopy());
             }
@@ -168,11 +169,7 @@ public final class MapConfigRegistry {
         Files.createDirectories(target.getParent());
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         Files.writeString(temporary, GSON.toJson(document) + System.lineSeparator(), StandardCharsets.UTF_8);
-        try {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
     }
 
     private static String normalize(String value) {

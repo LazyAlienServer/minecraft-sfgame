@@ -36,12 +36,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * JSON-backed per-map rule profiles. Each mode owns a directory with a small
- * defaults.json baseline; each map stores only its rule overrides in the
- * map.json document beside the map topology.
+ * JSON-backed per-map rule profiles. Each map stores its rule document in
+ * map.json; the document carries a parent map id or {@code base}.
  *
- * <p>Legacy per-mode rule files are read as a migration fallback, but new
- * writes always target the map directory.</p>
+ * <p>The map-layout loader does not consult mode-level rule files.</p>
  */
 public final class RuleConfigRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -182,7 +180,7 @@ public final class RuleConfigRegistry {
             if (!"base".equals(normalizedParent) && !mapScopeExists(modeId, normalizedParent)) {
                 throw new IllegalArgumentException("Unknown rule parent map: " + normalizedParent);
             }
-            mutateMap(modeId, normalizedMap, document -> document.addProperty("parent", normalizedParent));
+            setMapParent(modeId, normalizedMap, normalizedParent);
             return;
         }
         mutate(modeId, document -> {
@@ -259,27 +257,14 @@ public final class RuleConfigRegistry {
             Files.createDirectories(mapDirectory);
             for (GameModeDefinition mode : GameModeRegistry.all()) {
                 String modeId = mode.id();
-                MatchRules base = legacyData == null ? new MatchRules(modeId) : legacyData.rules(modeId).copy();
-                Path legacyPath = path(modeId);
-                if (Files.isRegularFile(legacyPath)) {
-                    try (Reader reader = Files.newBufferedReader(legacyPath, StandardCharsets.UTF_8)) {
-                        JsonElement parsed = JsonParser.parseReader(reader);
-                        if (!parsed.isJsonObject()) throw new JsonParseException("root must be a JSON object");
-                        Profile legacy = parse(modeId, parsed.getAsJsonObject(), problems);
-                        if (legacy != null) {
-                            base = legacy.base();
-                            migrateLegacyMapScopes(modeId, legacy,
-                                    legacyData == null ? List.of() : legacyData.maps(modeId), problems);
-                        }
-                    } catch (JsonParseException | IOException | IllegalStateException exception) {
-                        problems.add(modeId + ": " + message(exception));
-                    }
-                }
-                base = loadMapBase(modeId, base, problems);
-                MapModeProfile profile = readMapMode(modeId, base,
-                        legacyData == null ? List.of() : legacyData.maps(modeId), problems);
+                Collection<com.sfgame.data.ArenaMap> knownMaps = legacyData == null ? List.of() : legacyData.maps(modeId);
+                boolean migrate = mapDocumentsNeedMigration(modeId, knownMaps);
+                MatchRules base = new MatchRules(modeId);
+                if (migrate) migrateMapDocuments(modeId, knownMaps, base, problems);
+                // After migration, map.json is the only file-backed source for this map.
+                MapModeProfile profile = readMapMode(modeId, new MatchRules(modeId), knownMaps, problems);
                 if (profile != null) loaded.put(modeId, profile);
-                bases.put(modeId, base);
+                bases.put(modeId, new MatchRules(modeId));
             }
         } catch (IOException exception) {
             problems.add(message(exception));
@@ -329,6 +314,7 @@ public final class RuleConfigRegistry {
         if (!Files.exists(path)) {
             JsonObject document = new JsonObject();
             document.addProperty("id", mapId);
+            document.addProperty("parent", "base");
             document.add("rules", new JsonObject());
             writeDocument(path, document);
             return document;
@@ -337,53 +323,84 @@ public final class RuleConfigRegistry {
             JsonElement parsed = JsonParser.parseReader(reader);
             if (!parsed.isJsonObject()) throw new JsonParseException("root must be a JSON object");
             JsonObject document = parsed.getAsJsonObject();
-            if (!document.has("rules") && !document.has("Rules")) document.add("rules", new JsonObject());
+            boolean changed = false;
+            if (!document.has("parent") && !document.has("Parent")) {
+                document.addProperty("parent", "base");
+                changed = true;
+            }
+            if (!document.has("rules") && !document.has("Rules")) {
+                document.add("rules", new JsonObject());
+                changed = true;
+            }
+            if (changed) writeDocument(path, document);
             return document;
         } catch (JsonParseException exception) {
             problems.add(mapId + ": " + message(exception));
             return new JsonObject();
         }
     }
-    private MatchRules loadMapBase(String modeId, MatchRules fallback, List<String> problems) throws IOException {
-        Path target = mapDirectory.resolve(modeId).resolve("defaults.json");
-        if (!Files.exists(target)) {
-            JsonObject document = new JsonObject();
-            document.add("rules", ruleObject(modeId, fallback));
-            writeDocument(target, document);
-            return fallback;
+
+    private boolean mapDocumentsNeedMigration(String modeId, Collection<com.sfgame.data.ArenaMap> knownMaps) {
+        Set<String> ids = new LinkedHashSet<>();
+        if (knownMaps != null) for (var map : knownMaps) if (map != null) ids.add(map.id());
+        Path modeDirectory = mapDirectory.resolve(modeId);
+        if (Files.isDirectory(modeDirectory)) {
+            try (var paths = Files.list(modeDirectory)) {
+                paths.filter(Files::isDirectory).map(path -> path.getFileName().toString().toLowerCase(Locale.ROOT))
+                        .filter(SFGameId::isValid).forEach(ids::add);
+            } catch (IOException ignored) {
+                return true;
+            }
         }
-        try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
-            JsonElement parsed = JsonParser.parseReader(reader);
-            if (!parsed.isJsonObject()) throw new JsonParseException("root must be a JSON object");
-            JsonObject document = parsed.getAsJsonObject();
-            JsonObject rulesObject = document.has("rules") || document.has("Rules")
-                    ? readObjectAny(document, "rules", modeId + "/defaults/rules", problems) : document;
-            MatchRules result = fallback.copy();
-            int before = problems.size();
-            apply(rulesObject, result, modeId, modeId + "/defaults/rules", problems);
-            return problems.size() == before ? result : fallback;
-        } catch (JsonParseException exception) {
-            problems.add(modeId + "/defaults: " + message(exception));
-            return fallback;
+        if (ids.isEmpty()) ids.add("default");
+        for (String id : ids) {
+            Path path = mapPath(modeId, id);
+            if (!Files.isRegularFile(path)) return true;
+            try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                JsonElement parsed = JsonParser.parseReader(reader);
+                if (!parsed.isJsonObject()) return true;
+                JsonObject document = parsed.getAsJsonObject();
+                if (!document.has("parent") && !document.has("Parent")) return true;
+                JsonElement rules = document.has("rules") ? document.get("rules") : document.get("Rules");
+                if (rules == null || !rules.isJsonObject() || rules.getAsJsonObject().size() == 0) return true;
+            } catch (IOException | JsonParseException exception) {
+                return true;
+            }
         }
+        return false;
     }
 
-    private void migrateLegacyMapScopes(String modeId, Profile legacy,
-                                        Collection<com.sfgame.data.ArenaMap> knownMaps,
-                                        List<String> problems) {
-        if (knownMaps == null) return;
-        for (var map : knownMaps) {
-            Scope source = legacy.scopes().get(map.id());
-            if (source == null) continue;
-            Path path = mapPath(modeId, map.id());
-            try {
-                JsonObject document = readMapDocument(path, map.id(), problems);
-                if (hasRules(document)) continue;
-                if (!"base".equals(source.parent())) document.addProperty("parent", source.parent());
-                document.add("rules", source.rules().deepCopy());
-                writeDocument(path, document);
+    private void migrateMapDocuments(String modeId, Collection<com.sfgame.data.ArenaMap> knownMaps,
+                                     MatchRules base, List<String> problems) {
+        Set<String> ids = new LinkedHashSet<>();
+        if (knownMaps != null) for (var map : knownMaps) if (map != null) ids.add(map.id());
+        Path modeDirectory = mapDirectory.resolve(modeId);
+        if (Files.isDirectory(modeDirectory)) {
+            try (var paths = Files.list(modeDirectory)) {
+                paths.filter(Files::isDirectory).map(path -> path.getFileName().toString().toLowerCase(Locale.ROOT))
+                        .filter(SFGameId::isValid).forEach(ids::add);
             } catch (IOException exception) {
-                problems.add(modeId + "/" + map.id() + ": " + message(exception));
+                problems.add(modeId + ": " + message(exception));
+            }
+        }
+        if (ids.isEmpty()) ids.add("default");
+        for (String id : ids) {
+            Path path = mapPath(modeId, id);
+            try {
+                JsonObject document = readMapDocument(path, id, problems);
+                String parent = stringAny(document, "parent", "base").toLowerCase(Locale.ROOT);
+                if (!"base".equals(parent)) continue;
+                JsonObject existing = readObjectAny(document, "rules", modeId + "/" + id + "/rules", problems);
+                MatchRules effective = base.copy();
+                apply(existing, effective, modeId, modeId + "/" + id + "/rules", problems);
+                JsonObject full = ruleObject(modeId, effective);
+                if (!full.equals(existing)) {
+                    document.addProperty("parent", "base");
+                    document.add("rules", full);
+                    writeDocument(path, document);
+                }
+            } catch (IOException | IllegalStateException exception) {
+                problems.add(modeId + "/" + id + ": " + message(exception));
             }
         }
     }
@@ -421,6 +438,24 @@ public final class RuleConfigRegistry {
                 current = scopes.get(current.parent());
             }
         }
+    }
+
+    private void setMapParent(String modeId, String mapId, String parent) {
+        MatchRules current = rules(modeId, mapId, new MatchRules(modeId));
+        MatchRules inherited = "base".equals(parent)
+                ? new MatchRules(modeId) : rules(modeId, parent, new MatchRules(modeId));
+        JsonObject currentObject = ruleObject(modeId, current);
+        JsonObject inheritedObject = ruleObject(modeId, inherited);
+        JsonObject overrides = new JsonObject();
+        for (Map.Entry<String, JsonElement> entry : currentObject.entrySet()) {
+            if (!inheritedObject.has(entry.getKey()) || !inheritedObject.get(entry.getKey()).equals(entry.getValue())) {
+                overrides.add(entry.getKey(), entry.getValue().deepCopy());
+            }
+        }
+        mutateMap(modeId, mapId, document -> {
+            document.addProperty("parent", parent);
+            document.add("rules", overrides);
+        });
     }
 
     private synchronized void mutateMap(String modeId, String mapId,
@@ -744,11 +779,7 @@ public final class RuleConfigRegistry {
         Files.createDirectories(target.getParent());
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         Files.writeString(temporary, GSON.toJson(document) + System.lineSeparator(), StandardCharsets.UTF_8);
-        try {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException ignored) {
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
-        }
+        Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING);
     }
 
     private Path path(String modeId) { return directory.resolve(modeId + ".json"); }
