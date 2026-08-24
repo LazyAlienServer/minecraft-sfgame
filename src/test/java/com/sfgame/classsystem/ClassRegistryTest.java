@@ -1,5 +1,6 @@
 package com.sfgame.classsystem;
 
+import com.sfgame.data.SFGameSavedData;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.TeamSide;
 import org.junit.jupiter.api.Test;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,5 +53,24 @@ final class ClassRegistryTest {
                 .anyMatch(definition -> definition.id().contains("elite")));
         assertTrue(registry.eliteClassesForMode(GameModeRegistry.DOMINATION, null).stream()
                 .anyMatch(definition -> definition.id().equals("red_mode_elite")));
+    }
+
+    @Test
+    void bundledEliteDefaultsExposeTheRequestedWeapons() {
+        ClassRegistry registry = new ClassRegistry();
+        registry.useConfigRoot(directory);
+        SFGameSavedData data = new SFGameSavedData();
+
+        assertTrue(registry.reload(data).isEmpty(), registry.loadErrors().toString());
+
+        ClassDefinition flamethrower = registry.getEliteForTeam(
+                GameModeRegistry.CAPTURE_THE_FLAG, null, TeamSide.RED, "elite_flamethrower").orElseThrow();
+        ClassDefinition tankHunter = registry.getEliteForTeam(
+                GameModeRegistry.CAPTURE_THE_FLAG, null, TeamSide.RED, "elite_tank_hunter").orElseThrow();
+        assertEquals("bf1:m2_2", flamethrower.gunId());
+        assertEquals("bf1:tg1918", tankHunter.gunId());
+        assertTrue(registry.allForTeam(GameModeRegistry.CAPTURE_THE_FLAG, null, TeamSide.RED).stream()
+                .noneMatch(definition -> definition.id().equals("elite_flamethrower")
+                        || definition.id().equals("elite_tank_hunter")));
     }
 }

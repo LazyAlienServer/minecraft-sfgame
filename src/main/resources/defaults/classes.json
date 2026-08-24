@@ -89,7 +89,114 @@
             "allowDrop": false
         }
     ],
-    "eliteClasses": [],
+    "eliteClasses": [
+        {
+            "id": "elite_flamethrower",
+            "displayName": "喷火兵",
+            "description": "装备 M2 火焰喷射器，以燃烧弹幕压制密集敌群",
+            "icon": "tacz:modern_kinetic_gun{GunId:\"bf1:m2_2\"}",
+            "maxHealth": 40.0,
+            "movementSpeedMultiplier": 0.78,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "slot": 0,
+                    "gunId": "bf1:m2_2",
+                    "initialMagazine": 240,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "slot": 9,
+                    "ammoId": "bf1:fuel",
+                    "ammoCount": 480
+                },
+                {
+                    "item": "minecraft:iron_sword",
+                    "count": 1
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_harming\"}"
+                }
+            ],
+            "armor": {
+                "head": {
+                    "item": "minecraft:iron_helmet",
+                    "count": 1
+                },
+                "chest": {
+                    "item": "minecraft:iron_chestplate",
+                    "count": 1
+                },
+                "legs": {
+                    "item": "minecraft:chainmail_leggings",
+                    "count": 1
+                },
+                "feet": {
+                    "item": "minecraft:iron_boots",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        },
+        {
+            "id": "elite_tank_hunter",
+            "displayName": "坦克猎手",
+            "description": "装备毛瑟 M1918 反坦克步枪，远距离重创高价值目标",
+            "icon": "tacz:modern_kinetic_gun{GunId:\"bf1:tg1918\"}",
+            "maxHealth": 32.0,
+            "movementSpeedMultiplier": 0.86,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "slot": 0,
+                    "gunId": "bf1:tg1918",
+                    "initialMagazine": 1,
+                    "fireMode": "SEMI",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "slot": 9,
+                    "ammoId": "tacz:50bmg",
+                    "ammoCount": 20
+                },
+                {
+                    "item": "minecraft:iron_sword",
+                    "count": 1
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_harming\"}"
+                }
+            ],
+            "armor": {
+                "head": {
+                    "item": "minecraft:iron_helmet",
+                    "count": 1
+                },
+                "chest": {
+                    "item": "minecraft:chainmail_chestplate",
+                    "count": 1
+                },
+                "legs": {
+                    "item": "minecraft:chainmail_leggings",
+                    "count": 1
+                },
+                "feet": {
+                    "item": "minecraft:leather_boots",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        }
+    ],
     "teams": {},
     "maps": {}
 }
