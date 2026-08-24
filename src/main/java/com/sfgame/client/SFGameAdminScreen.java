@@ -548,6 +548,8 @@ public final class SFGameAdminScreen extends Screen {
 
     private static final class RuleValueBox extends EditBox {
         private static final int HORIZONTAL_PADDING = 6;
+        private static final int HIT_SLOP_HORIZONTAL = 4;
+        private static final int HIT_SLOP_VERTICAL = 5;
         private final int frameX;
         private final int frameY;
         private final int frameWidth;
@@ -601,11 +603,20 @@ public final class SFGameAdminScreen extends Screen {
 
         @Override
         public boolean isMouseOver(double mouseX, double mouseY) {
-            return visible && mouseX >= frameX && mouseX < frameX + frameWidth
-                    && mouseY >= frameY && mouseY < frameY + frameHeight
+            int hitLeft = frameX - HIT_SLOP_HORIZONTAL;
+            int hitTop = frameY - HIT_SLOP_VERTICAL;
+            int hitRight = frameX + frameWidth + HIT_SLOP_HORIZONTAL;
+            int hitBottom = frameY + frameHeight + HIT_SLOP_VERTICAL;
+            return visible && mouseX >= hitLeft && mouseX < hitRight
+                    && mouseY >= hitTop && mouseY < hitBottom
                     && (!clipped || mouseX >= clipLeft && mouseX < clipRight
                     && mouseY >= clipTop && mouseY < clipBottom);
         }
+        @Override
+        protected boolean clicked(double mouseX, double mouseY) {
+            return isMouseOver(mouseX, mouseY);
+        }
+
 
         @Override
         public void onClick(double mouseX, double mouseY) {
