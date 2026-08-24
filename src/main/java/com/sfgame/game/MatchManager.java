@@ -306,12 +306,14 @@ public final class MatchManager {
                 && !classRegistry.containsEliteForTeam(data().selectedMode(), data().selectedMap(),
                 side, offer.classId())) return false;
         if (!supplyService.publishPreset(side, offerId, quantity)) return false;
+        notifySupplyAvailable(side, offerId);
         syncAll();
         return true;
     }
 
     public boolean pushSupplyItem(TeamSide side, String offerId, int count, int quantity, String item) {
         if (!canMutateSupply(side) || !supplyService.publishItem(side, offerId, item, count, "", quantity)) return false;
+        notifySupplyAvailable(side, offerId);
         syncAll();
         return true;
     }
@@ -321,6 +323,7 @@ public final class MatchManager {
         ClassDefinition definition = classRegistry.getEliteForTeam(
                 data().selectedMode(), data().selectedMap(), side, classId).orElse(null);
         if (definition == null || !supplyService.publishElite(side, offerId, definition, quantity)) return false;
+        notifySupplyAvailable(side, offerId);
         syncAll();
         return true;
     }
@@ -1106,8 +1109,64 @@ public final class MatchManager {
         if (GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())) {
             supplyService.updateRoles(breakthroughRuntime.attacker(), breakthroughRuntime.defender());
         }
-        if (supplyService.fireEvent(event, eventSide, stage, sectorId, pointId)) syncAll();
+        Map<TeamSide, Map<String, Integer>> before = supplyQuantities();
+        if (supplyService.fireEvent(event, eventSide, stage, sectorId, pointId)) {
+            notifyNewSupplyChanges(before);
+            syncAll();
+        }
     }
+    private Map<TeamSide, Map<String, Integer>> supplyQuantities() {
+        Map<TeamSide, Map<String, Integer>> result = new HashMap<>();
+        for (TeamSide side : TeamSide.PLAYABLE) {
+            Map<String, Integer> quantities = new HashMap<>();
+            for (SupplyService.PublishedSupply supply : supplyService.items(side)) {
+                quantities.put(supply.id(), supply.quantity());
+            }
+            result.put(side, quantities);
+        }
+        return result;
+    }
+
+    private void notifyNewSupplyChanges(Map<TeamSide, Map<String, Integer>> before) {
+        for (TeamSide side : TeamSide.PLAYABLE) {
+            Map<String, Integer> previous = before.getOrDefault(side, Map.of());
+            for (SupplyService.PublishedSupply supply : supplyService.items(side)) {
+                if (supply.quantity() > previous.getOrDefault(supply.id(), 0)) {
+                    notifySupplyAvailable(side, supply.id());
+                }
+            }
+        }
+    }
+
+    private void notifySupplyAvailable(TeamSide side, String offerId) {
+        if (server == null || phase != MatchPhase.RUNNING || !supportsEconomy(data().selectedMode())) return;
+        SupplyService.PublishedSupply supply = supplyService.item(side, offerId).orElse(null);
+        if (supply == null) return;
+        String name;
+        if (com.sfgame.data.SupplyOfferDefinition.ITEM.equals(supply.type())) {
+            ItemStack stack = supply.stack();
+            name = stack.isEmpty() ? supply.id() : stack.getHoverName().getString();
+        } else {
+            name = classRegistry.getEliteForTeam(data().selectedMode(), data().selectedMap(), side, supply.classId())
+                    .map(ClassDefinition::displayName).orElse(supply.classId());
+        }
+        Component message = Component.translatable("sfgame.supply.available", name)
+                .withStyle(ChatFormatting.AQUA);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (!eligibleForSupplyNotification(player, side, supply)) continue;
+            player.sendSystemMessage(message);
+        }
+    }
+
+    private boolean eligibleForSupplyNotification(ServerPlayer player, TeamSide side,
+                                                  SupplyService.PublishedSupply supply) {
+        PlayerMatchState state = state(player);
+        if (!state.participating() || state.respawning() || player.isSpectator() || player.isDeadOrDying()) return false;
+        if (teams.sideOf(player, data()) != side) return false;
+        return !com.sfgame.data.SupplyOfferDefinition.ELITE_CLASS.equals(supply.type())
+                || !activeRuntime.isCaptain(player.getUUID());
+    }
+
 
     void addCurrency(ServerPlayer player, int amount) {
         if (player == null || amount <= 0 || !supportsEconomy(data().selectedMode())) return;
@@ -1278,7 +1337,11 @@ public final class MatchManager {
 
     private void tickRunning() {
         elapsedTicks++;
-        if (supplyService.tick(elapsedTicks)) syncAll();
+        Map<TeamSide, Map<String, Integer>> before = supplyQuantities();
+        if (supplyService.tick(elapsedTicks)) {
+            notifyNewSupplyChanges(before);
+            syncAll();
+        }
         MatchRules rules = rules();
         ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
         if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && commonTimeExpired(rules)) {

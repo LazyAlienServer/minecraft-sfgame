@@ -43,6 +43,8 @@ public final class SFGameScreen extends Screen {
     private int classScrollOffset;
     private int contentScrollOffset;
     private int contentHeight;
+    private boolean draggingContentScrollBar;
+    private int contentScrollDragOffset;
     private String lastModeId;
     private int classHeadingX;
     private int classHeadingY = -1;
@@ -60,6 +62,8 @@ public final class SFGameScreen extends Screen {
     private int supplyHeadingY = -1;
     private int shopHeadingX;
     private int shopHeadingY = -1;
+    private int supplyEmptyX;
+    private int supplyEmptyY = -1;
     private int cardStripLeft;
     private int cardStripRight;
     private final List<TallCardButton> tallCards = new ArrayList<>();
@@ -201,7 +205,12 @@ public final class SFGameScreen extends Screen {
         if (layout.supplyHeading() >= 0) {
             supplyHeadingX = cardStripLeft;
             supplyHeadingY = visibleHeadingY(layout.supplyHeading());
-            if (supplyCount > 0) addSupplyCards(snapshot.supplyItems(), layout);
+            if (supplyCount > 0) {
+                addSupplyCards(snapshot.supplyItems(), layout);
+            } else {
+                supplyEmptyX = cardStripLeft + layout.contentWidth() / 2;
+                supplyEmptyY = contentToScreen(layout.supplyStart()) + (TALL_CARD_HEIGHT - 9) / 2;
+            }
         }
         if (shopCount > 0) {
             shopHeadingX = cardStripLeft;
@@ -215,7 +224,7 @@ public final class SFGameScreen extends Screen {
         int availableWidth = Math.max(TALL_CARD_WIDTH, Math.min(480, width - 40));
         int columns = Math.max(1, availableWidth / (TALL_CARD_WIDTH + TALL_CARD_GAP));
         int contentWidth = columns * TALL_CARD_WIDTH + (columns - 1) * TALL_CARD_GAP;
-        int shopColumns = 1;
+        int shopColumns = columns;
         int classHeading = prefixHeight;
         int classStrip = classHeading + 16;
         int cursor = classStrip + CLASS_CARD_SIZE + 16;
@@ -284,7 +293,7 @@ public final class SFGameScreen extends Screen {
     }
 
     private void addShopCards(List<MatchSnapshot.ShopView> items, BodyLayout layout) {
-        int shopLeft = cardStripLeft + (layout.contentWidth() - TALL_CARD_WIDTH) / 2;
+        int shopLeft = cardStripLeft;
         for (int i = 0; i < items.size(); i++) {
             MatchSnapshot.ShopView item = items.get(i);
             int x = shopLeft + i % layout.shopColumns() * (TALL_CARD_WIDTH + TALL_CARD_GAP);
@@ -343,6 +352,7 @@ public final class SFGameScreen extends Screen {
         captainVoteHeadingY = -1;
         respawnHeadingY = -1;
         supplyHeadingY = -1;
+        supplyEmptyY = -1;
         shopHeadingY = -1;
         tallCards.clear();
     }
@@ -374,6 +384,61 @@ public final class SFGameScreen extends Screen {
         }
         if (result.consumed()) return true;
         return super.mouseScrolled(mouseX, mouseY, delta);
+    }
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        ScrollbarGeometry scrollbar = contentScrollbar(width, height, contentHeight, contentScrollOffset);
+        if (button == 0 && scrollbar != null
+                && mouseX >= scrollbar.trackX() - 4 && mouseX <= scrollbar.thumbX() + 4
+                && mouseY >= scrollbar.top() && mouseY < scrollbar.bottom()) {
+            int thumbHeight = scrollbar.thumbBottom() - scrollbar.thumbTop();
+            contentScrollDragOffset = mouseY >= scrollbar.thumbTop() && mouseY < scrollbar.thumbBottom()
+                    ? (int) mouseY - scrollbar.thumbTop() : thumbHeight / 2;
+            draggingContentScrollBar = true;
+            updateContentScrollFromPointer(mouseY);
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (draggingContentScrollBar && button == 0) {
+            updateContentScrollFromPointer(mouseY);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && draggingContentScrollBar) {
+            draggingContentScrollBar = false;
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private void updateContentScrollFromPointer(double mouseY) {
+        int next = contentOffsetForScrollbarPointer(width, height, contentHeight,
+                (int) Math.round(mouseY), contentScrollDragOffset);
+        if (next != contentScrollOffset) {
+            contentScrollOffset = next;
+            rebuild();
+        }
+    }
+
+    static int contentOffsetForScrollbarPointer(int width, int height, int contentHeight,
+                                                int pointerY, int grabOffset) {
+        ScrollbarGeometry scrollbar = contentScrollbar(width, height, contentHeight, 0);
+        int maximum = maxContentScroll(contentHeight, height);
+        if (scrollbar == null || maximum <= 0) return 0;
+        int thumbHeight = scrollbar.thumbBottom() - scrollbar.thumbTop();
+        int minTop = scrollbar.top();
+        int maxTop = Math.max(minTop, scrollbar.bottom() - thumbHeight);
+        int thumbTop = Math.max(minTop, Math.min(maxTop, pointerY - grabOffset));
+        int travel = maxTop - minTop;
+        return travel <= 0 ? 0 : Math.round((thumbTop - minTop) * maximum / (float) travel);
     }
 
     static ScrollResult scrollOffsets(boolean overClass, int totalClasses, int visibleClasses,
@@ -476,6 +541,15 @@ public final class SFGameScreen extends Screen {
         if (supplyHeadingY >= 0) {
             graphics.drawString(font, Component.translatable("sfgame.menu.supply"),
                     supplyHeadingX, supplyHeadingY, 0xFFFFFF, true);
+        }
+        if (supplyEmptyY >= 0) {
+            graphics.enableScissor(0, CONTENT_TOP, width, height - CONTENT_BOTTOM_MARGIN);
+            try {
+                graphics.drawCenteredString(font, Component.translatable("sfgame.supply.empty"),
+                        supplyEmptyX, supplyEmptyY, 0xFFAAAAAA);
+            } finally {
+                graphics.disableScissor();
+            }
         }
         if (shopHeadingY >= 0) {
             graphics.drawString(font, Component.translatable("sfgame.menu.shop"),

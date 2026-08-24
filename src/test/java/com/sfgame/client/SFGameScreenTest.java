@@ -26,12 +26,12 @@ final class SFGameScreenTest {
         assertTrue(twentiethY + 96 <= bottom);
     }
     @Test
-    void shopUsesSingleColumnWhileSupplyKeepsResponsiveColumns() {
+    void shopUsesHorizontalRowsWhileSupplyKeepsResponsiveColumns() {
         SFGameScreen.BodyLayout layout = SFGameScreen.layoutBody(320, 0, 2, 20);
 
         assertEquals(3, layout.columns());
-        assertEquals(1, layout.shopColumns());
-        assertEquals(20, layout.shopRows());
+        assertEquals(3, layout.shopColumns());
+        assertEquals(7, layout.shopRows());
     }
 
     @Test
@@ -55,6 +55,21 @@ final class SFGameScreenTest {
         assertEquals(end.bottom(), end.thumbBottom());
         assertTrue(middle.thumbTop() > start.thumbTop());
         assertTrue(middle.thumbBottom() < end.thumbBottom());
+    }
+    @Test
+    void scrollbarDragMapsThumbTrackToContentOffset() {
+        int width = 320;
+        int height = 240;
+        SFGameScreen.BodyLayout layout = SFGameScreen.layoutBody(width, 0, 0, 20);
+        int maximum = SFGameScreen.maxContentScroll(layout.contentHeight(), height);
+        SFGameScreen.ScrollbarGeometry scrollbar = SFGameScreen.contentScrollbar(
+                width, height, layout.contentHeight(), 0);
+        int thumbHeight = scrollbar.thumbBottom() - scrollbar.thumbTop();
+
+        assertEquals(0, SFGameScreen.contentOffsetForScrollbarPointer(
+                width, height, layout.contentHeight(), scrollbar.top(), 0));
+        assertEquals(maximum, SFGameScreen.contentOffsetForScrollbarPointer(
+                width, height, layout.contentHeight(), scrollbar.bottom(), thumbHeight));
     }
 
     @Test
