@@ -1,80 +1,94 @@
 {
-  "classes": [
-    {
-      "id": "assault",
-      "displayName": "特种兵",
-      "description": "使用 HK416D、军刀与破片投掷物的均衡突击职业",
-      "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}",
-      "maxHealth": 40.0,
-      "movementSpeedMultiplier": 1.05,
-      "inventory": [
+    "classes": [
         {
-          "type": "gun",
-          "slot": 0,
-          "gunId": "tacz:hk416d",
-          "initialMagazine": 30,
-          "fireMode": "AUTO",
-          "attachments": {}
-        },
-        {
-          "type": "ammoBox",
-          "slot": 9,
-          "ammoId": "tacz:556x45",
-          "ammoCount": 180
-        },
+            "id": "assault",
+            "displayName": "特种兵",
+            "description": "使用 HK416D、军刀与破片投掷物的均衡突击职业",
+            "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}",
+            "maxHealth": 40.0,
+            "movementSpeedMultiplier": 1.05,
+            "inventory": [
                 {
-          "item": "lrtactical:melee",
-          "count": 1,
-            "nbt": "{MeleeWeaponId:\"lrtactical:dagger\"}"
-        }
-      ],
-      "armor": {
-        "chest": {
-          "item": "minecraft:chainmail_chestplate",
-          "count": 1
-        }
-      },
-      "effects": [],
-      "allowDrop": false
-    },
-    {
-      "id": "sniper",
-      "displayName": "狙击手",
-      "description": "使用 M700、短剑与减速投掷物的远距离职业",
-      "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:m700\"}",
-      "maxHealth": 40.0,
-      "movementSpeedMultiplier": 0.95,
-      "inventory": [
-        {
-          "type": "gun",
-          "slot": 0,
-          "gunId": "tacz:m700",
-          "initialMagazine": 10,
-          "fireMode": "SEMI",
-          "attachments": {}
+                    "type": "gun",
+                    "slot": 0,
+                    "gunId": "tacz:hk416d",
+                    "initialMagazine": 30,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "slot": 9,
+                    "ammoId": "tacz:556x45",
+                    "ammoCount": 180
+                },
+                {
+                    "item": "lrtactical:melee",
+                    "count": 1,
+                    "nbt": "{MeleeWeaponId:\"lrtactical:dagger\"}"
+                }
+            ],
+            "armor": {
+                "chest": {
+                    "item": "minecraft:chainmail_chestplate",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
         },
         {
-          "type": "ammoBox",
-          "slot": 9,
-          "ammoId": "tacz:30_06",
-          "ammoCount": 30
-        },
-        {
-          "item": "lrtactical:melee",
-          "count": 1,
-            "nbt": "{MeleeWeaponId:\"lrtactical:dagger\"}"
+            "id": "sniper",
+            "displayName": "狙击手",
+            "description": "使用 M700、短剑与减速投掷物的远距离职业",
+            "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:m700\"}",
+            "maxHealth": 40.0,
+            "movementSpeedMultiplier": 0.95,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "slot": 0,
+                    "gunId": "tacz:m700",
+                    "initialMagazine": 10,
+                    "fireMode": "SEMI",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "slot": 9,
+                    "ammoId": "tacz:30_06",
+                    "ammoCount": 30
+                },
+                {
+                    "type": "gun",
+                    "slot": 1,
+                    "gunId": "tacz:glock_17",
+                    "initialMagazine": 18,
+                    "fireMode": "SEMI",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "slot": 10,
+                    "ammoId": "tacz:9mm",
+                    "ammoCount": 30
+                },
+                {
+                    "item": "lrtactical:melee",
+                    "count": 1,
+                    "nbt": "{MeleeWeaponId:\"lrtactical:dagger\"}"
+                }
+            ],
+            "armor": {
+                "chest": {
+                    "item": "minecraft:leather_chestplate",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
         }
-      ],
-      "armor": {
-        "chest": {
-          "item": "minecraft:leather_chestplate",
-          "count": 1
-        } 
-      },
-      "effects": [],
-      "allowDrop": false
-    }
-  ],
-  "teams": {},
-  "maps": {}
+    ],
+    "teams": {},
+    "maps": {}
 }
