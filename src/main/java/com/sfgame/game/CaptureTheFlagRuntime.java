@@ -11,6 +11,9 @@ import com.sfgame.data.CtfHomeFlagDefinition;
 import com.sfgame.data.CtfVariant;
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.CaptureTheFlagMapConfig;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.FloatTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -23,10 +26,14 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.BossEvent;
+import net.minecraft.world.entity.Display;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.item.enchantment.Enchantments;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -46,10 +53,11 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
 
     private static final String DISPLAY_TAG = "SFGameCtfFlag";
     private static final String CARRIER_FLAG_TAG = "SFGameCtfCarrierFlag";
+    private static final double DISPLAY_Y_OFFSET = -0.2D;
     private final Map<String, FlagState> flags = new HashMap<>();
     private final Map<TeamSide, CapturePointState> homeCapture = new EnumMap<>(TeamSide.class);
     private final Map<String, ServerBossEvent> bossBars = new HashMap<>();
-    private final Map<String, ArmorStand> displays = new HashMap<>();
+    private final Map<String, Display.ItemDisplay> displays = new HashMap<>();
     private MinecraftServer server;
     private ArenaMap activeMap;
     private int attackerTickets;
@@ -178,7 +186,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     public void stop() {
         flags.values().forEach(this::clearCarrierAppearance);
         if (server != null) removeOrphanedDisplays(server);
-        displays.values().forEach(ArmorStand::discard); displays.clear();
+        displays.clear();
         bossBars.values().forEach(ServerBossEvent::removeAllPlayers); bossBars.clear();
         flags.clear(); homeCapture.clear(); server = null; activeMap = null; attackerTickets = 0;
         variant = CtfVariant.CLASSIC; restriction = CarrierRestriction.NORMAL;
@@ -194,9 +202,18 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         for (ServerLevel level : server.getAllLevels()) {
             for (ArmorStand stand : level.getEntitiesOfClass(ArmorStand.class, scan,
                     entity -> entity.getTags().contains(DISPLAY_TAG))) {
-                stand.discard();
+                discardDisplay(server, stand);
+            }
+            for (Display.ItemDisplay display : level.getEntitiesOfClass(Display.ItemDisplay.class, scan,
+                    entity -> entity.getTags().contains(DISPLAY_TAG))) {
+                discardDisplay(server, display);
             }
         }
+    }
+
+    private static void discardDisplay(MinecraftServer server, Entity display) {
+        server.getScoreboard().removePlayerFromTeam(display.getScoreboardName());
+        display.discard();
     }
 
     private void tickTerritory(MatchManager manager, ArenaMap map, MatchRules rules) {
@@ -257,7 +274,9 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
             ServerPlayer player = manager.serverPlayer(flag.carrier);
             if (player == null || !manager.state(player).participating() || player.isSpectator()) {
                 drop(flag, player == null ? null : player.position(), player == null ? null : player.level().dimension().location().toString());
+                continue;
             }
+            maintainCarrierAppearance(flag, player);
         }
     }
 
@@ -380,6 +399,30 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         player.setGlowingTag(true);
     }
 
+    private void maintainCarrierAppearance(FlagState flag, ServerPlayer player) {
+        // Binding prevents ordinary inventory removal. The server-side repair
+        // also closes creative/container edge cases without duplicating markers.
+        clearCarrierFlags(player.getInventory().items);
+        clearCarrierFlags(player.getInventory().offhand);
+        if (isCarrierFlag(player.containerMenu.getCarried())) {
+            player.containerMenu.setCarried(ItemStack.EMPTY);
+        }
+        if (!isCarrierFlag(player.getItemBySlot(EquipmentSlot.HEAD))) {
+            ItemStack replacement = player.getItemBySlot(EquipmentSlot.HEAD);
+            if (!replacement.isEmpty() && !player.getInventory().add(replacement.copy())) {
+                player.drop(replacement.copy(), false);
+            }
+            player.setItemSlot(EquipmentSlot.HEAD, carrierFlag(flag.owner));
+        }
+        player.setGlowingTag(true);
+    }
+
+    private static void clearCarrierFlags(List<ItemStack> slots) {
+        for (int slot = 0; slot < slots.size(); slot++) {
+            if (isCarrierFlag(slots.get(slot))) slots.set(slot, ItemStack.EMPTY);
+        }
+    }
+
     private void clearCarrierAppearance(FlagState flag) {
         if (flag.carrier == null) {
             flag.carrierHelmet = ItemStack.EMPTY;
@@ -396,39 +439,77 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     }
 
     private void refreshDisplays(MatchManager manager, ArenaMap map) {
-        Iterator<Map.Entry<String, ArmorStand>> iterator = displays.entrySet().iterator();
+        Iterator<Map.Entry<String, Display.ItemDisplay>> iterator = displays.entrySet().iterator();
         while (iterator.hasNext()) {
-            Map.Entry<String, ArmorStand> entry = iterator.next();
-            if (!flags.containsKey(entry.getKey()) || !entry.getValue().isAlive()) { entry.getValue().discard(); iterator.remove(); }
+            Map.Entry<String, Display.ItemDisplay> entry = iterator.next();
+            if (!flags.containsKey(entry.getKey()) || !entry.getValue().isAlive()) {
+                discardDisplay(server, entry.getValue());
+                iterator.remove();
+            }
         }
         for (FlagState flag : flags.values()) {
             // Carried flags are rendered directly in the carrier's helmet slot;
-            // do not leave a second floating display entity above the player.
+            // do not leave a second display entity above the player.
             if (flag.location == Location.CARRIED) {
-                ArmorStand carriedDisplay = displays.remove(flag.key);
-                if (carriedDisplay != null) carriedDisplay.discard();
+                Display.ItemDisplay carriedDisplay = displays.remove(flag.key);
+                if (carriedDisplay != null) discardDisplay(server, carriedDisplay);
                 continue;
             }
             Vec3 position = displayPosition(flag);
             if (position == null) continue;
             ServerLevel level = levelFor(flag, position);
             if (level == null) continue;
-            ArmorStand stand = displays.get(flag.key);
-            if (stand == null || !stand.isAlive() || stand.level() != level) {
-                if (stand != null) stand.discard();
-                stand = new ArmorStand(level, position.x, position.y, position.z);
-                // The invisible stand renders only its equipment, so the banner
-                // is planted at the configured ground position without the white
-                // glowing humanoid outline shown by a normal armor stand.
-                stand.setInvisible(true); stand.setNoGravity(true);
-                stand.setInvulnerable(true); stand.setSilent(true);
-                stand.addTag(DISPLAY_TAG); stand.setCustomNameVisible(false);
-                stand.setItemSlot(EquipmentSlot.HEAD, banner(flag.owner));
-                if (level.addFreshEntity(stand)) displays.put(flag.key, stand);
+            Display.ItemDisplay display = displays.get(flag.key);
+            if (display == null || !display.isAlive() || display.level() != level) {
+                if (display != null) discardDisplay(server, display);
+                display = createFlagDisplay(level, flag.owner);
+                display.setPos(position.x, position.y, position.z);
+                if (level.addFreshEntity(display)) {
+                    displays.put(flag.key, display);
+                    var team = server.getScoreboard().getPlayerTeam(manager.savedData().teamName(flag.owner));
+                    if (team != null) server.getScoreboard().addPlayerToTeam(display.getScoreboardName(), team);
+                }
             }
-            stand.setPos(position.x, position.y, position.z);
+            // Keep the entity at the configured ground height so lighting is
+            // sampled above ground. The display transformation lowers only the
+            // rendered model by 0.2 blocks.
+            display.setPos(position.x, position.y, position.z);
+            display.setGlowingTag(true);
         }
     }
+
+    private static Display.ItemDisplay createFlagDisplay(ServerLevel level, TeamSide side) {
+        Display.ItemDisplay display = new Display.ItemDisplay(EntityType.ITEM_DISPLAY, level);
+        display.getSlot(0).set(banner(side));
+        CompoundTag tag = new CompoundTag();
+        display.saveWithoutId(tag);
+        tag.putString("item_display", "head");
+        CompoundTag transformation = new CompoundTag();
+        transformation.put("translation", floatList(0.0F, (float) DISPLAY_Y_OFFSET, 0.0F));
+        transformation.put("scale", floatList(1.0F, 1.0F, 1.0F));
+        transformation.put("left_rotation", floatList(0.0F, 0.0F, 0.0F, 1.0F));
+        transformation.put("right_rotation", floatList(0.0F, 0.0F, 0.0F, 1.0F));
+        tag.put(Display.TAG_TRANSFORMATION, transformation);
+        CompoundTag brightness = new CompoundTag();
+        brightness.putInt("sky", 15);
+        brightness.putInt("block", 15);
+        tag.put(Display.TAG_BRIGHTNESS, brightness);
+        display.load(tag);
+        display.setNoGravity(true);
+        display.setInvulnerable(true);
+        display.setSilent(true);
+        display.setGlowingTag(true);
+        display.addTag(DISPLAY_TAG);
+        return display;
+    }
+
+    private static ListTag floatList(float... values) {
+        ListTag list = new ListTag();
+        for (float value : values) list.add(FloatTag.valueOf(value));
+        return list;
+    }
+
+
 
     private void refreshBossBars(MatchManager manager, ArenaMap map, MatchRules rules) {
         if (variant != CtfVariant.TERRITORY) {
@@ -548,10 +629,14 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     private static ItemStack carrierFlag(TeamSide side) {
         ItemStack stack = banner(side);
         stack.getOrCreateTag().putBoolean(CARRIER_FLAG_TAG, true);
+        stack.enchant(Enchantments.BINDING_CURSE, 1);
         return stack;
     }
     private static boolean isCarrierFlag(ItemStack stack) {
         return !stack.isEmpty() && stack.hasTag() && stack.getTag().getBoolean(CARRIER_FLAG_TAG);
+    }
+    public static boolean isFlagDisplay(Entity entity) {
+        return entity != null && entity.getTags().contains(DISPLAY_TAG);
     }
     private static void checkPosition(MinecraftServer server, @Nullable ArenaPosition position, String label, List<String> errors) {
         if (position == null) { errors.add(label + " is not set"); return; }
@@ -571,6 +656,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     }
 
     public record FlagView(String id, TeamSide owner, String state, String carrier, boolean unlocked, TeamSide depotTeam) { }
+
 
     private static final class FlagState {
         private final String key;

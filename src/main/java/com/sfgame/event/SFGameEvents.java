@@ -3,6 +3,7 @@ package com.sfgame.event;
 import com.sfgame.SFGame;
 import com.sfgame.command.SFGameCommands;
 import com.sfgame.config.SFGameConfig;
+import com.sfgame.game.CaptureTheFlagRuntime;
 import com.sfgame.game.MatchHudService;
 import com.sfgame.game.MatchManager;
 import com.sfgame.game.MatchPhase;
@@ -157,6 +158,16 @@ public final class SFGameEvents {
     @SubscribeEvent
     public static void itemToss(net.minecraftforge.event.entity.item.ItemTossEvent event) {
         if (event.getPlayer() instanceof ServerPlayer player && !MatchManager.get().mayDrop(player)) event.setCanceled(true);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void interactWithFlagDisplay(PlayerInteractEvent.EntityInteract event) {
+        if (CaptureTheFlagRuntime.isFlagDisplay(event.getTarget())) event.setCanceled(true);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void interactWithFlagDisplayAt(PlayerInteractEvent.EntityInteractSpecific event) {
+        if (CaptureTheFlagRuntime.isFlagDisplay(event.getTarget())) event.setCanceled(true);
     }
 
     @SubscribeEvent
