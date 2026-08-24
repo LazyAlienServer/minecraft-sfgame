@@ -101,9 +101,10 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         }
         for (CtfForwardFlagDefinition definition : config.forwardFlags()) flags.put(definition.id(), FlagState.forward(definition));
         attackerTickets = rules.attackerTickets();
+        boolean initiallyUnlocked = flagsUnlockedByDefault(variant);
         for (FlagState state : flags.values()) {
             state.reset();
-            if (state.home && variant != CtfVariant.TERRITORY) state.unlocked = true;
+            state.unlocked = initiallyUnlocked;
         }
         refreshDisplays(manager, map);
         refreshBossBars(manager, map, rules);
@@ -172,6 +173,11 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         return flags.values().stream().map(flag -> new FlagView(flag.key, flag.owner, flag.location.name().toLowerCase(Locale.ROOT),
                 flag.carrier == null ? null : flag.carrier.toString(), flag.unlocked, flag.depotTeam)).toList();
     }
+
+    static boolean flagsUnlockedByDefault(CtfVariant variant) {
+        return variant != CtfVariant.TERRITORY;
+    }
+
 
     public String hudLine(ServerPlayer viewer) {
         String carried = flags.values().stream()
@@ -386,7 +392,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         clearCarrierAppearance(flag);
         flag.location = Location.STAND; flag.carrier = null; flag.depotTeam = TeamSide.NONE; flag.droppedPosition = null;
         flag.droppedDimension = null; flag.droppedTicks = 0;
-        flag.unlocked = flag.home && activeMap != null && variant != CtfVariant.TERRITORY;
+        flag.unlocked = flagsUnlockedByDefault(variant);
         if (flag.pointState != null) flag.pointState.reset(flag.owner);
         if (flag.home && homeCapture.containsKey(flag.owner)) homeCapture.get(flag.owner).reset();
     }
