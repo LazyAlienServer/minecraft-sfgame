@@ -113,7 +113,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 
 | 规则 | 默认值 | 允许范围 | 适用模式 | 含义与用法 |
 | --- | ---: | ---: | --- | --- |
-| `maxPlayers` | 10 | 2～128 | 全部 | 当前局总参赛人数上限。降低上限不会踢出已参赛玩家，只会阻止新人加入。例：`/sfgame rule set maxPlayers 16`。 |
+| `maxPlayers` | 10 | -1，或 2～1000000 | 全部 | 当前局总参赛人数上限；`-1` 表示不限制人数。降低有限上限不会踢出已参赛玩家，只会阻止新人加入。例：`/sfgame rule set maxPlayers -1`、`/sfgame rule set maxPlayers 1000000`。 |
 | `scoreLimit` | TDM 50、占点 100、CTF 3 | 1～10000 | TDM、占点、CTF | TDM 为击杀目标，占点为团队分数，CTF 为成功夺旗次数；突破不使用团队分数。 |
 | `timeLimitSeconds` | 600 | 30～86400 | 全部 | TDM/占点/CTF 为整局时限；突破为每个 sector 的时限。例：`/sfgame rule set timeLimitSeconds 900`。 |
 | `startCountdownSeconds` | 5 | 0～60 | 全部 | 开局倒计时；设为 0 表示跳过倒计时。 |
@@ -129,9 +129,9 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `syncHoldSeconds` | 45 | 1～3600 | 占点 `sync` | `sync` 点位保持归属达到该秒数后切换到下一个点；无人争夺时暂停累计。 |
 | `dominationStrategy` | async | async/sync | 占点 | 点位开放策略。`async` 同时开放全部点，`sync` 每局随机轮换一个开放点。下局规则。例：`/sfgame rule set dominationStrategy sync`。 |
 | `breakthroughVariant` | normal | normal/captain | 突破 | `normal` 为普通突破，`captain` 启用进攻方队长选举。下局规则。 |
-| `breakthroughLegs` | 1 | 1～2 | 突破 | 完整攻防赛段数；2 表示第一赛段后交换攻守再进行一次。下局规则。 |
-| `breakthroughAttacker` | red | red/blue/yellow/green | 突破 | 第一赛段进攻阵营。必须与防守方不同且具有地图出生点。下局规则。 |
-| `breakthroughDefender` | blue | red/blue/yellow/green | 突破 | 第一赛段防守阵营。双赛段会自动与进攻方互换。下局规则。 |
+| `breakthroughLegs` | 1 | 1～2 | 突破 | 完整攻防赛段数；2 表示第一赛段后交换双方玩家名单再进行一次。下局规则，不支持对局中热更改；当前局临时跳转使用 `/sfgame score leg`。 |
+| `breakthroughAttacker` | red | red/blue/yellow/green | 突破 | 固定承担进攻角色的阵营，使用各 sector 的 attacker 出生点。必须与防守方不同。下局规则。 |
+| `breakthroughDefender` | blue | red/blue/yellow/green | 突破 | 固定承担防守角色的阵营，使用各 sector 的 defender 出生点。双赛段时交换双方玩家名单，而不是交换这两个阵营的角色。下局规则。 |
 | `attackerTickets` | 100 | 1～10000 | 突破、CTF assault | 突破为进攻方死亡票数；CTF assault 为进攻方兵力票。设定后当前阶段/回合立即改为该值。 |
 | `sectorTransitionSeconds` | 10 | 0～60 | 突破 | 攻陷一个 sector 后的整备和安全部署时间。 |
 | `captainVoteSeconds` | 15 | 1～120 | 突破 captain | 首次队长投票时长。 |
@@ -224,6 +224,13 @@ tdm/default      指定模式的普通地图
 | `/sfgame menu` | 为执行命令的玩家打开菜单；默认按键为 `M`。 |
 | `/sfgame leave` | 退出当前比赛。比赛未开始时只离开 SFGame 参赛队伍并留在原地；比赛进行中会进入旁观并排入下一局。 |
 | `/sfgame status` | 查看当前模式、地图、阶段、队伍人数、出生点和开赛校验错误。 |
+| `/sfgame score` | 对局进行中查看实时状态。TDM、占点和 CTF 显示剩余时间及已启用队伍比分；突破显示剩余时间、攻守方、进攻方 tickets、leg 和 sector。权限等级要求为 2。 |
+| `/sfgame score time <秒>` | 对局进行中把剩余时间设为 `0～86400` 秒；突破模式修改当前 sector 的剩余时间。设为 0 后将在下一 Tick 正常结算。 |
+| `/sfgame score currency <玩家> <数量>` | 夺旗对局中把指定在线玩家的当前局货币设为 `0～1000000`；只修改 CTF 当前局状态并立即同步该玩家。 |
+| `/sfgame score tickets <数量>` | 突破对局中把当前进攻方 tickets 设为 `0～1000000`；设为 0 后将在下一 Tick 正常结束当前 leg。 |
+| `/sfgame score leg <1～10>` | 突破对局中临时跳转当前局的 leg，不受 `breakthroughLegs` 规则限制，也不会修改地图规则。目标 leg 与当前 leg 奇偶性不同时，进攻与防守阵营中的玩家名单互换；阵营本身的攻守角色不变。跳转后重置到 sector 1、完整时间和默认 tickets；没有第一 leg 结果时按独立回合结算。 |
+| `/sfgame score sector <序号>` | 突破对局中跳转到当前 leg 的指定 sector；重置该 sector 的时间、占领点状态和 tickets，并重新部署玩家，但保留当前 leg 已累计的总进攻时间。 |
+| `/sfgame score <red\|blue\|yellow\|green> <比分>` | 在 TDM、占点和 CTF 对局中，把已启用队伍的比分设为 `0～1000000`，并立即同步客户端与侧边栏；达到 `scoreLimit` 后将在下一 Tick 正常结算。突破模式使用 tickets 而非队伍比分，因此会明确拒绝此命令。 |
 | `/sfgame dev` | 全局切换开发模式。开启后允许一名玩家开始测试局；再次执行关闭。权限等级要求为 2。 |
 | `/sfgame start` | 手动开始当前地图。会依次校验队伍、出生点、职业、点位/旗帜配置和人数。 |
 | `/sfgame stop` | 安全停止当前比赛、清理 HUD/实体并返回大厅。 |
@@ -504,9 +511,9 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 `legs` 表示整场比赛进行几次完整的攻防赛段，不是 sector 数量：
 
 - `breakthroughLegs=1`：只进行一次攻防。`breakthroughAttacker` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜，任一 sector 超时或进攻票数归零时防守方获胜。比赛结束后不会交换攻守。
-- `breakthroughLegs=2`：双方各进攻一次。第一赛段结束后自动交换攻守并从第一个 sector 重新开始；第二赛段结束后比较双方推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
+- `breakthroughLegs=2`：双方玩家各进攻一次。第一赛段结束后，进攻与防守阵营中的玩家名单互换，阵营本身的攻守角色不变，并从第一个 sector 重新开始；第二赛段结束后比较双方玩家名单推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
 
-例如 `breakthroughAttacker=red`、`breakthroughDefender=blue` 配合 `breakthroughLegs=1` 表示整局固定由红队进攻、蓝队防守；配合 `breakthroughLegs=2` 则第一赛段红攻蓝守，第二赛段蓝攻红守。
+例如 `breakthroughAttacker=red`、`breakthroughDefender=blue` 时，红队始终使用进攻方逻辑和出生点，蓝队始终使用防守方逻辑和出生点。若 `breakthroughLegs=2`，第一赛段结束后原红队玩家加入蓝队、原蓝队玩家加入红队，因此双方玩家都会完成一次进攻。
 
 攻守规则可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。sector 的数量由 `/sfgame sector add` 决定，与 `breakthroughLegs` 无关。
 
@@ -515,8 +522,8 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 | 参数 | 可选值/范围 | 说明 |
 | --- | --- | --- |
 | `breakthroughVariant` | `normal` / `captain` | `normal` 没有队长选举；`captain` 只为当前进攻方选举队长，防守方不选举。 |
-| `breakthroughLegs` | `1` / `2` | `1` 只进行指定攻守方向；`2` 第一赛段结束后交换攻守，各进行一次完整进攻。 |
-| `breakthroughAttacker` / `breakthroughDefender` | 两个不同阵营 | 设置第一赛段的初始攻守；双赛段会自动互换。 |
+| `breakthroughLegs` | `1` / `2` | `1` 只进行一次；`2` 第一赛段结束后交换双方玩家名单，各完成一次进攻。 |
+| `breakthroughAttacker` / `breakthroughDefender` | 两个不同阵营 | 固定地图的进攻/防守角色与出生点；换 leg 时阵营角色不互换，只交换双方玩家名单。 |
 | `<sectorID>` | 资源式 ID | 一个有序攻防阶段，最多 16 个；`sector set order` 的序号决定基础顺序。 |
 | `<pointID>` | 资源式 ID | sector 内的占领点；同一 sector 内不得重叠，不同 sector 可以复用区域。 |
 | `attacker` / `defender` | 角色关键字 | sector 出生点按角色保存，不直接写阵营；双赛段换边时角色坐标自动换用。 |
@@ -551,7 +558,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 /sfgame sector spawn clear <sectorID> <attacker|defender>
 ```
 
-每个 sector 必须至少有一个进攻出生点和一个防守出生点。双赛段交换的是原版队伍的攻守身份，地图中的 `attacker` 和 `defender` 坐标仍表示当前赛段的角色位置，无需重新配置。
+每个 sector 必须至少有一个进攻出生点和一个防守出生点。突破模式只读取这些 sector 角色出生点，不要求也不读取 `/sfgame spawn set red`、`blue`、`yellow` 或 `green` 的全局阵营出生点。换 leg 时交换的是两个阵营中的玩家名单，地图中的 `attacker` 和 `defender` 角色及坐标保持不变，无需重新配置。
 
 ### 突破模式载具
 
@@ -629,7 +636,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 - 普通进攻玩家占点权重为 1.0，进攻队长默认 2.0；每名防守玩家默认 1.4。
 - 队长死亡后保留身份，重生期间清除发光；重新部署后恢复。掉线、离队或换队会触发默认 10 秒补选，比赛结束时也会清理 SFGame 发光状态。
 - 补选期间普通进攻玩家仍可占点，但没有队长加成。
-- 双赛段换边时，原队长恢复普通职业，新进攻方重新选举队长。
+- 双赛段交换玩家名单时，原队长恢复普通职业；交换后进入进攻阵营的玩家重新选举队长。
 
 玩家与管理员接口：
 

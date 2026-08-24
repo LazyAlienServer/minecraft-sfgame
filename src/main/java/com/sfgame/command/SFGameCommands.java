@@ -23,9 +23,11 @@ import com.sfgame.data.BreakthroughVehicleDefinition;
 import com.sfgame.data.CtfForwardFlagDefinition;
 import com.sfgame.data.CtfHomeFlagDefinition;
 import com.sfgame.data.CaptureTheFlagMapConfig;
+import com.sfgame.game.BreakthroughRuntime;
 import com.sfgame.game.GameModeDefinition;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.MatchManager;
+import com.sfgame.game.MatchPhase;
 import com.sfgame.game.AdminRuleCatalog;
 import com.sfgame.game.TeamSide;
 import com.sfgame.network.SFGameNetwork;
@@ -119,6 +121,7 @@ public final class SFGameCommands {
                 .then(Commands.literal("menu").executes(SFGameCommands::menu))
                 .then(Commands.literal("leave").executes(SFGameCommands::leave))
                 .then(Commands.literal("status").requires(s -> s.hasPermission(2)).executes(SFGameCommands::status))
+                .then(scoreCommands().requires(s -> s.hasPermission(2)))
                 .then(Commands.literal("start").requires(s -> s.hasPermission(2)).executes(SFGameCommands::start))
                 .then(Commands.literal("stop").requires(s -> s.hasPermission(2)).executes(SFGameCommands::stop))
                 .then(Commands.literal("reset").requires(s -> s.hasPermission(2)).executes(SFGameCommands::reset))
@@ -245,6 +248,42 @@ public final class SFGameCommands {
                 .then(shopCommands())
                 .then(sectorCommands())
                 .then(captainCommands()));
+    }
+
+    static LiteralArgumentBuilder<CommandSourceStack> scoreCommands() {
+        LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("score")
+                .executes(SFGameCommands::scoreStatus);
+        root.then(Commands.literal("time")
+                .then(Commands.argument("seconds", IntegerArgumentType.integer(
+                                0, MatchManager.MAX_LIVE_TIME_SECONDS))
+                        .executes(SFGameCommands::scoreTime)));
+        root.then(Commands.literal("currency").requires(source -> scoreFieldVisible(source, "currency"))
+                .then(Commands.argument("player", EntityArgument.player())
+                        .then(Commands.argument("value", IntegerArgumentType.integer(
+                                        0, MatchManager.MAX_LIVE_SCORE))
+                                .executes(SFGameCommands::scoreCurrency))));
+        root.then(Commands.literal("tickets").requires(source -> scoreFieldVisible(source, "tickets"))
+                .then(Commands.argument("value", IntegerArgumentType.integer(
+                                0, MatchManager.MAX_LIVE_SCORE))
+                        .executes(SFGameCommands::scoreTickets)));
+        root.then(Commands.literal("leg").requires(source -> scoreFieldVisible(source, "leg"))
+                .then(Commands.argument("value", IntegerArgumentType.integer(1, MatchManager.MAX_LIVE_LEG))
+                        .executes(SFGameCommands::scoreLeg)));
+        root.then(Commands.literal("sector").requires(source -> scoreFieldVisible(source, "sector"))
+                .then(Commands.argument("value", IntegerArgumentType.integer(1, 16))
+                        .executes(SFGameCommands::scoreSector)));
+        root.then(scoreTeamCommand(TeamSide.RED));
+        root.then(scoreTeamCommand(TeamSide.BLUE));
+        root.then(scoreTeamCommand(TeamSide.YELLOW));
+        root.then(scoreTeamCommand(TeamSide.GREEN));
+        return root;
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> scoreTeamCommand(TeamSide side) {
+        return Commands.literal(side.id()).requires(source -> scoreFieldVisible(source, side.id()))
+                .then(Commands.argument("value", IntegerArgumentType.integer(
+                                0, MatchManager.MAX_LIVE_SCORE))
+                        .executes(context -> scoreTeam(context, side)));
     }
 
     private static LiteralArgumentBuilder<CommandSourceStack> breakthroughCommands() {
@@ -867,6 +906,134 @@ public final class SFGameCommands {
         List<String> errors = manager.validateStart();
         errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
         return errors.isEmpty() ? 1 : 0;
+    }
+
+    private static int scoreStatus(CommandContext<CommandSourceStack> context) {
+        MatchManager manager = MatchManager.get();
+        if (manager.phase() != MatchPhase.RUNNING) {
+            return failure(context, "Live score editing is only available while a match is running");
+        }
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (!supportsTeamScores(data.selectedMode())) {
+            BreakthroughRuntime runtime = manager.breakthrough();
+            int sectors = data.activeMap() == null ? 0 : runtime.sectorCount(data.activeMap());
+            send(context, breakthroughScoreStatus(manager.remainingSeconds(), runtime.attacker(), runtime.defender(),
+                    runtime.tickets(), runtime.leg(), runtime.sectorNumber(), sectors));
+        } else {
+            String scores = data.enabledTeams().stream()
+                    .map(side -> side.id() + "=" + manager.score(side))
+                    .collect(java.util.stream.Collectors.joining(", "));
+            send(context, "Remaining time=" + manager.remainingSeconds() + "s, scores: " + scores);
+        }
+        return 1;
+    }
+
+    private static int scoreTime(CommandContext<CommandSourceStack> context) {
+        MatchManager manager = MatchManager.get();
+        if (manager.phase() != MatchPhase.RUNNING) {
+            return failure(context, "Live score editing is only available while a match is running");
+        }
+        int seconds = IntegerArgumentType.getInteger(context, "seconds");
+        return manager.setRemainingSeconds(seconds)
+                ? success(context, "Remaining match time set to " + seconds + " seconds")
+                : failure(context, "Could not update the remaining match time");
+    }
+
+    private static int scoreCurrency(CommandContext<CommandSourceStack> context)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        MatchManager manager = MatchManager.get();
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (manager.phase() != MatchPhase.RUNNING
+                || !GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode())) {
+            return failure(context, "Currency editing is only available during a running CTF match");
+        }
+        ServerPlayer player = EntityArgument.getPlayer(context, "player");
+        int value = IntegerArgumentType.getInteger(context, "value");
+        return manager.setCtfCurrency(player, value)
+                ? success(context, player.getGameProfile().getName() + " CTF currency set to " + value)
+                : failure(context, "Could not update CTF currency");
+    }
+
+    private static int scoreTickets(CommandContext<CommandSourceStack> context) {
+        if (!isRunningBreakthrough(context)) {
+            return failure(context, "This score field is only available during a running breakthrough match");
+        }
+        int value = IntegerArgumentType.getInteger(context, "value");
+        return MatchManager.get().setBreakthroughTickets(value)
+                ? success(context, "Breakthrough attacker tickets set to " + value)
+                : failure(context, "Could not update breakthrough tickets");
+    }
+
+
+    private static int scoreLeg(CommandContext<CommandSourceStack> context) {
+        if (!isRunningBreakthrough(context)) {
+            return failure(context, "This score field is only available during a running breakthrough match");
+        }
+        int value = IntegerArgumentType.getInteger(context, "value");
+        return MatchManager.get().setBreakthroughLeg(value)
+                ? success(context, "Breakthrough switched to live leg " + value
+                        + "; sector, time and tickets were reset")
+                : failure(context, "Leg must be between 1 and " + MatchManager.MAX_LIVE_LEG);
+    }
+
+    private static int scoreSector(CommandContext<CommandSourceStack> context) {
+        if (!isRunningBreakthrough(context)) {
+            return failure(context, "This score field is only available during a running breakthrough match");
+        }
+        int value = IntegerArgumentType.getInteger(context, "value");
+        return MatchManager.get().setBreakthroughSector(value)
+                ? success(context, "Breakthrough switched to sector " + value
+                        + "; sector time, points and tickets were reset")
+                : failure(context, "Sector must exist in the active breakthrough map");
+    }
+
+    private static boolean isRunningBreakthrough(CommandContext<CommandSourceStack> context) {
+        return MatchManager.get().phase() == MatchPhase.RUNNING
+                && GameModeRegistry.BREAKTHROUGH.equals(
+                SFGameSavedData.get(context.getSource().getServer()).selectedMode());
+    }
+
+    private static int scoreTeam(CommandContext<CommandSourceStack> context, TeamSide side) {
+        MatchManager manager = MatchManager.get();
+        if (manager.phase() != MatchPhase.RUNNING) {
+            return failure(context, "Live score editing is only available while a match is running");
+        }
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        if (!supportsTeamScores(data.selectedMode())) {
+            return failure(context, "Breakthrough uses attacker tickets instead of team scores");
+        }
+        if (!data.enabledTeams().contains(side)) {
+            return failure(context, side.id() + " is not enabled for the active map");
+        }
+        int value = IntegerArgumentType.getInteger(context, "value");
+        return manager.setTeamScore(side, value)
+                ? success(context, side.id() + " score set to " + value)
+                : failure(context, "Could not update " + side.id() + " score");
+    }
+
+    static boolean supportsTeamScores(String modeId) {
+        return !GameModeRegistry.BREAKTHROUGH.equals(modeId);
+    }
+
+    private static boolean scoreFieldVisible(CommandSourceStack source, String field) {
+        return source == null || scoreFieldVisible(
+                SFGameSavedData.get(source.getServer()).selectedMode(), field);
+    }
+
+    static boolean scoreFieldVisible(String modeId, String field) {
+        return switch (field) {
+            case "tickets", "leg", "sector" -> GameModeRegistry.BREAKTHROUGH.equals(modeId);
+            case "currency" -> GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId);
+            case "red", "blue", "yellow", "green" -> supportsTeamScores(modeId);
+            default -> true;
+        };
+    }
+
+    static String breakthroughScoreStatus(int remainingSeconds, TeamSide attacker, TeamSide defender,
+                                          int tickets, int leg, int sector, int sectors) {
+        return "Remaining time=" + remainingSeconds + "s, attacker=" + attacker.id()
+                + ", defender=" + defender.id() + ", tickets=" + tickets
+                + ", leg=" + leg + ", sector=" + sector + "/" + sectors;
     }
 
     private static int start(CommandContext<CommandSourceStack> context) {
@@ -1718,7 +1885,7 @@ public final class SFGameCommands {
         long assigned = context.getSource().getServer().getPlayerList().getPlayers().stream()
                 .filter(p -> manager.teams().sideOf(p, data) != TeamSide.NONE).count();
         long newPlayers = players.stream().filter(p -> manager.teams().sideOf(p, data) == TeamSide.NONE).count();
-        if (assigned + newPlayers > manager.rules().maxPlayers()) {
+        if (!manager.rules().permitsPlayerCount(assigned + newPlayers)) {
             return failure(context, "Assigning " + players.size() + " players would exceed maxPlayers");
         }
         int changed = 0;

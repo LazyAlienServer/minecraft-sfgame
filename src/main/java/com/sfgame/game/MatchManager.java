@@ -43,6 +43,9 @@ import java.util.Locale;
 import java.nio.file.Path;
 
 public final class MatchManager {
+    public static final int MAX_LIVE_TIME_SECONDS = 86_400;
+    public static final int MAX_LIVE_SCORE = 1_000_000;
+    public static final int MAX_LIVE_LEG = 10;
     private static final MatchManager INSTANCE = new MatchManager();
 
     private final Map<UUID, PlayerMatchState> players = new HashMap<>();
@@ -67,6 +70,7 @@ public final class MatchManager {
     private MinecraftServer server;
     private int phaseTicks;
     private int elapsedTicks;
+    private long commonTimeAdjustmentTicks;
     private int redScore;
     private int blueScore;
     private int yellowScore;
@@ -111,6 +115,68 @@ public final class MatchManager {
     }
     public int elapsedTicks() { return elapsedTicks; }
     public int remainingSeconds() { return activeRuntime.remainingSeconds(this, rules()); }
+    public boolean setRemainingSeconds(int seconds) {
+        if (phase != MatchPhase.RUNNING || seconds < 0 || seconds > MAX_LIVE_TIME_SECONDS) return false;
+        activeRuntime.setRemainingSeconds(this, rules(), seconds);
+        syncAll();
+        return true;
+    }
+    public boolean setTeamScore(TeamSide side, int value) {
+        if (phase != MatchPhase.RUNNING || server == null
+                || GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
+                || value < 0 || value > MAX_LIVE_SCORE || !setTeamScoreValue(side, value)) return false;
+        syncAll();
+        return true;
+    }
+    public boolean setCtfCurrency(ServerPlayer player, int value) {
+        if (phase != MatchPhase.RUNNING || server == null
+                || !GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode())
+                || !setCurrencyValue(state(player), value)) return false;
+        sync(player);
+        return true;
+    }
+    boolean setCurrencyValue(PlayerMatchState state, int value) {
+        if (state == null || value < 0 || value > MAX_LIVE_SCORE) return false;
+        state.currency(GameModeRegistry.CAPTURE_THE_FLAG, value);
+        return true;
+    }
+    public boolean setBreakthroughTickets(int value) {
+        if (!canEditBreakthroughState() || !breakthroughRuntime.setTicketsValue(value)) return false;
+        syncAll();
+        return true;
+    }
+    public boolean setBreakthroughLeg(int value) {
+        if (!canEditBreakthroughState()) return false;
+        ArenaMap map = data().activeMap();
+        if (map == null || !breakthroughRuntime.setLeg(server, this, map, rules(), value)) return false;
+        syncAll();
+        return true;
+    }
+    public boolean setBreakthroughSector(int value) {
+        if (!canEditBreakthroughState()) return false;
+        ArenaMap map = data().activeMap();
+        if (map == null || !breakthroughRuntime.setSector(server, this, map, rules(), value)) return false;
+        syncAll();
+        return true;
+    }
+    private boolean canEditBreakthroughState() {
+        return phase == MatchPhase.RUNNING && server != null
+                && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode());
+    }
+    int commonRemainingSeconds(MatchRules rules) {
+        long ticks = Math.max(0L, commonRemainingTicks(rules));
+        return (int) Math.min(Integer.MAX_VALUE, (ticks + 19L) / 20L);
+    }
+    void setCommonRemainingSeconds(MatchRules rules, int seconds) {
+        commonTimeAdjustmentTicks = seconds * 20L
+                - (rules.timeLimitSeconds() * 20L - elapsedTicks);
+    }
+    boolean commonTimeExpired(MatchRules rules) {
+        return commonRemainingTicks(rules) <= 0L;
+    }
+    private long commonRemainingTicks(MatchRules rules) {
+        return rules.timeLimitSeconds() * 20L - elapsedTicks + commonTimeAdjustmentTicks;
+    }
     public boolean restoringMap() { return mapRestoreSession != null; }
     public boolean devMode() { return server != null && data().devMode(); }
     public float mapRestoreProgress() { return mapRestoreSession == null ? 0.0F : mapRestoreSession.progress(); }
@@ -385,7 +451,7 @@ public final class MatchManager {
         } else if (total == 0) {
             errors.add("At least one player is required to start in dev mode");
         }
-        if (total > rules().maxPlayers()) errors.add("Player count exceeds maxPlayers");
+        if (!rules().permitsPlayerCount(total)) errors.add("Player count exceeds maxPlayers");
         return errors;
     }
 
@@ -408,6 +474,7 @@ public final class MatchManager {
         yellowScore = 0;
         greenScore = 0;
         elapsedTicks = 0;
+        commonTimeAdjustmentTicks = 0L;
         result = TeamSide.NONE;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             TeamSide side = teams.sideOf(player, data());
@@ -475,7 +542,8 @@ public final class MatchManager {
             return true;
         }
         TeamSide currentSide = teams.sideOf(player, data());
-        if (!data().enabledTeams().contains(currentSide) && countAssignedPlayers() >= rules().maxPlayers()) return false;
+        if (!data().enabledTeams().contains(currentSide)
+                && !rules().permitsPlayerCount((long) countAssignedPlayers() + 1)) return false;
         if (!data().enabledTeams().contains(currentSide)) teams.assign(player, teams.balancedSide(server, data()), data());
         if (!data().enabledTeams().contains(teams.sideOf(player, data()))) return false;
         currentSide = teams.sideOf(player, data());
@@ -539,7 +607,7 @@ public final class MatchManager {
     }
 
     public boolean joinNow(ServerPlayer player) {
-        if (phase != MatchPhase.RUNNING || participatingCount() >= rules().maxPlayers()) return false;
+        if (phase != MatchPhase.RUNNING || !rules().permitsPlayerCount((long) participatingCount() + 1)) return false;
         PlayerMatchState state = state(player);
         if (!data().enabledTeams().contains(teams.sideOf(player, data()))) {
             teams.assign(player, teams.balancedSide(server, data()), data());
@@ -1052,7 +1120,7 @@ public final class MatchManager {
         elapsedTicks++;
         MatchRules rules = rules();
         ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
-        if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && elapsedTicks >= rules.timeLimitSeconds() * 20) {
+        if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && commonTimeExpired(rules)) {
             result = modeResult.finished() ? modeResult.winner() : determineWinner();
             stop(true, Component.empty());
         }
@@ -1325,6 +1393,18 @@ public final class MatchManager {
 
     ServerPlayer serverPlayer(UUID playerId) { return server == null ? null : server.getPlayerList().getPlayer(playerId); }
 
+
+    boolean setTeamScoreValue(TeamSide side, int value) {
+        if (side == null || side == TeamSide.NONE || value < 0 || value > MAX_LIVE_SCORE) return false;
+        switch (side) {
+            case RED -> redScore = value;
+            case BLUE -> blueScore = value;
+            case YELLOW -> yellowScore = value;
+            case GREEN -> greenScore = value;
+            case NONE -> { return false; }
+        }
+        return true;
+    }
     void addTeamScore(TeamSide side, int amount) {
         if (amount <= 0) return;
         switch (side) {
@@ -1372,6 +1452,35 @@ public final class MatchManager {
     }
 
     SFGameSavedData savedData() { return data(); }
+
+    void swapBreakthroughTeamPlayers(TeamSide first, TeamSide second) {
+        if (server == null || first == TeamSide.NONE || second == TeamSide.NONE || first == second) return;
+        net.minecraft.world.scores.Scoreboard scoreboard = server.getScoreboard();
+        net.minecraft.world.scores.PlayerTeam firstTeam = scoreboard.getPlayerTeam(data().teamName(first));
+        net.minecraft.world.scores.PlayerTeam secondTeam = scoreboard.getPlayerTeam(data().teamName(second));
+        if (firstTeam == null || secondTeam == null) return;
+        java.util.Set<String> firstPlayers = java.util.Set.copyOf(firstTeam.getPlayers());
+        java.util.Set<String> secondPlayers = java.util.Set.copyOf(secondTeam.getPlayers());
+        firstPlayers.forEach(name -> scoreboard.addPlayerToTeam(name, secondTeam));
+        secondPlayers.forEach(name -> scoreboard.addPlayerToTeam(name, firstTeam));
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            String name = player.getScoreboardName();
+            TeamSide oldSide = firstPlayers.contains(name) ? first
+                    : secondPlayers.contains(name) ? second : TeamSide.NONE;
+            TeamSide newSide = swappedBreakthroughSide(oldSide, first, second);
+            if (newSide == TeamSide.NONE) continue;
+            PlayerMatchState state = state(player);
+            state.cachedSide(newSide);
+            ensureDefaultClass(state, newSide);
+            player.refreshTabListName();
+        }
+    }
+
+    static TeamSide swappedBreakthroughSide(TeamSide current, TeamSide first, TeamSide second) {
+        if (current == first) return second;
+        if (current == second) return first;
+        return current;
+    }
 
     void modeRedeployAll(int protectionTicks) {
         forParticipants(player -> {

@@ -10,6 +10,9 @@ import java.util.Set;
 
 public final class MatchRules {
     public static final int DEFAULT_MAX_PLAYERS = 10;
+    public static final int UNLIMITED_PLAYERS = -1;
+    public static final int MIN_PLAYER_LIMIT = 2;
+    public static final int MAX_PLAYER_LIMIT = 1_000_000;
     public static final int DEFAULT_SCORE_LIMIT = 50;
     public static final int DEFAULT_DOMINATION_SCORE_LIMIT = 100;
     public static final int DEFAULT_CTF_SCORE_LIMIT = 3;
@@ -69,6 +72,9 @@ public final class MatchRules {
     public MatchRules(String modeId) { this.modeId = modeId; reset(); }
     public String modeId() { return modeId; }
     public int maxPlayers() { return maxPlayers; }
+    public boolean permitsPlayerCount(long count) {
+        return maxPlayers == UNLIMITED_PLAYERS || count <= maxPlayers;
+    }
     public int scoreLimit() { return scoreLimit; }
     public int timeLimitSeconds() { return timeLimitSeconds; }
     public int startCountdownSeconds() { return startCountdownSeconds; }
@@ -111,7 +117,11 @@ public final class MatchRules {
     public TeamSide ctfDefender() { return ctfDefender; }
     public CarrierRestriction ctfCarrierRestriction() { return ctfCarrierRestriction; }
 
-    public void maxPlayers(int value) { maxPlayers = clamp(value, 2, 128); }
+    public void maxPlayers(int value) {
+        maxPlayers = value == UNLIMITED_PLAYERS
+                ? UNLIMITED_PLAYERS
+                : clamp(value, MIN_PLAYER_LIMIT, MAX_PLAYER_LIMIT);
+    }
     public void scoreLimit(int value) { scoreLimit = clamp(value, 1, 10000); }
     public void timeLimitSeconds(int value) { timeLimitSeconds = clamp(value, 30, 86400); }
     public void startCountdownSeconds(int value) { startCountdownSeconds = clamp(value, 0, 60); }

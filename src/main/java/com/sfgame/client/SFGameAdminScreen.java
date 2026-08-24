@@ -1,5 +1,6 @@
 package com.sfgame.client;
 
+import com.sfgame.data.MatchRules;
 import com.sfgame.game.AdminRuleCatalog;
 import com.sfgame.game.MatchPhase;
 import com.sfgame.network.AdminActionPacket;
@@ -417,8 +418,8 @@ public final class SFGameAdminScreen extends Screen {
             case BOOLEAN -> control.rule.key();
             case ENUM -> control.rule.key() + "  ["
                     + String.join("|", AdminRuleCatalog.enumValues(control.rule.key())) + "]";
-            case INTEGER, DECIMAL -> control.rule.key() + "  [" + compact(control.rule.minimum())
-                    + ".." + compact(control.rule.maximum()) + "]";
+            case INTEGER, DECIMAL -> control.rule.key() + "  ["
+                    + numericRangeText(control.rule.key(), control.rule.minimum(), control.rule.maximum()) + "]";
         };
         graphics.drawString(font, range, panelLeft + 16, y + 21, MUTED, false);
         Component badge = Component.translatable(control.rule.hotReload()
@@ -478,6 +479,14 @@ public final class SFGameAdminScreen extends Screen {
 
     private static String compact(double value) {
         return value == Math.rint(value) ? Long.toString((long) value) : Double.toString(value);
+    }
+
+    static String numericRangeText(String key, double minimum, double maximum) {
+        if ("maxPlayers".equals(key)) {
+            return MatchRules.UNLIMITED_PLAYERS + " | " + MatchRules.MIN_PLAYER_LIMIT
+                    + ".." + MatchRules.MAX_PLAYER_LIMIT;
+        }
+        return compact(minimum) + ".." + compact(maximum);
     }
 
     @Override
@@ -575,7 +584,9 @@ public final class SFGameAdminScreen extends Screen {
             setTextColor(TEXT);
             setTextColorUneditable(MUTED);
             if (rule.type() == AdminRuleCatalog.ValueType.INTEGER) {
-                setFilter(value -> value.matches("[0-9]*"));
+                setFilter(value -> value.matches(rule.key().equals("maxPlayers")
+                        ? "(?:[0-9]*|-1?)"
+                        : "[0-9]*"));
             } else {
                 setFilter(value -> value.matches("[0-9]*\\.?[0-9]*"));
             }

@@ -61,7 +61,7 @@ public final class AdminRuleCatalog {
             GameModeRegistry.DOMINATION, GameModeRegistry.BREAKTHROUGH, GameModeRegistry.CAPTURE_THE_FLAG);
     private static final List<Definition> DEFINITIONS = List.of(
             // Live-safe common rules.
-            integer("maxPlayers", 2, 128, true),
+            integer("maxPlayers", MatchRules.UNLIMITED_PLAYERS, MatchRules.MAX_PLAYER_LIMIT, true),
             integer("scoreLimit", 1, 10_000, true),
             integer("timeLimitSeconds", 30, 86_400, true),
             integer("respawnSeconds", 0, 60, true),
@@ -149,7 +149,10 @@ public final class AdminRuleCatalog {
                 } catch (NumberFormatException exception) {
                     throw new IllegalArgumentException("Expected a whole number");
                 }
-                if (parsed < definition.minimum() || parsed > definition.maximum()) {
+                boolean invalidPlayerLimit = definition.key().equals("maxPlayers")
+                        && parsed != MatchRules.UNLIMITED_PLAYERS
+                        && parsed < MatchRules.MIN_PLAYER_LIMIT;
+                if (parsed < definition.minimum() || parsed > definition.maximum() || invalidPlayerLimit) {
                     throw rangeError(definition);
                 }
                 yield parsed;
@@ -190,6 +193,10 @@ public final class AdminRuleCatalog {
     }
 
     private static IllegalArgumentException rangeError(Definition definition) {
+        if (definition.key().equals("maxPlayers")) {
+            return new IllegalArgumentException("Value must be -1 or between "
+                    + MatchRules.MIN_PLAYER_LIMIT + " and " + MatchRules.MAX_PLAYER_LIMIT);
+        }
         return new IllegalArgumentException("Value must be between " + format(definition.minimum())
                 + " and " + format(definition.maximum()));
     }

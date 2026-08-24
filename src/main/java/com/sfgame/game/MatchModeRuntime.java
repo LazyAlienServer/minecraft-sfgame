@@ -27,7 +27,10 @@ public interface MatchModeRuntime {
     default void onRuleChanged(String key, MatchRules rules) { }
     default ArenaPosition spawnFor(TeamSide side, ArenaMap map) { return map.randomSpawn(side); }
     default int remainingSeconds(MatchManager manager, MatchRules rules) {
-        return Math.max(0, rules.timeLimitSeconds() - manager.elapsedTicks() / 20);
+        return manager.commonRemainingSeconds(rules);
+    }
+    default void setRemainingSeconds(MatchManager manager, MatchRules rules, int seconds) {
+        manager.setCommonRemainingSeconds(rules, seconds);
     }
     default boolean isCaptain(UUID playerId) { return false; }
     default boolean usesCommonTimeLimit() { return true; }

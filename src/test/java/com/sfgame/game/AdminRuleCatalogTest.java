@@ -30,6 +30,8 @@ class AdminRuleCatalogTest {
                 "startCountdownSeconds").orElseThrow().hotReload());
         assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH,
                 "mapSnapshotMode").orElseThrow().hotReload());
+        assertFalse(AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH,
+                "breakthroughLegs").orElseThrow().hotReload());
     }
 
     @Test
@@ -52,5 +54,18 @@ class AdminRuleCatalogTest {
         assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(roles, "none"));
         assertEquals(java.util.List.of("red", "blue", "yellow", "green"),
                 AdminRuleCatalog.enumValues("breakthroughAttacker"));
+    }
+
+    @Test
+    void validatesUnlimitedAndMillionPlayerLimits() {
+        AdminRuleCatalog.Definition maxPlayers = AdminRuleCatalog.find(
+                GameModeRegistry.TEAM_DEATHMATCH, "maxPlayers").orElseThrow();
+
+        assertEquals(-1, AdminRuleCatalog.parse(maxPlayers, "-1"));
+        assertEquals(1_000_000, AdminRuleCatalog.parse(maxPlayers, "1000000"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(maxPlayers, "-2"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(maxPlayers, "0"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(maxPlayers, "1"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(maxPlayers, "1000001"));
     }
 }

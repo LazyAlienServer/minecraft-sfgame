@@ -32,6 +32,24 @@ final class MatchRulesTest {
     }
 
     @Test
+    void supportsUnlimitedAndMillionPlayerLimits() {
+        MatchRules rules = new MatchRules();
+
+        rules.maxPlayers(MatchRules.UNLIMITED_PLAYERS);
+        assertEquals(MatchRules.UNLIMITED_PLAYERS, rules.maxPlayers());
+        assertTrue(rules.permitsPlayerCount(Long.MAX_VALUE));
+
+        rules.maxPlayers(MatchRules.MAX_PLAYER_LIMIT);
+        assertTrue(rules.permitsPlayerCount(MatchRules.MAX_PLAYER_LIMIT));
+        assertFalse(rules.permitsPlayerCount((long) MatchRules.MAX_PLAYER_LIMIT + 1));
+
+        rules.maxPlayers(MatchRules.MAX_PLAYER_LIMIT + 1);
+        assertEquals(MatchRules.MAX_PLAYER_LIMIT, rules.maxPlayers());
+        rules.maxPlayers(0);
+        assertEquals(MatchRules.MIN_PLAYER_LIMIT, rules.maxPlayers());
+    }
+
+    @Test
     void persistsAndRestoresRules() {
         MatchRules source = new MatchRules();
         source.maxPlayers(24);

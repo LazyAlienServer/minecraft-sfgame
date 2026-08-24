@@ -122,10 +122,6 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         return ModeTickResult.CONTINUE;
     }
 
-    @Override
-    public int remainingSeconds(MatchManager manager, MatchRules rules) {
-        return Math.max(0, rules.timeLimitSeconds() - manager.elapsedTicks() / 20);
-    }
 
     @Override
     public void onKill(ServerPlayer killer, TeamSide side, MatchManager manager) {
