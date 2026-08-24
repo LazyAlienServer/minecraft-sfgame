@@ -10,6 +10,7 @@
       "inventory": [
         {
           "type": "gun",
+          "slot": 0,
           "gunId": "tacz:hk416d",
           "initialMagazine": 30,
           "fireMode": "AUTO",
@@ -17,6 +18,7 @@
         },
         {
           "type": "ammoBox",
+          "slot": 9,
           "ammoId": "tacz:556x45",
           "ammoCount": 180
         },
@@ -45,6 +47,7 @@
       "inventory": [
         {
           "type": "gun",
+          "slot": 0,
           "gunId": "tacz:m700",
           "initialMagazine": 10,
           "fireMode": "SEMI",
@@ -52,6 +55,7 @@
         },
         {
           "type": "ammoBox",
+          "slot": 9,
           "ammoId": "tacz:30_06",
           "ammoCount": 30
         },

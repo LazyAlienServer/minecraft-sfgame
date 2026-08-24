@@ -69,10 +69,10 @@ public final class LoadoutService {
         applyAttributes(player, definition);
 
         for (ItemDefinition item : definition.inventory()) {
-            if (item == null) continue;
-            ItemStack stack = buildInventoryItem(item);
-            if ((item.isGun() || item.isAmmoBox()) && stack.isEmpty()) return false;
-            if (!stack.isEmpty() && !player.getInventory().add(stack)) return false;
+            if (item != null && item.slot() >= 0 && !giveInventoryItem(player, item)) return false;
+        }
+        for (ItemDefinition item : definition.inventory()) {
+            if (item != null && item.slot() < 0 && !giveInventoryItem(player, item)) return false;
         }
         equipArmor(player, definition.armor());
         if (definition.offhand() != null) {
@@ -116,12 +116,21 @@ public final class LoadoutService {
     static List<String> validateInventoryShape(ClassDefinition definition) {
         int guns = 0;
         int ammoBoxes = 0;
+        boolean[] occupiedSlots = new boolean[36];
+        List<String> errors = new ArrayList<>();
         for (ItemDefinition item : definition.inventory()) {
             if (item == null) continue;
             if (item.isGun()) guns++;
             if (item.isAmmoBox()) ammoBoxes++;
+            int slot = item.slot();
+            if (slot < -1 || slot >= occupiedSlots.length) {
+                errors.add(definition.id() + ": inventory slot must be between 0 and 35");
+            } else if (slot >= 0 && occupiedSlots[slot]) {
+                errors.add(definition.id() + ": inventory slot " + slot + " is configured more than once");
+            } else if (slot >= 0) {
+                occupiedSlots[slot] = true;
+            }
         }
-        List<String> errors = new ArrayList<>();
         if (guns == 0) errors.add(definition.id() + ": inventory must contain a primary gun");
         if (guns > 3) errors.add(definition.id() + ": inventory supports one primary gun and at most two secondary guns");
         if (ammoBoxes != guns) errors.add(definition.id() + ": inventory must contain one ammo box per gun");
@@ -157,6 +166,17 @@ public final class LoadoutService {
         if (ammoId == null || TimelessAPI.getCommonAmmoIndex(ammoId).isEmpty()) {
             errors.add(classId + ": unknown TACZ ammo " + item.ammoId());
         }
+    }
+
+    private boolean giveInventoryItem(ServerPlayer player, ItemDefinition definition) {
+        ItemStack stack = buildInventoryItem(definition);
+        if ((definition.isGun() || definition.isAmmoBox()) && stack.isEmpty()) return false;
+        if (stack.isEmpty()) return true;
+        if (definition.slot() >= 0) {
+            player.getInventory().setItem(definition.slot(), stack);
+            return true;
+        }
+        return player.getInventory().add(stack);
     }
 
     private ItemStack buildInventoryItem(ItemDefinition definition) {

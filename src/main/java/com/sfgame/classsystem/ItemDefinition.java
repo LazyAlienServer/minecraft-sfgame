@@ -8,6 +8,7 @@ public final class ItemDefinition {
     private String type = "item";
     private String item = "minecraft:air";
     private int count = 1;
+    private int slot = -1;
     private String nbt = "";
     private String gunId = "";
     private int initialMagazine;
@@ -26,6 +27,7 @@ public final class ItemDefinition {
     }
     public String item() { return item == null ? "minecraft:air" : item; }
     public int count() { return Math.max(1, count); }
+    public int slot() { return slot; }
     public String nbt() { return nbt == null ? "" : nbt; }
     public String gunId() { return gunId == null ? "" : gunId; }
     public int initialMagazine() { return Math.max(0, initialMagazine); }

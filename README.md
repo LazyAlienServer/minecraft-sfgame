@@ -305,20 +305,22 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
       "inventory": [
         {
           "type": "gun",
+          "slot": 0,
           "gunId": "tacz:hk416d",
           "initialMagazine": 30,
           "fireMode": "AUTO",
           "attachments": {}
         },
-        {"type": "ammoBox", "ammoId": "tacz:556x45", "ammoCount": 180},
+        {"type": "ammoBox", "slot": 9, "ammoId": "tacz:556x45", "ammoCount": 180},
         {
           "type": "gun",
+          "slot": 1,
           "gunId": "tacz:glock_17",
           "initialMagazine": 17,
           "fireMode": "SEMI",
           "attachments": {}
         },
-        {"type": "ammoBox", "ammoId": "tacz:9mm", "ammoCount": 68},
+        {"type": "ammoBox", "slot": 10, "ammoId": "tacz:9mm", "ammoCount": 68},
         {"item": "minecraft:stone_sword", "count": 1}
       ]
     }
@@ -352,8 +354,9 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 | `iconTexture` | `"mypack:textures/gui/classes/hk416d.png"` | `iconRender` 为 `png` 时使用的客户端资源包 PNG；必须写完整纹理资源位置。 |
 | `maxHealth` | `20.0` | 部署时的最大生命值，范围由服务端限制为 1～2048。 |
 | `movementSpeedMultiplier` | `1.05` | 移动速度倍率；`1.0` 为正常速度，`0.95` 为慢 5%。 |
-| `inventory` | 见下方 | 完整物品栏配装；按 JSON 顺序发放。枪械、对应弹药箱和普通物品都必须显式写在此数组中。 |
+| `inventory` | 见下方 | 完整物品栏配装；枪械、对应弹药箱和普通物品都必须显式写在此数组中。 |
 | `inventory[].type` | `"gun"`、`"ammoBox"` | 特殊 TACZ 条目类型；不填时为普通 `item`。第一条 `gun` 是主武器，之后最多两条 `gun` 是副武器。每条 `gun` 必须对应一条 `ammoBox`。 |
+| `inventory[].slot` | `0`～`35` | 可选物品栏栏位。`0`～`8` 是快捷栏，`9` 是背包区域左上角，`10`、`11` 向右排列；同一职业不能重复指定栏位。不填时自动放入空栏位。 |
 | `inventory[].gunId` | `"tacz:hk416d"` | `gun` 条目的 TACZ 枪械资源 ID；必须能被 `TimelessAPI` 索引。 |
 | `inventory[].initialMagazine` | `30` | `gun` 条目的初始弹匣装弹量。 |
 | `inventory[].fireMode` | `"AUTO"` | `gun` 条目的 TACZ 射击模式，例如 `AUTO`、`SEMI`；无效值会阻止开赛。 |
@@ -382,7 +385,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 `class list` 的 `normal`/`captain` 参数分别查看当前地图按阵营展开的普通职业池和突破队长职业池；不带参数时查看普通池。`class set` 修改目标玩家当前地图/阵营的普通职业，`class setcaptain` 只在突破 captain 变体中生效；玩家存活期间为“待切换”，下一次死亡重生或管理员重新部署时应用。
 
-旧版职业文件中的顶层 `gunId`、`ammoId`、`initialMagazine`、`reserveAmmo`、`fireMode` 和 `attachments` 会在重载时一次性迁移到 `inventory`。迁移后，所有枪械与弹药箱都由 `inventory` 明确控制；第一把枪是主武器，最多再配置两把副武器，且枪械数必须与弹药箱数一致。
+所有枪械与弹药箱都由 `inventory` 明确控制；第一把枪是主武器，最多再配置两把副武器，且枪械数必须与弹药箱数一致。旧版顶层武器字段不再接受，必须先显式迁移到 `inventory`。
 
 存档服务端配置文件 `<存档>/serverconfig/sfgame-server.toml` 中的 `globalHungerLock` 默认为 `true`。启用后，SFGame 模式运行期间所有在线玩家的饥饿值和饱和度均固定为 20。
 

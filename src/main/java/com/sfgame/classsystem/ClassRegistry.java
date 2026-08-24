@@ -425,69 +425,9 @@ public final class ClassRegistry {
     }
 
     private ClassFile readClassFile(Path path) throws IOException {
-        JsonObject document;
         try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            JsonElement parsed = JsonParser.parseReader(reader);
-            if (!parsed.isJsonObject()) throw new JsonParseException("root must be an object");
-            document = parsed.getAsJsonObject();
+            return GSON.fromJson(reader, ClassFile.class);
         }
-        if (migrateLegacyWeapons(document)) {
-            Files.writeString(path, GSON.toJson(document) + System.lineSeparator(), StandardCharsets.UTF_8);
-        }
-        return GSON.fromJson(document, ClassFile.class);
-    }
-    static boolean migrateLegacyWeapons(JsonObject object) {
-        boolean changed = false;
-        for (String key : List.of("classes", "captainClasses")) {
-            JsonElement definitions = object.get(key);
-            if (definitions == null || !definitions.isJsonArray()) continue;
-            for (JsonElement element : definitions.getAsJsonArray()) {
-                if (element.isJsonObject()) changed |= migrateLegacyWeapon(element.getAsJsonObject());
-            }
-        }
-        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
-            JsonElement child = entry.getValue();
-            if (child.isJsonObject()) changed |= migrateLegacyWeapons(child.getAsJsonObject());
-            else if (child.isJsonArray()) {
-                for (JsonElement element : child.getAsJsonArray()) {
-                    if (element.isJsonObject()) changed |= migrateLegacyWeapons(element.getAsJsonObject());
-                }
-            }
-        }
-        return changed;
-    }
-
-    private static boolean migrateLegacyWeapon(JsonObject definition) {
-        if (!definition.has("gunId")) return false;
-        JsonArray inventory = new JsonArray();
-        JsonObject gun = new JsonObject();
-        gun.addProperty("type", "gun");
-        copyIfPresent(definition, gun, "gunId");
-        copyIfPresent(definition, gun, "initialMagazine");
-        copyIfPresent(definition, gun, "fireMode");
-        copyIfPresent(definition, gun, "attachments");
-        inventory.add(gun);
-
-        if (definition.has("ammoId")) {
-            JsonObject ammoBox = new JsonObject();
-            ammoBox.addProperty("type", "ammoBox");
-            copyIfPresent(definition, ammoBox, "ammoId");
-            if (definition.has("reserveAmmo")) ammoBox.add("ammoCount", definition.get("reserveAmmo").deepCopy());
-            inventory.add(ammoBox);
-        }
-        JsonElement configured = definition.get("inventory");
-        if (configured != null && configured.isJsonArray()) {
-            for (JsonElement item : configured.getAsJsonArray()) inventory.add(item.deepCopy());
-        }
-        definition.add("inventory", inventory);
-        for (String key : List.of("gunId", "ammoId", "initialMagazine", "reserveAmmo", "fireMode", "attachments")) {
-            definition.remove(key);
-        }
-        return true;
-    }
-
-    private static void copyIfPresent(JsonObject source, JsonObject target, String key) {
-        if (source.has(key)) target.add(key, source.get(key).deepCopy());
     }
 
     private Map<String, RawProfile> readProfiles(List<String> errors) throws IOException {
