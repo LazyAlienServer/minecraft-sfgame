@@ -1,191 +1,348 @@
 {
-  "configVersion": 2,
-  "classes": [
-    {
-      "id": "assault",
-      "displayName": "突击兵",
-      "description": "使用 HK416D、军刀与破片投掷物的均衡突击职业",
-      "icon": "minecraft:iron_sword",
-      "maxHealth": 20.0,
-      "movementSpeedMultiplier": 1.05,
-      "gunId": "tacz:hk416d",
-      "ammoId": "tacz:556x45",
-      "initialMagazine": 30,
-      "reserveAmmo": 180,
-      "fireMode": "AUTO",
-      "attachments": {},
-      "inventory": [
-        {"item": "minecraft:iron_sword", "count": 1},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_harming\"}"}
-      ],
-      "armor": {
-        "head": {"item": "minecraft:chainmail_helmet", "count": 1},
-        "chest": {"item": "minecraft:chainmail_chestplate", "count": 1},
-        "legs": {"item": "minecraft:chainmail_leggings", "count": 1},
-        "feet": {"item": "minecraft:leather_boots", "count": 1}
-      },
-      "effects": [],
-      "allowDrop": false
-    },
-    {
-      "id": "sniper",
-      "displayName": "狙击手",
-      "description": "使用 M107、短剑与减速投掷物的远距离职业",
-      "icon": "minecraft:spyglass",
-      "maxHealth": 20.0,
-      "movementSpeedMultiplier": 0.95,
-      "gunId": "tacz:m107",
-      "ammoId": "tacz:50bmg",
-      "initialMagazine": 10,
-      "reserveAmmo": 30,
-      "fireMode": "SEMI",
-      "attachments": {},
-      "inventory": [
-        {"item": "minecraft:stone_sword", "count": 1},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_slowness\"}"}
-      ],
-      "armor": {
-        "head": {"item": "minecraft:leather_helmet", "count": 1},
-        "chest": {"item": "minecraft:leather_chestplate", "count": 1},
-        "legs": {"item": "minecraft:leather_leggings", "count": 1},
-        "feet": {"item": "minecraft:leather_boots", "count": 1}
-      },
-      "effects": [],
-      "allowDrop": false
-    },
-    {
-      "id": "medic",
-      "displayName": "医疗兵",
-      "description": "使用 MP5A5、短剑与治疗投掷物支援队友",
-      "icon": "minecraft:splash_potion",
-      "maxHealth": 24.0,
-      "movementSpeedMultiplier": 1.0,
-      "gunId": "tacz:hk_mp5a5",
-      "ammoId": "tacz:9mm",
-      "initialMagazine": 30,
-      "reserveAmmo": 180,
-      "fireMode": "AUTO",
-      "attachments": {},
-      "inventory": [
-        {"item": "minecraft:stone_sword", "count": 1},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_healing\"}"},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_healing\"}"}
-      ],
-      "armor": {
-        "head": {"item": "minecraft:golden_helmet", "count": 1},
-        "chest": {"item": "minecraft:chainmail_chestplate", "count": 1},
-        "legs": {"item": "minecraft:leather_leggings", "count": 1},
-        "feet": {"item": "minecraft:leather_boots", "count": 1}
-      },
-      "effects": [],
-      "allowDrop": false
-    },
-    {
-      "id": "tank",
-      "displayName": "坦克",
-      "description": "使用 M249、重型军刀与重甲持续压制",
-      "icon": "minecraft:iron_chestplate",
-      "maxHealth": 30.0,
-      "movementSpeedMultiplier": 0.82,
-      "gunId": "tacz:m249",
-      "ammoId": "tacz:556x45",
-      "initialMagazine": 75,
-      "reserveAmmo": 300,
-      "fireMode": "AUTO",
-      "attachments": {},
-      "inventory": [
-        {"item": "minecraft:iron_sword", "count": 1},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_harming\"}"}
-      ],
-      "armor": {
-        "head": {"item": "minecraft:iron_helmet", "count": 1},
-        "chest": {"item": "minecraft:iron_chestplate", "count": 1},
-        "legs": {"item": "minecraft:iron_leggings", "count": 1},
-        "feet": {"item": "minecraft:iron_boots", "count": 1}
-      },
-      "effects": [],
-      "allowDrop": false
-    },
-    {
-      "id": "smg_assault",
-      "displayName": "冲锋手",
-      "description": "使用 P90、军刀与破片投掷物高速突破",
-      "icon": "minecraft:crossbow",
-      "maxHealth": 20.0,
-      "movementSpeedMultiplier": 1.12,
-      "gunId": "tacz:p90",
-      "ammoId": "tacz:57x28",
-      "initialMagazine": 50,
-      "reserveAmmo": 250,
-      "fireMode": "AUTO",
-      "attachments": {},
-      "inventory": [
-        {"item": "minecraft:iron_sword", "count": 1},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:harming\"}"}
-      ],
-      "armor": {
-        "head": {"item": "minecraft:leather_helmet", "count": 1},
-        "chest": {"item": "minecraft:chainmail_chestplate", "count": 1},
-        "legs": {"item": "minecraft:leather_leggings", "count": 1},
-        "feet": {"item": "minecraft:chainmail_boots", "count": 1}
-      },
-      "effects": [],
-      "allowDrop": false
-    }
-  ],
-  "captainClasses": [
-    {
-      "id": "heavy_captain",
-      "displayName": "重装队长",
-      "description": "使用 HK416D、军刀、投掷物与重甲的进攻队长",
-      "icon": "minecraft:red_banner",
-      "maxHealth": 40.0,
-      "movementSpeedMultiplier": 0.9,
-      "gunId": "tacz:hk416d",
-      "ammoId": "tacz:556x45",
-      "initialMagazine": 30,
-      "reserveAmmo": 240,
-      "fireMode": "AUTO",
-      "attachments": {},
-      "inventory": [
-        {"item": "minecraft:diamond_sword", "count": 1},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_harming\"}"}
-      ],
-      "armor": {
-        "chest": {"item": "minecraft:diamond_chestplate", "count": 1},
-        "legs": {"item": "minecraft:diamond_leggings", "count": 1},
-        "feet": {"item": "minecraft:diamond_boots", "count": 1}
-      },
-      "effects": [],
-      "allowDrop": false
-    },
-    {
-      "id": "captain_tank",
-      "displayName": "坦克",
-      "description": "使用 M249、重型军刀、双投掷物与重型防护装备",
-      "icon": "minecraft:netherite_chestplate",
-      "maxHealth": 50.0,
-      "movementSpeedMultiplier": 0.75,
-      "gunId": "tacz:m249",
-      "ammoId": "tacz:556x45",
-      "initialMagazine": 75,
-      "reserveAmmo": 450,
-      "fireMode": "AUTO",
-      "attachments": {},
-      "inventory": [
-        {"item": "minecraft:netherite_sword", "count": 1},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_harming\"}"},
-        {"item": "minecraft:splash_potion", "count": 1, "nbt": "{Potion:\"minecraft:strong_harming\"}"}
-      ],
-      "armor": {
-        "chest": {"item": "minecraft:netherite_chestplate", "count": 1},
-        "legs": {"item": "minecraft:netherite_leggings", "count": 1},
-        "feet": {"item": "minecraft:netherite_boots", "count": 1}
-      },
-      "effects": [],
-      "allowDrop": false
-    }
-  ],
-  "teams": {},
-  "maps": {}
+    "configVersion": 4,
+    "classes": [
+        {
+            "id": "assault",
+            "displayName": "特种兵",
+            "description": "使用 HK416D、军刀与破片投掷物的均衡突击职业",
+            "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}",
+            "maxHealth": 40.0,
+            "movementSpeedMultiplier": 1.05,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "gunId": "tacz:hk416d",
+                    "initialMagazine": 30,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:556x45",
+                    "ammoCount": 180
+                },
+                {
+                    "type": "gun",
+                    "gunId": "tacz:glock_17",
+                    "initialMagazine": 17,
+                    "fireMode": "SEMI",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:9mm",
+                    "ammoCount": 68
+                },
+                {
+                    "item": "lrtactical:melee",
+                    "count": 1,
+                    "nbt": "{MeleeWeaponId:\"lrtactical:dagger\"}"
+                }
+            ],
+            "armor": {
+                "chest": {
+                    "item": "minecraft:chainmail_chestplate",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        },
+        {
+            "id": "sniper",
+            "displayName": "狙击手",
+            "description": "使用 M700、短剑与减速投掷物的远距离职业",
+            "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:m700\"}",
+            "maxHealth": 40.0,
+            "movementSpeedMultiplier": 0.95,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "gunId": "tacz:m700",
+                    "initialMagazine": 10,
+                    "fireMode": "SEMI",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:30_06",
+                    "ammoCount": 30
+                },
+                {
+                    "item": "lrtactical:melee",
+                    "count": 1,
+                    "nbt": "{MeleeWeaponId:\"lrtactical:dagger\"}"
+                }
+            ],
+            "armor": {
+                "chest": {
+                    "item": "minecraft:leather_chestplate",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        },
+        {
+            "id": "medic",
+            "displayName": "医疗兵",
+            "description": "使用 MP5A5、短剑与治疗投掷物支援队友",
+            "icon": "minecraft:splash_potion",
+            "maxHealth": 24.0,
+            "movementSpeedMultiplier": 1.0,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "gunId": "tacz:hk_mp5a5",
+                    "initialMagazine": 30,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:9mm",
+                    "ammoCount": 180
+                },
+                {
+                    "item": "minecraft:stone_sword",
+                    "count": 1
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_healing\"}"
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_healing\"}"
+                }
+            ],
+            "armor": {
+                "head": {
+                    "item": "minecraft:golden_helmet",
+                    "count": 1
+                },
+                "chest": {
+                    "item": "minecraft:chainmail_chestplate",
+                    "count": 1
+                },
+                "legs": {
+                    "item": "minecraft:leather_leggings",
+                    "count": 1
+                },
+                "feet": {
+                    "item": "minecraft:leather_boots",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        },
+        {
+            "id": "tank",
+            "displayName": "坦克",
+            "description": "使用 M249、重型军刀与重甲持续压制",
+            "icon": "minecraft:iron_chestplate",
+            "maxHealth": 30.0,
+            "movementSpeedMultiplier": 0.82,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "gunId": "tacz:m249",
+                    "initialMagazine": 75,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:556x45",
+                    "ammoCount": 300
+                },
+                {
+                    "item": "minecraft:iron_sword",
+                    "count": 1
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_harming\"}"
+                }
+            ],
+            "armor": {
+                "head": {
+                    "item": "minecraft:iron_helmet",
+                    "count": 1
+                },
+                "chest": {
+                    "item": "minecraft:iron_chestplate",
+                    "count": 1
+                },
+                "legs": {
+                    "item": "minecraft:iron_leggings",
+                    "count": 1
+                },
+                "feet": {
+                    "item": "minecraft:iron_boots",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        },
+        {
+            "id": "smg_assault",
+            "displayName": "冲锋手",
+            "description": "使用 P90、军刀与破片投掷物高速突破",
+            "icon": "minecraft:crossbow",
+            "maxHealth": 20.0,
+            "movementSpeedMultiplier": 1.12,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "gunId": "tacz:p90",
+                    "initialMagazine": 50,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:57x28",
+                    "ammoCount": 250
+                },
+                {
+                    "item": "minecraft:iron_sword",
+                    "count": 1
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:harming\"}"
+                }
+            ],
+            "armor": {
+                "head": {
+                    "item": "minecraft:leather_helmet",
+                    "count": 1
+                },
+                "chest": {
+                    "item": "minecraft:chainmail_chestplate",
+                    "count": 1
+                },
+                "legs": {
+                    "item": "minecraft:leather_leggings",
+                    "count": 1
+                },
+                "feet": {
+                    "item": "minecraft:chainmail_boots",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        }
+    ],
+    "captainClasses": [
+        {
+            "id": "heavy_captain",
+            "displayName": "重装队长",
+            "description": "使用 HK416D、军刀、投掷物与重甲的进攻队长",
+            "icon": "minecraft:red_banner",
+            "maxHealth": 40.0,
+            "movementSpeedMultiplier": 0.9,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "gunId": "tacz:hk416d",
+                    "initialMagazine": 30,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:556x45",
+                    "ammoCount": 240
+                },
+                {
+                    "item": "minecraft:diamond_sword",
+                    "count": 1
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_harming\"}"
+                }
+            ],
+            "armor": {
+                "chest": {
+                    "item": "minecraft:diamond_chestplate",
+                    "count": 1
+                },
+                "legs": {
+                    "item": "minecraft:diamond_leggings",
+                    "count": 1
+                },
+                "feet": {
+                    "item": "minecraft:diamond_boots",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        },
+        {
+            "id": "captain_tank",
+            "displayName": "坦克",
+            "description": "使用 M249、重型军刀、双投掷物与重型防护装备",
+            "icon": "minecraft:netherite_chestplate",
+            "maxHealth": 50.0,
+            "movementSpeedMultiplier": 0.75,
+            "inventory": [
+                {
+                    "type": "gun",
+                    "gunId": "tacz:m249",
+                    "initialMagazine": 75,
+                    "fireMode": "AUTO",
+                    "attachments": {}
+                },
+                {
+                    "type": "ammoBox",
+                    "ammoId": "tacz:556x45",
+                    "ammoCount": 450
+                },
+                {
+                    "item": "minecraft:netherite_sword",
+                    "count": 1
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_harming\"}"
+                },
+                {
+                    "item": "minecraft:splash_potion",
+                    "count": 1,
+                    "nbt": "{Potion:\"minecraft:strong_harming\"}"
+                }
+            ],
+            "armor": {
+                "chest": {
+                    "item": "minecraft:netherite_chestplate",
+                    "count": 1
+                },
+                "legs": {
+                    "item": "minecraft:netherite_leggings",
+                    "count": 1
+                },
+                "feet": {
+                    "item": "minecraft:netherite_boots",
+                    "count": 1
+                }
+            },
+            "effects": [],
+            "allowDrop": false
+        }
+    ],
+    "teams": {},
+    "maps": {}
 }

@@ -15,12 +15,6 @@ public final class ClassDefinition {
     private String iconTexture = "";
     private double maxHealth = 20.0;
     private double movementSpeedMultiplier = 1.0;
-    private String gunId = "";
-    private String ammoId = "";
-    private int initialMagazine;
-    private int reserveAmmo;
-    private String fireMode = "UNKNOWN";
-    private Map<String, String> attachments = new LinkedHashMap<>();
     private List<ItemDefinition> inventory = new ArrayList<>();
     private Map<String, ItemDefinition> armor = new LinkedHashMap<>();
     private ItemDefinition offhand;
@@ -38,12 +32,17 @@ public final class ClassDefinition {
     public String iconTexture() { return iconTexture == null ? "" : iconTexture.trim(); }
     public double maxHealth() { return Math.max(1.0, Math.min(2048.0, maxHealth)); }
     public double movementSpeedMultiplier() { return Math.max(0.1, Math.min(5.0, movementSpeedMultiplier)); }
-    public String gunId() { return gunId; }
-    public String ammoId() { return ammoId; }
-    public int initialMagazine() { return Math.max(0, initialMagazine); }
-    public int reserveAmmo() { return Math.max(0, reserveAmmo); }
-    public String fireMode() { return fireMode == null ? "UNKNOWN" : fireMode.toUpperCase(); }
-    public Map<String, String> attachments() { return attachments == null ? Map.of() : attachments; }
+    public String gunId() {
+        for (ItemDefinition item : inventory()) if (item != null && item.isGun()) return item.gunId();
+        return "";
+    }
+    public int reserveAmmo() {
+        long total = 0;
+        for (ItemDefinition item : inventory()) {
+            if (item != null && item.isAmmoBox()) total += item.ammoCount();
+        }
+        return (int) Math.min(Integer.MAX_VALUE, total);
+    }
     public List<ItemDefinition> inventory() { return inventory == null ? List.of() : inventory; }
     public Map<String, ItemDefinition> armor() { return armor == null ? Map.of() : armor; }
     public ItemDefinition offhand() { return offhand; }

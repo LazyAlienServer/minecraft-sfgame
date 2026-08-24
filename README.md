@@ -302,24 +302,28 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
       "description": "当前地图覆盖的突击职业",
       "icon": "tacz:modern_kinetic_gun{GunId:\"tacz:hk416d\"}",
       "iconRender": "item",
-      "gunId": "tacz:hk416d",
-      "ammoId": "tacz:556x45",
-      "initialMagazine": 30,
-      "reserveAmmo": 180
-    }
-  ],
-  "teams": {
-    "blue": {
-      "classes": [
+      "inventory": [
         {
-          "id": "sniper",
-          "displayName": "蓝队狙击手",
-          "gunId": "tacz:m107",
-          "ammoId": "tacz:50bmg"
-        }
+          "type": "gun",
+          "gunId": "tacz:hk416d",
+          "initialMagazine": 30,
+          "fireMode": "AUTO",
+          "attachments": {}
+        },
+        {"type": "ammoBox", "ammoId": "tacz:556x45", "ammoCount": 180},
+        {
+          "type": "gun",
+          "gunId": "tacz:glock_17",
+          "initialMagazine": 17,
+          "fireMode": "SEMI",
+          "attachments": {}
+        },
+        {"type": "ammoBox", "ammoId": "tacz:9mm", "ammoCount": 68},
+        {"item": "minecraft:stone_sword", "count": 1}
       ]
     }
-  }
+  ],
+  "teams": {}
 }
 ```
 
@@ -348,13 +352,15 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 | `iconTexture` | `"mypack:textures/gui/classes/hk416d.png"` | `iconRender` 为 `png` 时使用的客户端资源包 PNG；必须写完整纹理资源位置。 |
 | `maxHealth` | `20.0` | 部署时的最大生命值，范围由服务端限制为 1～2048。 |
 | `movementSpeedMultiplier` | `1.05` | 移动速度倍率；`1.0` 为正常速度，`0.95` 为慢 5%。 |
-| `gunId` | `"tacz:hk416d"` | TACZ 主武器资源 ID；必须能被 `TimelessAPI` 索引。 |
-| `ammoId` | `"tacz:556x45"` | TACZ 弹药资源 ID；必须与枪械兼容。 |
-| `initialMagazine` | `30` | 主武器初始弹匣装弹量。 |
-| `reserveAmmo` | `180` | 备用弹药数量；服务端装入一个 TACZ 钻石级弹药箱，放在槽位 9。 |
-| `fireMode` | `"AUTO"` | TACZ 射击模式，例如 `AUTO`、`SEMI`；无效值会阻止开赛。 |
-| `attachments` | `{ "SCOPE": "tacz:..." }` | TACZ 附件类型到资源 ID 的映射；附件类型和资源都必须有效。 |
-| `inventory` | `[ {"item":"minecraft:...", "count":1} ]` | 普通物品栏配装；`item` 支持内联 NBT（如 `"superbwarfare:ammo_box{...}"`），也可写可选 `nbt` 字段，两者同时存在时内联优先。 |
+| `inventory` | 见下方 | 完整物品栏配装；按 JSON 顺序发放。枪械、对应弹药箱和普通物品都必须显式写在此数组中。 |
+| `inventory[].type` | `"gun"`、`"ammoBox"` | 特殊 TACZ 条目类型；不填时为普通 `item`。第一条 `gun` 是主武器，之后最多两条 `gun` 是副武器。每条 `gun` 必须对应一条 `ammoBox`。 |
+| `inventory[].gunId` | `"tacz:hk416d"` | `gun` 条目的 TACZ 枪械资源 ID；必须能被 `TimelessAPI` 索引。 |
+| `inventory[].initialMagazine` | `30` | `gun` 条目的初始弹匣装弹量。 |
+| `inventory[].fireMode` | `"AUTO"` | `gun` 条目的 TACZ 射击模式，例如 `AUTO`、`SEMI`；无效值会阻止开赛。 |
+| `inventory[].attachments` | `{ "SCOPE": "tacz:..." }` | `gun` 条目的 TACZ 附件类型到资源 ID 的映射；附件类型和资源都必须有效。 |
+| `inventory[].ammoId` | `"tacz:556x45"` | `ammoBox` 条目的 TACZ 弹药资源 ID；必须与对应枪械兼容。 |
+| `inventory[].ammoCount` | `180` | `ammoBox` 条目的备用弹药数量；服务端生成一个 TACZ 钻石级弹药箱。 |
+| `inventory[].item` | `"minecraft:stone_sword"` | 普通物品条目；支持内联 NBT，也可写可选 `nbt` 字段，两者同时存在时内联优先。 |
 | `armor` | `{ "head": {...}, "chest": {...} }` | `head`、`chest`、`legs`、`feet` 四个盔甲槽的物品定义；`item` 同样支持内联 NBT。 |
 | `offhand` | `{ "item":"minecraft:..." }` | 副手物品；未填写则为空。 |
 | `effects` | `[ {"id":"minecraft:...", "durationTicks":200, "amplifier":0} ]` | 部署时添加的药水效果；`visible:false` 可隐藏状态图标。 |
@@ -376,7 +382,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 `class list` 的 `normal`/`captain` 参数分别查看当前地图按阵营展开的普通职业池和突破队长职业池；不带参数时查看普通池。`class set` 修改目标玩家当前地图/阵营的普通职业，`class setcaptain` 只在突破 captain 变体中生效；玩家存活期间为“待切换”，下一次死亡重生或管理员重新部署时应用。
 
-职业配置中的 `reserveAmmo` 会装入一个 TACZ 钻石级弹药箱，不再发放散装弹药；弹药箱固定放在背包三行区域左上角（物品栏槽位 `9`）。
+旧版职业文件中的顶层 `gunId`、`ammoId`、`initialMagazine`、`reserveAmmo`、`fireMode` 和 `attachments` 会在重载时一次性迁移到 `inventory`。迁移后，所有枪械与弹药箱都由 `inventory` 明确控制；第一把枪是主武器，最多再配置两把副武器，且枪械数必须与弹药箱数一致。
 
 存档服务端配置文件 `<存档>/serverconfig/sfgame-server.toml` 中的 `globalHungerLock` 默认为 `true`。启用后，SFGame 模式运行期间所有在线玩家的饥饿值和饱和度均固定为 20。
 

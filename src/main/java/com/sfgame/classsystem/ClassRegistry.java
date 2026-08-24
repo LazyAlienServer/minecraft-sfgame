@@ -216,16 +216,14 @@ public final class ClassRegistry {
 
     private MapOverride readMapOverride(Path target, String modeId, String mapId, boolean base,
                                         List<String> errors) throws IOException {
-        try (Reader reader = Files.newBufferedReader(target, StandardCharsets.UTF_8)) {
-            ClassFile file = GSON.fromJson(reader, ClassFile.class);
-            if (file == null) throw new JsonParseException("The root JSON object is missing");
-            String parent = base ? null : MapParentRef.parse(file.parent(), modeId).canonical();
-            Pool pool = readPool(modeId + "/" + mapId, "classes",
-                    file.classes(), file.captainClasses(), errors, false);
-            Map<String, RawScope> teams = readScopes(modeId + "/" + mapId, "teams",
-                    file.teams(), errors, true);
-            return new MapOverride(parent, pool, teams);
-        }
+        ClassFile file = readClassFile(target);
+        if (file == null) throw new JsonParseException("The root JSON object is missing");
+        String parent = base ? null : MapParentRef.parse(file.parent(), modeId).canonical();
+        Pool pool = readPool(modeId + "/" + mapId, "classes",
+                file.classes(), file.captainClasses(), errors, false);
+        Map<String, RawScope> teams = readScopes(modeId + "/" + mapId, "teams",
+                file.teams(), errors, true);
+        return new MapOverride(parent, pool, teams);
     }
 
     private JsonObject defaultMapProfile(String modeId) throws IOException {
@@ -426,6 +424,72 @@ public final class ClassRegistry {
         stack.remove(current.name);
     }
 
+    private ClassFile readClassFile(Path path) throws IOException {
+        JsonObject document;
+        try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            JsonElement parsed = JsonParser.parseReader(reader);
+            if (!parsed.isJsonObject()) throw new JsonParseException("root must be an object");
+            document = parsed.getAsJsonObject();
+        }
+        if (migrateLegacyWeapons(document)) {
+            Files.writeString(path, GSON.toJson(document) + System.lineSeparator(), StandardCharsets.UTF_8);
+        }
+        return GSON.fromJson(document, ClassFile.class);
+    }
+    static boolean migrateLegacyWeapons(JsonObject object) {
+        boolean changed = false;
+        for (String key : List.of("classes", "captainClasses")) {
+            JsonElement definitions = object.get(key);
+            if (definitions == null || !definitions.isJsonArray()) continue;
+            for (JsonElement element : definitions.getAsJsonArray()) {
+                if (element.isJsonObject()) changed |= migrateLegacyWeapon(element.getAsJsonObject());
+            }
+        }
+        for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+            JsonElement child = entry.getValue();
+            if (child.isJsonObject()) changed |= migrateLegacyWeapons(child.getAsJsonObject());
+            else if (child.isJsonArray()) {
+                for (JsonElement element : child.getAsJsonArray()) {
+                    if (element.isJsonObject()) changed |= migrateLegacyWeapons(element.getAsJsonObject());
+                }
+            }
+        }
+        return changed;
+    }
+
+    private static boolean migrateLegacyWeapon(JsonObject definition) {
+        if (!definition.has("gunId")) return false;
+        JsonArray inventory = new JsonArray();
+        JsonObject gun = new JsonObject();
+        gun.addProperty("type", "gun");
+        copyIfPresent(definition, gun, "gunId");
+        copyIfPresent(definition, gun, "initialMagazine");
+        copyIfPresent(definition, gun, "fireMode");
+        copyIfPresent(definition, gun, "attachments");
+        inventory.add(gun);
+
+        if (definition.has("ammoId")) {
+            JsonObject ammoBox = new JsonObject();
+            ammoBox.addProperty("type", "ammoBox");
+            copyIfPresent(definition, ammoBox, "ammoId");
+            if (definition.has("reserveAmmo")) ammoBox.add("ammoCount", definition.get("reserveAmmo").deepCopy());
+            inventory.add(ammoBox);
+        }
+        JsonElement configured = definition.get("inventory");
+        if (configured != null && configured.isJsonArray()) {
+            for (JsonElement item : configured.getAsJsonArray()) inventory.add(item.deepCopy());
+        }
+        definition.add("inventory", inventory);
+        for (String key : List.of("gunId", "ammoId", "initialMagazine", "reserveAmmo", "fireMode", "attachments")) {
+            definition.remove(key);
+        }
+        return true;
+    }
+
+    private static void copyIfPresent(JsonObject source, JsonObject target, String key) {
+        if (source.has(key)) target.add(key, source.get(key).deepCopy());
+    }
+
     private Map<String, RawProfile> readProfiles(List<String> errors) throws IOException {
         Map<String, RawProfile> result = new LinkedHashMap<>();
         try (var paths = Files.list(profilesPath)) {
@@ -433,8 +497,8 @@ public final class ClassRegistry {
                 String name = path.getFileName().toString();
                 String id = name.substring(0, name.length() - 5).toLowerCase(Locale.ROOT);
                 if (!validProfileId(id)) { errors.add("Invalid class profile filename: " + name); continue; }
-                try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-                    ClassFile file = GSON.fromJson(reader, ClassFile.class);
+                try {
+                    ClassFile file = readClassFile(path);
                     if (file == null) throw new JsonParseException("The root JSON object is missing");
                     String parent = normalizeParent(file.parent(), id, "profile", errors);
                     Pool pool = readPool(id, "classes", file.classes(), file.captainClasses(), errors, false);

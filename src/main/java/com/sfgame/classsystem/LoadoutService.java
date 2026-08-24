@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.UUID;
 
 public final class LoadoutService {
-    private static final int AMMO_BOX_INVENTORY_SLOT = 9;
     private static final UUID HEALTH_MODIFIER_ID = UUID.fromString("8a6a21da-baf8-41ce-b3aa-6827a7be1101");
     private static final UUID SPEED_MODIFIER_ID = UUID.fromString("8a6a21da-baf8-41ce-b3aa-6827a7be1102");
 
@@ -55,30 +54,11 @@ public final class LoadoutService {
                     side.id() + "/captain/" + definition.id(), definition));
         }
         for (ClassDefinition definition : definitions.values()) {
-            ResourceLocation gunId = ResourceLocation.tryParse(definition.gunId());
-            ResourceLocation ammoId = ResourceLocation.tryParse(definition.ammoId());
-            if (gunId == null || TimelessAPI.getCommonGunIndex(gunId).isEmpty()) {
-                errors.add(definition.id() + ": unknown TACZ gun " + definition.gunId());
-            }
-            if (ammoId == null || TimelessAPI.getCommonAmmoIndex(ammoId).isEmpty()) {
-                errors.add(definition.id() + ": unknown TACZ ammo " + definition.ammoId());
-            }
-            try {
-                FireMode.valueOf(definition.fireMode());
-            } catch (IllegalArgumentException exception) {
-                errors.add(definition.id() + ": invalid fire mode " + definition.fireMode());
-            }
-            for (Map.Entry<String, String> attachment : definition.attachments().entrySet()) {
-                try {
-                    AttachmentType.valueOf(attachment.getKey().toUpperCase(Locale.ROOT));
-                } catch (IllegalArgumentException exception) {
-                    errors.add(definition.id() + ": invalid attachment type " + attachment.getKey());
-                    continue;
-                }
-                ResourceLocation attachmentId = ResourceLocation.tryParse(attachment.getValue());
-                if (attachmentId == null || TimelessAPI.getCommonAttachmentIndex(attachmentId).isEmpty()) {
-                    errors.add(definition.id() + ": unknown attachment " + attachment.getValue());
-                }
+            errors.addAll(validateInventoryShape(definition));
+            for (ItemDefinition item : definition.inventory()) {
+                if (item == null) continue;
+                if (item.isGun()) validateGun(definition.id(), item, errors);
+                if (item.isAmmoBox()) validateAmmoBox(definition.id(), item, errors);
             }
         }
         return errors;
@@ -88,31 +68,11 @@ public final class LoadoutService {
         clear(player);
         applyAttributes(player, definition);
 
-        ResourceLocation gunId = ResourceLocation.tryParse(definition.gunId());
-        ResourceLocation ammoId = ResourceLocation.tryParse(definition.ammoId());
-        if (gunId == null || ammoId == null) return false;
-
-        GunItemBuilder gunBuilder = GunItemBuilder.create()
-                .setId(gunId)
-                .setAmmoCount(definition.initialMagazine())
-                .setFireMode(parseFireMode(definition.fireMode()));
-        for (Map.Entry<String, String> entry : definition.attachments().entrySet()) {
-            try {
-                AttachmentType type = AttachmentType.valueOf(entry.getKey().toUpperCase(Locale.ROOT));
-                ResourceLocation attachmentId = ResourceLocation.tryParse(entry.getValue());
-                if (attachmentId != null) gunBuilder.putAttachment(type, attachmentId);
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
-
-        ItemStack gun = gunBuilder.build();
-        if (gun.isEmpty()) return false;
-        player.getInventory().add(gun);
-        if (!giveAmmoBox(player, ammoId, definition.reserveAmmo())) return false;
-
         for (ItemDefinition item : definition.inventory()) {
-            ItemStack stack = buildItem(item);
-            if (!stack.isEmpty()) player.getInventory().add(stack);
+            if (item == null) continue;
+            ItemStack stack = buildInventoryItem(item);
+            if ((item.isGun() || item.isAmmoBox()) && stack.isEmpty()) return false;
+            if (!stack.isEmpty() && !player.getInventory().add(stack)) return false;
         }
         equipArmor(player, definition.armor());
         if (definition.offhand() != null) {
@@ -153,19 +113,88 @@ public final class LoadoutService {
         }
     }
 
-    private boolean giveAmmoBox(ServerPlayer player, ResourceLocation ammoId, int amount) {
-        if (amount <= 0) return true;
+    static List<String> validateInventoryShape(ClassDefinition definition) {
+        int guns = 0;
+        int ammoBoxes = 0;
+        for (ItemDefinition item : definition.inventory()) {
+            if (item == null) continue;
+            if (item.isGun()) guns++;
+            if (item.isAmmoBox()) ammoBoxes++;
+        }
+        List<String> errors = new ArrayList<>();
+        if (guns == 0) errors.add(definition.id() + ": inventory must contain a primary gun");
+        if (guns > 3) errors.add(definition.id() + ": inventory supports one primary gun and at most two secondary guns");
+        if (ammoBoxes != guns) errors.add(definition.id() + ": inventory must contain one ammo box per gun");
+        return errors;
+    }
 
+    private void validateGun(String classId, ItemDefinition item, List<String> errors) {
+        ResourceLocation gunId = ResourceLocation.tryParse(item.gunId());
+        if (gunId == null || TimelessAPI.getCommonGunIndex(gunId).isEmpty()) {
+            errors.add(classId + ": unknown TACZ gun " + item.gunId());
+        }
+        try {
+            FireMode.valueOf(item.fireMode());
+        } catch (IllegalArgumentException exception) {
+            errors.add(classId + ": invalid fire mode " + item.fireMode());
+        }
+        for (Map.Entry<String, String> attachment : item.attachments().entrySet()) {
+            try {
+                AttachmentType.valueOf(attachment.getKey().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException exception) {
+                errors.add(classId + ": invalid attachment type " + attachment.getKey());
+                continue;
+            }
+            ResourceLocation attachmentId = ResourceLocation.tryParse(attachment.getValue());
+            if (attachmentId == null || TimelessAPI.getCommonAttachmentIndex(attachmentId).isEmpty()) {
+                errors.add(classId + ": unknown attachment " + attachment.getValue());
+            }
+        }
+    }
+
+    private void validateAmmoBox(String classId, ItemDefinition item, List<String> errors) {
+        ResourceLocation ammoId = ResourceLocation.tryParse(item.ammoId());
+        if (ammoId == null || TimelessAPI.getCommonAmmoIndex(ammoId).isEmpty()) {
+            errors.add(classId + ": unknown TACZ ammo " + item.ammoId());
+        }
+    }
+
+    private ItemStack buildInventoryItem(ItemDefinition definition) {
+        if (definition.isGun()) return buildGun(definition);
+        if (definition.isAmmoBox()) return buildAmmoBox(definition);
+        return buildItem(definition);
+    }
+
+    private ItemStack buildGun(ItemDefinition definition) {
+        ResourceLocation gunId = ResourceLocation.tryParse(definition.gunId());
+        if (gunId == null) return ItemStack.EMPTY;
+        GunItemBuilder builder = GunItemBuilder.create()
+                .setId(gunId)
+                .setAmmoCount(definition.initialMagazine())
+                .setFireMode(parseFireMode(definition.fireMode()));
+        for (Map.Entry<String, String> entry : definition.attachments().entrySet()) {
+            try {
+                AttachmentType type = AttachmentType.valueOf(entry.getKey().toUpperCase(Locale.ROOT));
+                ResourceLocation attachmentId = ResourceLocation.tryParse(entry.getValue());
+                if (attachmentId != null) builder.putAttachment(type, attachmentId);
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+        return builder.build();
+    }
+
+    private ItemStack buildAmmoBox(ItemDefinition definition) {
+        ResourceLocation ammoId = ResourceLocation.tryParse(definition.ammoId());
+        if (ammoId == null) return ItemStack.EMPTY;
         ItemStack ammoBox = new ItemStack(ModItems.AMMO_BOX.get());
         if (!(ammoBox.getItem() instanceof AmmoBoxItemDataAccessor accessor)) {
             SFGame.LOGGER.error("TACZ ammo box does not expose AmmoBoxItemDataAccessor");
-            return false;
+            return ItemStack.EMPTY;
         }
         accessor.setAmmoId(ammoBox, ammoId);
-        accessor.setAmmoCount(ammoBox, amount);
+        accessor.setAmmoCount(ammoBox, definition.ammoCount());
         accessor.setAmmoLevel(ammoBox, AmmoBoxItem.DIAMOND_LEVEL);
-        player.getInventory().setItem(AMMO_BOX_INVENTORY_SLOT, ammoBox);
-        return true;
+        return ammoBox;
     }
 
     private void equipArmor(ServerPlayer player, Map<String, ItemDefinition> armor) {
