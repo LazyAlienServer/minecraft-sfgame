@@ -1,8 +1,12 @@
 package com.sfgame.network;
 
 import io.netty.buffer.Unpooled;
+import com.sfgame.game.MatchPhase;
+import com.sfgame.game.GameModeRegistry;
+import com.sfgame.game.TeamSide;
 import net.minecraft.network.FriendlyByteBuf;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -21,4 +25,29 @@ class MatchSnapshotTest {
             buffer.release();
         }
     }
+    @Test
+    void roundTripsGenericEconomyAndShopFields() {
+        MatchSnapshot expected = new MatchSnapshot(
+                GameModeRegistry.DOMINATION, MatchPhase.RUNNING, TeamSide.RED,
+                1, 2, 3, 4, 100, 321, 1, 2, 3, 4,
+                "assault", "medic", true, false, List.of(),
+                "", TeamSide.NONE, TeamSide.NONE, 0, 0, 0, 0, "",
+                null, null, 0, false, null, null, List.of(), List.of(),
+                false, List.of(), null, null, 73, List.of(),
+                List.of(new MatchSnapshot.ShopView("medkit", "医疗包", "minecraft:golden_apple", 50)),
+                List.of(new MatchSnapshot.SupplyView(
+                        "elite_drop", "elite_class", "精英突击", "minecraft:iron_sword", 2)));
+        FriendlyByteBuf buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            expected.encode(buffer);
+            MatchSnapshot actual = MatchSnapshot.decode(buffer);
+            assertEquals(expected, actual);
+            assertEquals(73, actual.currency());
+            assertEquals("medkit", actual.shopItems().get(0).id());
+            assertEquals(2, actual.supplyItems().get(0).quantity());
+        } finally {
+            buffer.release();
+        }
+    }
+
 }

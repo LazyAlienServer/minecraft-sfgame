@@ -196,4 +196,36 @@ final class MatchRulesTest {
         assertEquals(TeamSide.RED, restored.ctfDefender());
         assertEquals(CarrierRestriction.NO_WEAPONS, restored.ctfCarrierRestriction());
     }
+    @Test
+    void economyRulesClampDefaultPersistAndCopy() {
+        MatchRules rules = new MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
+        assertEquals(25, rules.killCurrency());
+        assertEquals(10, rules.ctfTerritoryUnlockCurrency());
+        assertEquals(50, rules.ctfForwardFlagReplantCurrency());
+        assertEquals(100, rules.ctfForwardFlagCaptureCurrency());
+        assertEquals(100, rules.ctfHomeFlagCaptureCurrency());
+
+        rules.killCurrency(-1);
+        rules.ctfTerritoryUnlockCurrency(100_001);
+        rules.ctfForwardFlagReplantCurrency(7);
+        rules.ctfForwardFlagCaptureCurrency(8);
+        rules.ctfHomeFlagCaptureCurrency(9);
+
+        MatchRules restored = new MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
+        restored.load(rules.save());
+        assertEquals(0, restored.killCurrency());
+        assertEquals(100_000, restored.ctfTerritoryUnlockCurrency());
+        assertEquals(7, restored.ctfForwardFlagReplantCurrency());
+        assertEquals(8, restored.ctfForwardFlagCaptureCurrency());
+        assertEquals(9, restored.ctfHomeFlagCaptureCurrency());
+        assertEquals(9, restored.copy().ctfHomeFlagCaptureCurrency());
+
+        restored.reset();
+        assertEquals(25, restored.killCurrency());
+        assertEquals(10, restored.ctfTerritoryUnlockCurrency());
+        assertEquals(50, restored.ctfForwardFlagReplantCurrency());
+        assertEquals(100, restored.ctfForwardFlagCaptureCurrency());
+        assertEquals(100, restored.ctfHomeFlagCaptureCurrency());
+    }
+
 }

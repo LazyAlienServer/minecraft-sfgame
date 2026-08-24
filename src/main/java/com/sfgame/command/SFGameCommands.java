@@ -78,6 +78,17 @@ public final class SFGameCommands {
             SharedSuggestionProvider.suggest(MatchManager.get().classes().captainClassesForMode(
                     SFGameSavedData.get(context.getSource().getServer()).selectedMode(),
                     SFGameSavedData.get(context.getSource().getServer()).selectedMap()).stream().map(ClassDefinition::id), builder);
+    private static final SuggestionProvider<CommandSourceStack> SUPPLY_PRESET_SUGGESTIONS = (context, builder) -> {
+        ArenaMap map = SFGameSavedData.get(context.getSource().getServer()).activeMap();
+        return SharedSuggestionProvider.suggest(map == null ? java.util.stream.Stream.empty()
+                : map.supply().offers().stream().map(com.sfgame.data.SupplyOfferDefinition::id), builder);
+    };
+    private static final SuggestionProvider<CommandSourceStack> ELITE_CLASS_SUGGESTIONS = (context, builder) -> {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        TeamSide side = TeamSide.fromId(StringArgumentType.getString(context, "team"));
+        return SharedSuggestionProvider.suggest(MatchManager.get().classes().eliteClassesForTeam(
+                data.selectedMode(), data.selectedMap(), side).stream().map(ClassDefinition::id), builder);
+    };
     private static final SuggestionProvider<CommandSourceStack> RULE_SUGGESTIONS = (context, builder) -> {
         String mode = SFGameSavedData.get(context.getSource().getServer()).selectedMode();
         return SharedSuggestionProvider.suggest(AdminRuleCatalog.forMode(mode).stream()
@@ -246,6 +257,7 @@ public final class SFGameCommands {
                                 .then(Commands.argument("class", StringArgumentType.word()).suggests(CAPTAIN_CLASS_SUGGESTIONS)
                                         .executes(SFGameCommands::classSetCaptain)))))
                 .then(shopCommands())
+                .then(supplyCommands().requires(source -> source.hasPermission(2)))
                 .then(sectorCommands())
                 .then(captainCommands()));
     }
@@ -433,6 +445,49 @@ public final class SFGameCommands {
                 .then(Commands.literal("reload").requires(source -> source.hasPermission(2))
                         .executes(SFGameCommands::shopReload));
     }
+    static LiteralArgumentBuilder<CommandSourceStack> supplyCommands() {
+        var team = StringArgumentType.word();
+        return Commands.literal("supply")
+                .then(Commands.literal("list").executes(context -> supplyList(context, TeamSide.NONE))
+                        .then(Commands.argument("team", team).suggests((context, builder) ->
+                                        SharedSuggestionProvider.suggest(TeamSide.PLAYABLE.stream().map(TeamSide::id), builder))
+                                .executes(context -> supplyList(context,
+                                        TeamSide.fromId(StringArgumentType.getString(context, "team"))))))
+                .then(Commands.literal("push")
+                        .then(Commands.literal("preset")
+                                .then(Commands.argument("team", StringArgumentType.word())
+                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
+                                                TeamSide.PLAYABLE.stream().map(TeamSide::id), builder))
+                                        .then(Commands.argument("offerId", StringArgumentType.word())
+                                                .suggests(SUPPLY_PRESET_SUGGESTIONS)
+                                                .executes(context -> supplyPushPreset(context, 1))
+                                                .then(Commands.argument("quantity", IntegerArgumentType.integer(1, 100_000))
+                                                        .executes(context -> supplyPushPreset(context,
+                                                                IntegerArgumentType.getInteger(context, "quantity")))))))
+                        .then(Commands.literal("item")
+                                .then(Commands.argument("team", StringArgumentType.word())
+                                        .then(Commands.argument("offerId", StringArgumentType.word())
+                                                .then(Commands.argument("count", IntegerArgumentType.integer(1, 64))
+                                                        .then(Commands.argument("quantity", IntegerArgumentType.integer(1, 100_000))
+                                                                .then(Commands.argument("item", StringArgumentType.greedyString())
+                                                                        .suggests(ITEM_SUGGESTIONS)
+                                                                        .executes(SFGameCommands::supplyPushItem)))))))
+                        .then(Commands.literal("elite")
+                                .then(Commands.argument("team", StringArgumentType.word())
+                                        .then(Commands.argument("offerId", StringArgumentType.word())
+                                                .then(Commands.argument("classId", StringArgumentType.word())
+                                                        .suggests(ELITE_CLASS_SUGGESTIONS)
+                                                        .then(Commands.argument("quantity", IntegerArgumentType.integer(1, 100_000))
+                                                                .executes(SFGameCommands::supplyPushElite)))))))
+                .then(Commands.literal("remove")
+                        .then(Commands.argument("team", StringArgumentType.word())
+                                .then(Commands.argument("offerId", StringArgumentType.word())
+                                        .executes(SFGameCommands::supplyRemove))))
+                .then(Commands.literal("clear")
+                        .then(Commands.argument("team", StringArgumentType.word())
+                                .executes(SFGameCommands::supplyClear)));
+    }
+
 
     private static LiteralArgumentBuilder<CommandSourceStack> ruleCommands(String literal,
                                                                             CommandBuildContext buildContext) {
@@ -767,24 +822,97 @@ public final class SFGameCommands {
     }
 
     private static int shopList(CommandContext<CommandSourceStack> context) {
-        var registry = MatchManager.get().ctfShop();
-        registry.items().forEach(item -> send(context, item.id() + " - " + item.name() + " (" + item.price() + ")"));
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        var registry = MatchManager.get().shop();
+        registry.items(data.selectedMode()).forEach(item ->
+                send(context, item.id() + " - " + item.name() + " (" + item.price() + ")"));
         registry.errors().forEach(error -> context.getSource().sendFailure(Component.literal(error)));
-        return registry.items().size();
+        return registry.items(data.selectedMode()).size();
     }
 
     private static int shopBuy(CommandContext<CommandSourceStack> context)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = context.getSource().getPlayerOrException();
         String item = StringArgumentType.getString(context, "item");
-        return MatchManager.get().ctfPurchase(player, item) ? success(context, "Purchased " + item) : failure(context, "Could not purchase " + item);
+        return MatchManager.get().purchase(player, item) ? success(context, "Purchased " + item) : failure(context, "Could not purchase " + item);
     }
 
     private static int shopReload(CommandContext<CommandSourceStack> context) {
-        List<String> errors = MatchManager.get().ctfShop().reload();
-        if (!errors.isEmpty()) { errors.forEach(error -> context.getSource().sendFailure(Component.literal(error))); return 0; }
-        return success(context, "Reloaded CTF shop");
+        List<String> errors = MatchManager.get().shop().reload();
+        if (!errors.isEmpty()) {
+            errors.forEach(error -> context.getSource().sendFailure(Component.literal(error)));
+            return 0;
+        }
+        return success(context, "Reloaded shops");
     }
+    private static int supplyList(CommandContext<CommandSourceStack> context, TeamSide selected) {
+        MatchManager manager = MatchManager.get();
+        if (!supplyRunning(context)) return failure(context, "Supply commands require a running economy match");
+        List<TeamSide> sides = selected == TeamSide.NONE ? TeamSide.PLAYABLE : List.of(selected);
+        int count = 0;
+        for (TeamSide side : sides) {
+            for (var item : manager.supplies().items(side)) {
+                send(context, side.id() + ": " + item.id() + " " + item.type() + " x" + item.quantity());
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int supplyPushPreset(CommandContext<CommandSourceStack> context, int quantity) {
+        TeamSide side = supplyTeam(context);
+        String offerId = StringArgumentType.getString(context, "offerId");
+        return side != TeamSide.NONE && MatchManager.get().pushSupplyPreset(side, offerId, quantity)
+                ? success(context, "Published " + quantity + " " + offerId + " for " + side.id())
+                : failure(context, "Could not publish supply preset");
+    }
+
+    private static int supplyPushItem(CommandContext<CommandSourceStack> context) {
+        TeamSide side = supplyTeam(context);
+        String offerId = StringArgumentType.getString(context, "offerId");
+        int count = IntegerArgumentType.getInteger(context, "count");
+        int quantity = IntegerArgumentType.getInteger(context, "quantity");
+        String item = StringArgumentType.getString(context, "item");
+        return side != TeamSide.NONE && MatchManager.get().pushSupplyItem(side, offerId, count, quantity, item)
+                ? success(context, "Published " + quantity + " " + offerId + " for " + side.id())
+                : failure(context, "Could not publish item supply");
+    }
+
+    private static int supplyPushElite(CommandContext<CommandSourceStack> context) {
+        TeamSide side = supplyTeam(context);
+        String offerId = StringArgumentType.getString(context, "offerId");
+        String classId = StringArgumentType.getString(context, "classId");
+        int quantity = IntegerArgumentType.getInteger(context, "quantity");
+        return side != TeamSide.NONE && MatchManager.get().pushSupplyElite(side, offerId, classId, quantity)
+                ? success(context, "Published " + quantity + " " + offerId + " for " + side.id())
+                : failure(context, "Could not publish elite supply");
+    }
+
+    private static int supplyRemove(CommandContext<CommandSourceStack> context) {
+        TeamSide side = supplyTeam(context);
+        String offerId = StringArgumentType.getString(context, "offerId");
+        return side != TeamSide.NONE && MatchManager.get().removeSupply(side, offerId)
+                ? success(context, "Removed " + offerId + " for " + side.id())
+                : failure(context, "Could not remove supply");
+    }
+
+    private static int supplyClear(CommandContext<CommandSourceStack> context) {
+        TeamSide side = supplyTeam(context);
+        int removed = side == TeamSide.NONE ? -1 : MatchManager.get().clearSupplies(side);
+        return removed >= 0 ? success(context, "Cleared " + removed + " supplies for " + side.id())
+                : failure(context, "Could not clear supplies");
+    }
+
+    private static TeamSide supplyTeam(CommandContext<CommandSourceStack> context) {
+        return TeamSide.fromId(StringArgumentType.getString(context, "team"));
+    }
+
+    private static boolean supplyRunning(CommandContext<CommandSourceStack> context) {
+        return MatchManager.get().phase() == MatchPhase.RUNNING
+                && MatchManager.supportsEconomy(
+                        SFGameSavedData.get(context.getSource().getServer()).selectedMode());
+    }
+
 
     private static boolean checkCtf(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
@@ -943,15 +1071,14 @@ public final class SFGameCommands {
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         MatchManager manager = MatchManager.get();
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        if (manager.phase() != MatchPhase.RUNNING
-                || !GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode())) {
-            return failure(context, "Currency editing is only available during a running CTF match");
+        if (manager.phase() != MatchPhase.RUNNING || !MatchManager.supportsEconomy(data.selectedMode())) {
+            return failure(context, "Currency editing is only available during a running economy match");
         }
         ServerPlayer player = EntityArgument.getPlayer(context, "player");
         int value = IntegerArgumentType.getInteger(context, "value");
-        return manager.setCtfCurrency(player, value)
-                ? success(context, player.getGameProfile().getName() + " CTF currency set to " + value)
-                : failure(context, "Could not update CTF currency");
+        return manager.setCurrency(player, value)
+                ? success(context, player.getGameProfile().getName() + " currency set to " + value)
+                : failure(context, "Could not update currency");
     }
 
     private static int scoreTickets(CommandContext<CommandSourceStack> context) {
@@ -1023,7 +1150,7 @@ public final class SFGameCommands {
     static boolean scoreFieldVisible(String modeId, String field) {
         return switch (field) {
             case "tickets", "leg", "sector" -> GameModeRegistry.BREAKTHROUGH.equals(modeId);
-            case "currency" -> GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId);
+            case "currency" -> MatchManager.supportsEconomy(modeId);
             case "red", "blue", "yellow", "green" -> supportsTeamScores(modeId);
             default -> true;
         };
@@ -1057,13 +1184,18 @@ public final class SFGameCommands {
 
     private static int reload(CommandContext<CommandSourceStack> context) {
         MatchManager manager = MatchManager.get();
+        if (!manager.canChangeArena()) {
+            return failure(context, "Map and supply files can only be reloaded in the lobby");
+        }
+        List<String> mapErrors = manager.reloadMapConfigurations();
         int classResult = classReload(context);
         List<String> ruleErrors = manager.reloadRuleConfigurations();
-        List<String> shopErrors = manager.ctfShop().reload();
+        List<String> shopErrors = manager.shop().reload();
+        mapErrors.forEach(error -> context.getSource().sendFailure(Component.literal("Maps: " + error)));
         ruleErrors.forEach(error -> context.getSource().sendFailure(Component.literal("Rules: " + error)));
-        shopErrors.forEach(error -> context.getSource().sendFailure(Component.literal("CTF shop: " + error)));
+        shopErrors.forEach(error -> context.getSource().sendFailure(Component.literal("Shop: " + error)));
         manager.refreshCommandTree();
-        return classResult > 0 && ruleErrors.isEmpty() && shopErrors.isEmpty() ? 1 : 0;
+        return mapErrors.isEmpty() && classResult > 0 && ruleErrors.isEmpty() && shopErrors.isEmpty() ? 1 : 0;
     }
 
     private static int toggleDev(CommandContext<CommandSourceStack> context) {
@@ -2114,6 +2246,11 @@ public final class SFGameCommands {
             case "defenderCaptureWeight" -> Double.toString(rules.defenderCaptureWeight());
             case "ctfFlagReturnSeconds" -> Integer.toString(rules.ctfFlagReturnSeconds());
             case "ctfHomeCaptureTimeSeconds" -> Integer.toString(rules.ctfHomeCaptureTimeSeconds());
+            case "killCurrency" -> Integer.toString(rules.killCurrency());
+            case "ctfTerritoryUnlockCurrency" -> Integer.toString(rules.ctfTerritoryUnlockCurrency());
+            case "ctfForwardFlagReplantCurrency" -> Integer.toString(rules.ctfForwardFlagReplantCurrency());
+            case "ctfForwardFlagCaptureCurrency" -> Integer.toString(rules.ctfForwardFlagCaptureCurrency());
+            case "ctfHomeFlagCaptureCurrency" -> Integer.toString(rules.ctfHomeFlagCaptureCurrency());
             case "ctfVariant" -> rules.ctfVariant().id();
             case "ctfAttacker" -> rules.ctfAttacker().id();
             case "ctfDefender" -> rules.ctfDefender().id();
@@ -2144,7 +2281,9 @@ public final class SFGameCommands {
     private static boolean isCtfOnlyRule(String key) {
         return key.equals("ctfVariant") || key.equals("ctfAttacker") || key.equals("ctfDefender")
                 || key.equals("ctfCarrierRestriction") || key.equals("ctfFlagReturnSeconds")
-                || key.equals("ctfHomeCaptureTimeSeconds");
+                || key.equals("ctfHomeCaptureTimeSeconds") || key.equals("ctfTerritoryUnlockCurrency")
+                || key.equals("ctfForwardFlagReplantCurrency") || key.equals("ctfForwardFlagCaptureCurrency")
+                || key.equals("ctfHomeFlagCaptureCurrency");
     }
 
 

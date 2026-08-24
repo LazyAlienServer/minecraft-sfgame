@@ -21,6 +21,7 @@ public final class ArenaMap {
     private BreakthroughMapConfig breakthrough = new BreakthroughMapConfig();
     private CaptureTheFlagMapConfig captureTheFlag = new CaptureTheFlagMapConfig();
     private MapBuildConfig build = new MapBuildConfig();
+    private SupplyMapConfig supply = new SupplyMapConfig();
 
     public ArenaMap(String id) {
         this.id = SFGameId.normalize(id);
@@ -52,11 +53,12 @@ public final class ArenaMap {
     public BreakthroughMapConfig breakthrough() { return breakthrough; }
     public CaptureTheFlagMapConfig captureTheFlag() { return captureTheFlag; }
     public MapBuildConfig build() { return build; }
+    public SupplyMapConfig supply() { return supply; }
     public boolean hasLocalConfiguration() {
         return lobby != null || enabledTeams().size() > 0 || !domination.points().isEmpty()
                 || !breakthrough.sectors().isEmpty() || !breakthrough.vehicles().isEmpty()
                 || !captureTheFlag.homes().isEmpty() || !captureTheFlag.forwardFlags().isEmpty()
-                || build.region() != null || build.snapshotSaved();
+                || build.region() != null || build.snapshotSaved() || supply.configured();
     }
 
     public CompoundTag save() {
@@ -68,6 +70,7 @@ public final class ArenaMap {
         tag.put("Breakthrough", breakthrough.save());
         tag.put("CaptureTheFlag", captureTheFlag.save());
         tag.put("Build", build.save());
+        tag.put("Supply", supply.save());
         return tag;
     }
 
@@ -86,6 +89,7 @@ public final class ArenaMap {
         if (tag.contains("Breakthrough")) map.breakthrough = BreakthroughMapConfig.load(tag.getCompound("Breakthrough"));
         if (tag.contains("CaptureTheFlag")) map.captureTheFlag = CaptureTheFlagMapConfig.load(tag.getCompound("CaptureTheFlag"));
         if (tag.contains("Build")) map.build = MapBuildConfig.load(tag.getCompound("Build"));
+        if (tag.contains("Supply")) map.supply = SupplyMapConfig.load(tag.getCompound("Supply"));
         return map;
     }
 

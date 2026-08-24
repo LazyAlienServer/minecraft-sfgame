@@ -60,8 +60,9 @@ final class MapConfigRegistryTest {
                 Files.readString(modeDirectory.resolve("default").resolve("classes.json"))).getAsJsonObject();
         assertEquals(1, mapDocument.size());
         assertEquals("tdm/base", mapDocument.get("parent").getAsString());
-        assertEquals(1, classDocument.size());
+        assertEquals(5, classDocument.size());
         assertEquals("tdm/base", classDocument.get("parent").getAsString());
+        assertTrue(classDocument.has("eliteClasses"));
         assertTrue(Files.readString(modeDirectory.resolve("base").resolve("map.json")).contains("\"rules\""));
         assertTrue(Files.readString(modeDirectory.resolve("base").resolve("classes.json")).contains("\"classes\""));
         assertFalse(data.maps(GameModeRegistry.TEAM_DEATHMATCH).stream()
@@ -325,4 +326,21 @@ final class MapConfigRegistryTest {
         assertEquals("base", rules.parent(GameModeRegistry.TEAM_DEATHMATCH, "child"));
         assertTrue(classes.allForTeam(GameModeRegistry.TEAM_DEATHMATCH, "child", TeamSide.RED).isEmpty());
     }
+    @Test
+    void malformedMapReloadKeepsLastKnownGoodModeMaps() throws Exception {
+        SFGameSavedData data = new SFGameSavedData();
+        data.lobby(new ArenaPosition("minecraft:overworld", 1, 64, 2, 0, 0));
+        data.addSpawn(TeamSide.RED, new ArenaPosition("minecraft:overworld", 1, 64, 1, 0, 0));
+        data.addSpawn(TeamSide.BLUE, new ArenaPosition("minecraft:overworld", -1, 64, -1, 0, 0));
+        MapConfigRegistry registry = new MapConfigRegistry();
+        registry.useConfigRoot(directory);
+        assertTrue(registry.reload(data).isEmpty());
+        ArenaPosition expected = data.lobby();
+
+        Files.writeString(registry.mapPath(GameModeRegistry.TEAM_DEATHMATCH, "default"), "{broken");
+        assertFalse(registry.reload(data).isEmpty());
+        assertEquals(expected, data.lobby());
+        assertEquals(1, data.maps(GameModeRegistry.TEAM_DEATHMATCH).size());
+    }
+
 }

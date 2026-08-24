@@ -167,4 +167,29 @@ final class RuleConfigRegistryTest {
         assertThrows(IllegalArgumentException.class, () -> registry.setString(
                 GameModeRegistry.TEAM_DEATHMATCH, "arena", "ctfVariant", "classic"));
     }
+    @Test
+    void economyRulesAreModeScopedAndJsonBacked() {
+        SFGameSavedData data = new SFGameSavedData();
+        RuleConfigRegistry registry = new RuleConfigRegistry(directory);
+        assertTrue(registry.reload(data).isEmpty());
+
+        registry.setInt(GameModeRegistry.BREAKTHROUGH, "arena", "killCurrency", 41);
+        registry.setInt(GameModeRegistry.DOMINATION, "arena", "killCurrency", 42);
+        registry.setInt(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "killCurrency", 43);
+        registry.setInt(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "ctfHomeFlagCaptureCurrency", 77);
+
+        assertEquals(41, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+                data.rules(GameModeRegistry.BREAKTHROUGH)).killCurrency());
+        assertEquals(42, registry.rules(GameModeRegistry.DOMINATION, "arena",
+                data.rules(GameModeRegistry.DOMINATION)).killCurrency());
+        assertEquals(43, registry.rules(GameModeRegistry.CAPTURE_THE_FLAG, "arena",
+                data.rules(GameModeRegistry.CAPTURE_THE_FLAG)).killCurrency());
+        assertEquals(77, registry.rules(GameModeRegistry.CAPTURE_THE_FLAG, "arena",
+                data.rules(GameModeRegistry.CAPTURE_THE_FLAG)).ctfHomeFlagCaptureCurrency());
+        assertThrows(IllegalArgumentException.class, () -> registry.setInt(
+                GameModeRegistry.TEAM_DEATHMATCH, "arena", "killCurrency", 1));
+        assertThrows(IllegalArgumentException.class, () -> registry.setInt(
+                GameModeRegistry.DOMINATION, "arena", "ctfHomeFlagCaptureCurrency", 1));
+    }
+
 }

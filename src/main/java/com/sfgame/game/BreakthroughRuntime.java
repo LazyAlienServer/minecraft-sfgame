@@ -401,6 +401,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         if (sectorIndex + 1 >= map.breakthrough().sectors().size()) return finishLeg(server, manager, map, rules, true);
         String completed = currentSector(map).id();
         sectorIndex++;
+        manager.supplyEvent(com.sfgame.data.SupplyTriggerDefinition.BREAKTHROUGH_SECTOR,
+                TeamSide.NONE, 0, completed, "");
         sectorElapsedTicks = 0;
         timeAdjustmentTicks = 0L;
         tickets = rules.attackerTickets();
@@ -451,6 +453,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             firstLeg = current;
             leg = 2;
             manager.swapBreakthroughTeamPlayers(attacker, defender);
+            manager.supplyEvent(com.sfgame.data.SupplyTriggerDefinition.BREAKTHROUGH_STAGE,
+                    TeamSide.NONE, leg, "", "");
             firstLeg = new LegResult(defender, current.completedSectors, current.capturedPoints,
                     current.elapsedTicks, current.tickets);
             captain = null;

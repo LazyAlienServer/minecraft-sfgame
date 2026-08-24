@@ -60,6 +60,21 @@ final class SFGameCommandsTest {
     }
 
     @Test
+    void supplyCommandParsesEveryAdministrationVariant() {
+        CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
+        dispatcher.register(SFGameCommands.supplyCommands());
+
+        assertParses(dispatcher, "supply list");
+        assertParses(dispatcher, "supply list red");
+        assertParses(dispatcher, "supply push preset red field_apples");
+        assertParses(dispatcher, "supply push preset red field_apples 4");
+        assertParses(dispatcher, "supply push item red emergency_apples 2 2 minecraft:golden_apple");
+        assertParses(dispatcher, "supply push elite red elite_drop elite_assault 1");
+        assertParses(dispatcher, "supply remove red emergency_apples");
+        assertParses(dispatcher, "supply clear red");
+    }
+
+    @Test
     void breakthroughReportsRuntimeStateAndRejectsTeamScores() {
         assertFalse(SFGameCommands.supportsTeamScores(GameModeRegistry.BREAKTHROUGH));
         assertTrue(SFGameCommands.supportsTeamScores(GameModeRegistry.TEAM_DEATHMATCH));
@@ -72,8 +87,9 @@ final class SFGameCommandsTest {
         assertTrue(SFGameCommands.scoreFieldVisible(GameModeRegistry.CAPTURE_THE_FLAG, "red"));
         assertTrue(SFGameCommands.scoreFieldVisible(GameModeRegistry.CAPTURE_THE_FLAG, "time"));
         assertTrue(SFGameCommands.scoreFieldVisible(GameModeRegistry.CAPTURE_THE_FLAG, "currency"));
+        assertTrue(SFGameCommands.scoreFieldVisible(GameModeRegistry.BREAKTHROUGH, "currency"));
+        assertTrue(SFGameCommands.scoreFieldVisible(GameModeRegistry.DOMINATION, "currency"));
         assertFalse(SFGameCommands.scoreFieldVisible(GameModeRegistry.TEAM_DEATHMATCH, "currency"));
-        assertFalse(SFGameCommands.scoreFieldVisible(GameModeRegistry.BREAKTHROUGH, "currency"));
     }
 
     private static void assertParses(CommandDispatcher<CommandSourceStack> dispatcher, String command) {

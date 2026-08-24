@@ -7,6 +7,7 @@ import com.tacz.guns.api.TimelessAPI;
 import com.sfgame.SFGame;
 import com.sfgame.data.ItemStrings;
 import com.sfgame.game.MatchPhase;
+import com.sfgame.game.MatchManager;
 import com.sfgame.game.TeamSide;
 import com.sfgame.network.ClientActionPacket;
 import com.sfgame.network.MatchSnapshot;
@@ -30,14 +31,19 @@ import java.util.List;
 import java.util.Locale;
 
 public final class SFGameScreen extends Screen {
+    static final int CONTENT_TOP = 64;
+    static final int CONTENT_BOTTOM_MARGIN = 12;
     private static final int CLASS_CARD_SIZE = 44;
     private static final int CLASS_CARD_GAP = 8;
-    private static final int SHOP_CARD_WIDTH = 72;
-    private static final int SHOP_CARD_HEIGHT = 96;
-    private static final int SHOP_CARD_GAP = 8;
+    private static final int TALL_CARD_WIDTH = 72;
+    private static final int TALL_CARD_HEIGHT = 96;
+    private static final int TALL_CARD_GAP = 8;
 
     private boolean rebuilding;
     private int classScrollOffset;
+    private int contentScrollOffset;
+    private int contentHeight;
+    private String lastModeId;
     private int classHeadingX;
     private int classHeadingY = -1;
     private int classStripLeft;
@@ -50,18 +56,13 @@ public final class SFGameScreen extends Screen {
     private int captainVoteHeadingY = -1;
     private int respawnHeadingX;
     private int respawnHeadingY = -1;
+    private int supplyHeadingX;
+    private int supplyHeadingY = -1;
     private int shopHeadingX;
     private int shopHeadingY = -1;
-    private int shopStripLeft;
-    private int shopStripRight;
-    private int shopStripY = -1;
-    private int shopStripBottom;
-    private int shopScrollOffset;
-    private int visibleShopColumns;
-    private int visibleShopRows;
-    private int totalShopRows;
-    private int totalShopCount;
-    private final List<ShopCardButton> shopCards = new ArrayList<>();
+    private int cardStripLeft;
+    private int cardStripRight;
+    private final List<TallCardButton> tallCards = new ArrayList<>();
 
     public SFGameScreen() {
         super(Component.translatable("sfgame.menu.title"));
@@ -87,14 +88,17 @@ public final class SFGameScreen extends Screen {
 
         MatchSnapshot snapshot = ClientMatchState.snapshot();
         int center = width / 2;
-        int y = 70;
         if (snapshot == null) {
-            addRenderableWidget(new DarkButton(center - 60, y, 120, 22, Component.literal("Refresh"),
+            addRenderableWidget(new DarkButton(center - 60, 70, 120, 22, Component.literal("Refresh"),
                     button -> requestRefresh()));
             rebuilding = false;
             return;
         }
-
+        if (!snapshot.modeId().equals(lastModeId)) {
+            lastModeId = snapshot.modeId();
+            contentScrollOffset = 0;
+            classScrollOffset = 0;
+        }
         if (ClientAdminState.snapshot() != null) {
             addRenderableWidget(new DarkButton(width - 88, 6, 72, 20,
                     Component.translatable("sfgame.admin.open"),
@@ -109,33 +113,47 @@ public final class SFGameScreen extends Screen {
                 && snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker();
         boolean showJoin = !snapshot.participating() && !attackerElectionLocked;
         boolean showLeave = !activeMatch;
-        // In the lobby, the bound vanilla team is the server-side membership
-        // selection made by the Join Game action.  Make the two choices
-        // mutually exclusive: the selected action is disabled while the
-        // opposite action remains available.
         boolean joinedLobby = showLeave && snapshot.side() != TeamSide.NONE;
+        boolean showElection = snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker();
+        boolean economy = MatchManager.supportsEconomy(snapshot.modeId()) && snapshot.phase() == MatchPhase.RUNNING;
+        int supplyCount = economy && snapshot.side() != TeamSide.NONE ? snapshot.supplyItems().size() : 0;
+        int shopCount = economy ? snapshot.shopItems().size() : 0;
+
+        int prefixHeight = 0;
+        if (showJoin || showLeave) prefixHeight += 34;
+        if (snapshot.awaitingRespawnSelection()) {
+            prefixHeight += 16 + ((snapshot.respawnOptions().size() + 1) / 2) * 26 + 12;
+        }
+        if (showElection) {
+            prefixHeight += 16 + ((snapshot.captainCandidates().size() + 1) / 2) * 26 + 32;
+        }
+        BodyLayout layout = layoutBody(width, prefixHeight, supplyCount, shopCount);
+        contentHeight = layout.contentHeight();
+        contentScrollOffset = Math.max(0, Math.min(contentScrollOffset,
+                maxContentScroll(contentHeight, height)));
+
+        int contentY = 0;
         if (showJoin) {
             Component joinLabel = snapshot.queued()
-                    ? Component.translatable("sfgame.menu.queued")
-                    : Component.translatable("sfgame.menu.join");
-            DarkButton join = new DarkButton(showLeave ? center - 125 : center - 60, y, 120, 22,
-                    joinLabel, button -> action(ClientActionPacket.Action.JOIN, ""));
+                    ? Component.translatable("sfgame.menu.queued") : Component.translatable("sfgame.menu.join");
+            DarkButton join = new DarkButton(showLeave ? center - 125 : center - 60, contentToScreen(contentY),
+                    120, 22, joinLabel, button -> action(ClientActionPacket.Action.JOIN, ""));
             join.active = !snapshot.queued() && !joinedLobby;
-            addRenderableWidget(join);
+            addBodyWidget(join);
         }
         if (showLeave) {
-            DarkButton spectate = new DarkButton(showJoin ? center + 5 : center - 60, y, 120, 22,
-                    Component.translatable("sfgame.menu.leave"),
+            DarkButton leave = new DarkButton(showJoin ? center + 5 : center - 60, contentToScreen(contentY),
+                    120, 22, Component.translatable("sfgame.menu.leave"),
                     button -> action(ClientActionPacket.Action.LEAVE, ""));
-            spectate.active = joinedLobby;
-            addRenderableWidget(spectate);
+            leave.active = joinedLobby;
+            addBodyWidget(leave);
         }
-        if (showJoin || showLeave) y += 34;
+        if (showJoin || showLeave) contentY += 34;
 
         if (snapshot.awaitingRespawnSelection()) {
             respawnHeadingX = center - 150;
-            respawnHeadingY = y;
-            y += 16;
+            respawnHeadingY = visibleHeadingY(contentY);
+            contentY += 16;
             for (int i = 0; i < snapshot.respawnOptions().size(); i++) {
                 MatchSnapshot.RespawnOption option = snapshot.respawnOptions().get(i);
                 Component label = option.pointId().isEmpty()
@@ -143,29 +161,29 @@ public final class SFGameScreen extends Screen {
                         : Component.translatable("sfgame.respawn.point", option.pointId().toUpperCase(Locale.ROOT));
                 int column = i % 2;
                 int row = i / 2;
-                addRenderableWidget(new DarkButton(center - 150 + column * 152, y + row * 26, 148, 22,
-                        label, button -> action(ClientActionPacket.Action.SELECT_RESPAWN, option.id())));
+                addBodyWidget(new DarkButton(center - 150 + column * 152,
+                        contentToScreen(contentY + row * 26), 148, 22, label,
+                        button -> action(ClientActionPacket.Action.SELECT_RESPAWN, option.id())));
             }
-            y += ((snapshot.respawnOptions().size() + 1) / 2) * 26 + 12;
+            contentY += ((snapshot.respawnOptions().size() + 1) / 2) * 26 + 12;
         }
 
-        if (snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker()) {
+        if (showElection) {
             captainVoteHeadingX = center - 150;
-            captainVoteHeadingY = y;
-            y += 16;
+            captainVoteHeadingY = visibleHeadingY(contentY);
+            contentY += 16;
             for (int i = 0; i < snapshot.captainCandidates().size(); i++) {
                 MatchSnapshot.CaptainCandidate candidate = snapshot.captainCandidates().get(i);
                 int column = i % 2;
                 int row = i / 2;
-                addRenderableWidget(new DarkButton(center - 150 + column * 152, y + row * 26, 148, 22,
-                        Component.literal(candidate.name()),
+                addBodyWidget(new DarkButton(center - 150 + column * 152,
+                        contentToScreen(contentY + row * 26), 148, 22, Component.literal(candidate.name()),
                         button -> action(ClientActionPacket.Action.CAPTAIN_VOTE, candidate.uuid())));
             }
-            y += ((snapshot.captainCandidates().size() + 1) / 2) * 26;
-            addRenderableWidget(new DarkButton(center - 75, y, 150, 22,
+            contentY += ((snapshot.captainCandidates().size() + 1) / 2) * 26;
+            addBodyWidget(new DarkButton(center - 75, contentToScreen(contentY), 150, 22,
                     Component.translatable("sfgame.menu.captain.abstain"),
                     button -> action(ClientActionPacket.Action.CAPTAIN_ABSTAIN, "")));
-            y += 32;
         }
 
         List<MatchSnapshot.ClassView> classPool = snapshot.captain()
@@ -174,55 +192,106 @@ public final class SFGameScreen extends Screen {
                 ? snapshot.pendingCaptainClass() : snapshot.pendingClass();
         ClientActionPacket.Action classAction = snapshot.captain()
                 ? ClientActionPacket.Action.SELECT_CAPTAIN_CLASS : ClientActionPacket.Action.SELECT_CLASS;
-        addClassCards(classPool, pendingClass, classAction, center, y);
-        if ("ctf".equals(snapshot.modeId()) && snapshot.phase() == MatchPhase.RUNNING && !snapshot.ctfShopItems().isEmpty()) {
-            int shopY = classStripY >= 0 ? classStripY + CLASS_CARD_SIZE + 24 : y;
-            addShopCards(snapshot, center, shopY);
+        classHeadingX = center - Math.min(240, Math.max(CLASS_CARD_SIZE, width - 40)) / 2;
+        classHeadingY = visibleHeadingY(layout.classHeading());
+        addClassCards(classPool, pendingClass, classAction, center, contentToScreen(layout.classStrip()));
+
+        cardStripLeft = center - layout.contentWidth() / 2;
+        cardStripRight = cardStripLeft + layout.contentWidth();
+        if (supplyCount > 0) {
+            supplyHeadingX = cardStripLeft;
+            supplyHeadingY = visibleHeadingY(layout.supplyHeading());
+            addSupplyCards(snapshot.supplyItems(), layout);
+        }
+        if (shopCount > 0) {
+            shopHeadingX = cardStripLeft;
+            shopHeadingY = visibleHeadingY(layout.shopHeading());
+            addShopCards(snapshot.shopItems(), layout);
         }
         rebuilding = false;
     }
 
-    private void addShopCards(MatchSnapshot snapshot, int center, int y) {
-        List<MatchSnapshot.ShopView> shopItems = snapshot.ctfShopItems();
-        totalShopCount = shopItems.size();
-        if (shopItems.isEmpty()) {
-            shopScrollOffset = 0;
-            return;
+    static BodyLayout layoutBody(int width, int prefixHeight, int supplyCount, int shopCount) {
+        int availableWidth = Math.max(TALL_CARD_WIDTH, Math.min(480, width - 40));
+        int columns = Math.max(1, availableWidth / (TALL_CARD_WIDTH + TALL_CARD_GAP));
+        int contentWidth = columns * TALL_CARD_WIDTH + (columns - 1) * TALL_CARD_GAP;
+        int classHeading = prefixHeight;
+        int classStrip = classHeading + 16;
+        int cursor = classStrip + CLASS_CARD_SIZE + 16;
+        int supplyHeading = -1;
+        int supplyStart = -1;
+        int supplyRows = 0;
+        if (supplyCount > 0) {
+            supplyHeading = cursor;
+            supplyStart = cursor + 16;
+            supplyRows = (supplyCount + columns - 1) / columns;
+            cursor = supplyStart + supplyRows * TALL_CARD_HEIGHT
+                    + Math.max(0, supplyRows - 1) * TALL_CARD_GAP + 16;
         }
+        int shopHeading = -1;
+        int shopStart = -1;
+        int shopRows = 0;
+        if (shopCount > 0) {
+            shopHeading = cursor;
+            shopStart = cursor + 16;
+            shopRows = (shopCount + columns - 1) / columns;
+            cursor = shopStart + shopRows * TALL_CARD_HEIGHT
+                    + Math.max(0, shopRows - 1) * TALL_CARD_GAP + 4;
+        }
+        return new BodyLayout(classHeading, classStrip, supplyHeading, supplyStart, supplyRows,
+                shopHeading, shopStart, shopRows, cursor, columns, contentWidth);
+    }
 
-        int availableWidth = Math.max(SHOP_CARD_WIDTH, Math.min(480, width - 40));
-        visibleShopColumns = Math.max(1,
-                Math.min(totalShopCount, (availableWidth + SHOP_CARD_GAP) / (SHOP_CARD_WIDTH + SHOP_CARD_GAP)));
-        int availableHeight = Math.max(SHOP_CARD_HEIGHT,
-                height - (y + 16) - 12);
-        visibleShopRows = Math.max(1,
-                Math.min(2, (availableHeight + SHOP_CARD_GAP) / (SHOP_CARD_HEIGHT + SHOP_CARD_GAP)));
-        totalShopRows = (totalShopCount + visibleShopColumns - 1) / visibleShopColumns;
-        int maxOffset = Math.max(0, totalShopRows - visibleShopRows);
-        shopScrollOffset = Math.max(0, Math.min(shopScrollOffset, maxOffset));
-        int contentWidth = visibleShopColumns * SHOP_CARD_WIDTH + (visibleShopColumns - 1) * SHOP_CARD_GAP;
+    static int maxContentScroll(int contentHeight, int height) {
+        return Math.max(0, contentHeight - Math.max(0, height - CONTENT_TOP - CONTENT_BOTTOM_MARGIN));
+    }
 
-        shopStripLeft = center - contentWidth / 2;
-        shopStripRight = shopStripLeft + contentWidth;
-        shopHeadingX = shopStripLeft;
-        shopHeadingY = y;
-        shopStripY = y + 16;
-        shopStripBottom = shopStripY + visibleShopRows * SHOP_CARD_HEIGHT
-                + (visibleShopRows - 1) * SHOP_CARD_GAP;
-        for (int row = 0; row < visibleShopRows; row++) {
-            for (int column = 0; column < visibleShopColumns; column++) {
-                int itemIndex = (shopScrollOffset + row) * visibleShopColumns + column;
-                if (itemIndex >= shopItems.size()) continue;
-                MatchSnapshot.ShopView item = shopItems.get(itemIndex);
-                int x = shopStripLeft + column * (SHOP_CARD_WIDTH + SHOP_CARD_GAP);
-                int cardY = shopStripY + row * (SHOP_CARD_HEIGHT + SHOP_CARD_GAP);
-                ShopCardButton card = new ShopCardButton(x, cardY, item,
-                        button -> action(ClientActionPacket.Action.SHOP_BUY, item.id()));
-                shopCards.add(card);
+    private int contentToScreen(int contentY) { return CONTENT_TOP + contentY - contentScrollOffset; }
+    private int visibleHeadingY(int contentY) {
+        if (contentY < 0) return -1;
+        int y = contentToScreen(contentY);
+        return y >= CONTENT_TOP && y + 9 <= height - CONTENT_BOTTOM_MARGIN ? y : -1;
+    }
+    private boolean fullyVisible(int y, int widgetHeight) {
+        return y >= CONTENT_TOP && y + widgetHeight <= height - CONTENT_BOTTOM_MARGIN;
+    }
+    private void addBodyWidget(Button button) {
+        if (fullyVisible(button.getY(), button.getHeight())) addRenderableWidget(button);
+    }
+
+    private void addSupplyCards(List<MatchSnapshot.SupplyView> items, BodyLayout layout) {
+        for (int i = 0; i < items.size(); i++) {
+            MatchSnapshot.SupplyView item = items.get(i);
+            int x = cardStripLeft + i % layout.columns() * (TALL_CARD_WIDTH + TALL_CARD_GAP);
+            int y = contentToScreen(layout.supplyStart()
+                    + i / layout.columns() * (TALL_CARD_HEIGHT + TALL_CARD_GAP));
+            TallCardButton card = TallCardButton.supply(x, y, item,
+                    button -> action(ClientActionPacket.Action.SUPPLY_CLAIM, item.id()));
+            if (fullyVisible(y, TALL_CARD_HEIGHT)) {
+                tallCards.add(card);
                 addRenderableWidget(card);
             }
         }
     }
+
+    private void addShopCards(List<MatchSnapshot.ShopView> items, BodyLayout layout) {
+        for (int i = 0; i < items.size(); i++) {
+            MatchSnapshot.ShopView item = items.get(i);
+            int x = cardStripLeft + i % layout.columns() * (TALL_CARD_WIDTH + TALL_CARD_GAP);
+            int y = contentToScreen(layout.shopStart()
+                    + i / layout.columns() * (TALL_CARD_HEIGHT + TALL_CARD_GAP));
+            TallCardButton card = TallCardButton.shop(x, y, item,
+                    button -> action(ClientActionPacket.Action.SHOP_BUY, item.id()));
+            if (fullyVisible(y, TALL_CARD_HEIGHT)) {
+                tallCards.add(card);
+                addRenderableWidget(card);
+            }
+        }
+    }
+
+    static record BodyLayout(int classHeading, int classStrip, int supplyHeading, int supplyStart,
+                             int supplyRows, int shopHeading, int shopStart, int shopRows,
+                             int contentHeight, int columns, int contentWidth) { }
 
     private void addClassCards(List<MatchSnapshot.ClassView> classPool, String pendingClass,
                                ClientActionPacket.Action classAction, int center, int y) {
@@ -241,10 +310,8 @@ public final class SFGameScreen extends Screen {
 
         classStripLeft = center - contentWidth / 2;
         classStripRight = classStripLeft + contentWidth;
-        classHeadingX = classStripLeft;
-        classHeadingY = y;
-        classStripY = y + 16;
-
+        classStripY = fullyVisible(y, CLASS_CARD_SIZE) ? y : -1;
+        if (classStripY < 0) return;
         for (int visibleIndex = 0; visibleIndex < visibleClassCount; visibleIndex++) {
             MatchSnapshot.ClassView view = classPool.get(classScrollOffset + visibleIndex);
             boolean selected = view.id().equals(pendingClass);
@@ -264,14 +331,9 @@ public final class SFGameScreen extends Screen {
         classCards.clear();
         captainVoteHeadingY = -1;
         respawnHeadingY = -1;
+        supplyHeadingY = -1;
         shopHeadingY = -1;
-        shopStripY = -1;
-        shopStripBottom = 0;
-        visibleShopColumns = 0;
-        visibleShopRows = 0;
-        totalShopRows = 0;
-        totalShopCount = 0;
-        shopCards.clear();
+        tallCards.clear();
     }
 
     private void action(ClientActionPacket.Action action, String value) {
@@ -289,32 +351,37 @@ public final class SFGameScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        if (totalClassCount > visibleClassCount && classStripY >= 0
+        boolean overClass = totalClassCount > visibleClassCount && classStripY >= 0
                 && mouseX >= classStripLeft - 8 && mouseX <= classStripRight + 8
-                && mouseY >= classStripY - 4 && mouseY <= classStripY + CLASS_CARD_SIZE + 8) {
-            int maxOffset = totalClassCount - visibleClassCount;
-            int nextOffset = Math.max(0,
-                    Math.min(maxOffset, classScrollOffset + (delta < 0 ? 1 : -1)));
-            if (nextOffset != classScrollOffset) {
-                classScrollOffset = nextOffset;
-                rebuild();
-            }
-            return true;
+                && mouseY >= classStripY - 4 && mouseY <= classStripY + CLASS_CARD_SIZE + 8;
+        ScrollResult result = scrollOffsets(overClass, totalClassCount, visibleClassCount, classScrollOffset,
+                contentScrollOffset, maxContentScroll(contentHeight, height), delta);
+        if (result.classOffset() != classScrollOffset || result.contentOffset() != contentScrollOffset) {
+            classScrollOffset = result.classOffset();
+            contentScrollOffset = result.contentOffset();
+            rebuild();
         }
-        if (totalShopRows > visibleShopRows && shopStripY >= 0
-                && mouseX >= shopStripLeft - 8 && mouseX <= shopStripRight + 8
-                && mouseY >= shopStripY - 4 && mouseY <= shopStripBottom + 8) {
-            int maxOffset = totalShopRows - visibleShopRows;
-            int nextOffset = Math.max(0,
-                    Math.min(maxOffset, shopScrollOffset + (delta < 0 ? 1 : -1)));
-            if (nextOffset != shopScrollOffset) {
-                shopScrollOffset = nextOffset;
-                rebuild();
-            }
-            return true;
-        }
+        if (result.consumed()) return true;
         return super.mouseScrolled(mouseX, mouseY, delta);
     }
+
+    static ScrollResult scrollOffsets(boolean overClass, int totalClasses, int visibleClasses,
+                                      int classOffset, int contentOffset, int maxContentOffset, double delta) {
+        if (delta == 0) return new ScrollResult(classOffset, contentOffset, false);
+        if (overClass && totalClasses > visibleClasses) {
+            int next = Math.max(0, Math.min(totalClasses - visibleClasses,
+                    classOffset + (delta < 0 ? 1 : -1)));
+            return new ScrollResult(next, contentOffset, true);
+        }
+        if (maxContentOffset > 0) {
+            int next = Math.max(0, Math.min(maxContentOffset,
+                    contentOffset + (delta < 0 ? 24 : -24)));
+            return new ScrollResult(classOffset, next, true);
+        }
+        return new ScrollResult(classOffset, contentOffset, false);
+    }
+
+    static record ScrollResult(int classOffset, int contentOffset, boolean consumed) { }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -337,10 +404,9 @@ public final class SFGameScreen extends Screen {
                     .collect(java.util.stream.Collectors.joining("  ·  "));
             graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD),
                     width / 2, 36, 0xFFFFFF);
-            if ("ctf".equals(snapshot.modeId())
-                    && snapshot.phase() == MatchPhase.RUNNING
-                    && !snapshot.ctfShopItems().isEmpty()) {
-                graphics.drawCenteredString(font, Component.literal("货币 " + snapshot.ctfCurrency()).withStyle(ChatFormatting.GOLD),
+            if (MatchManager.supportsEconomy(snapshot.modeId()) && snapshot.phase() == MatchPhase.RUNNING) {
+                graphics.drawCenteredString(font,
+                        Component.translatable("sfgame.menu.currency", snapshot.currency()).withStyle(ChatFormatting.GOLD),
                         width / 2, 52, 0xFFFFFF);
             }
         }
@@ -355,33 +421,36 @@ public final class SFGameScreen extends Screen {
         if (classHeadingY >= 0) {
             graphics.drawString(font, Component.translatable("sfgame.menu.class_select"),
                     classHeadingX, classHeadingY, 0xFFFFFF, true);
-            if (totalClassCount > visibleClassCount) {
-                if (classScrollOffset > 0) {
-                    graphics.drawCenteredString(font, "‹", classStripLeft - 10,
-                            classStripY + CLASS_CARD_SIZE / 2 - 4, 0xFFFFFF);
-                }
-                if (classScrollOffset + visibleClassCount < totalClassCount) {
-                    graphics.drawCenteredString(font, "›", classStripRight + 10,
-                            classStripY + CLASS_CARD_SIZE / 2 - 4, 0xFFFFFF);
-                }
+        }
+        if (classStripY >= 0 && totalClassCount > visibleClassCount) {
+            if (classScrollOffset > 0) {
+                graphics.drawCenteredString(font, "‹", classStripLeft - 10,
+                        classStripY + CLASS_CARD_SIZE / 2 - 4, 0xFFFFFF);
+            }
+            if (classScrollOffset + visibleClassCount < totalClassCount) {
+                graphics.drawCenteredString(font, "›", classStripRight + 10,
+                        classStripY + CLASS_CARD_SIZE / 2 - 4, 0xFFFFFF);
             }
         }
+        if (supplyHeadingY >= 0) {
+            graphics.drawString(font, Component.translatable("sfgame.menu.supply"),
+                    supplyHeadingX, supplyHeadingY, 0xFFFFFF, true);
+        }
         if (shopHeadingY >= 0) {
-            graphics.drawString(font, Component.translatable("sfgame.menu.shop"), shopHeadingX, shopHeadingY, 0xFFFFFF, true);
-            if (totalShopRows > visibleShopRows) {
-                if (shopScrollOffset > 0) {
-                    graphics.drawCenteredString(font, "↑", width / 2,
-                            shopStripY - 12, 0xFFFFFF);
-                }
-                if (shopScrollOffset + visibleShopRows < totalShopRows) {
-                    graphics.drawCenteredString(font, "↓", width / 2,
-                            shopStripBottom + 2, 0xFFFFFF);
-                }
-            }
+            graphics.drawString(font, Component.translatable("sfgame.menu.shop"),
+                    shopHeadingX, shopHeadingY, 0xFFFFFF, true);
+        }
+        int maxScroll = maxContentScroll(contentHeight, height);
+        if (contentScrollOffset > 0) {
+            graphics.drawCenteredString(font, "↑", width - 12, CONTENT_TOP + 2, 0xFFFFFF);
+        }
+        if (contentScrollOffset < maxScroll) {
+            graphics.drawCenteredString(font, "↓", width - 12,
+                    height - CONTENT_BOTTOM_MARGIN - 10, 0xFFFFFF);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
         renderClassTooltip(graphics, mouseX, mouseY);
-        renderShopTooltip(graphics, mouseX, mouseY);
+        renderTallCardTooltip(graphics, mouseX, mouseY);
     }
 
     @Override
@@ -473,8 +542,8 @@ public final class SFGameScreen extends Screen {
         }
     }
 
-    private void renderShopTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
-        for (ShopCardButton card : shopCards) {
+    private void renderTallCardTooltip(GuiGraphics graphics, int mouseX, int mouseY) {
+        for (TallCardButton card : tallCards) {
             if (!card.isMouseOver(mouseX, mouseY)) continue;
             List<FormattedCharSequence> lines = new ArrayList<>();
             for (Component line : card.tooltipLines) lines.addAll(font.split(line, 220));
@@ -492,10 +561,15 @@ public final class SFGameScreen extends Screen {
     }
 
     private static List<Component> shopTooltip(MatchSnapshot.ShopView view) {
-        return List.of(
-                Component.literal(view.name()).withStyle(ChatFormatting.YELLOW),
-                Component.literal("价格：" + view.price()).withStyle(ChatFormatting.GOLD),
-                Component.literal("点击购买").withStyle(ChatFormatting.GRAY));
+        return List.of(Component.literal(view.name()).withStyle(ChatFormatting.YELLOW),
+                Component.translatable("sfgame.shop.price", view.price()).withStyle(ChatFormatting.GOLD),
+                Component.translatable("sfgame.shop.buy").withStyle(ChatFormatting.GRAY));
+    }
+
+    private static List<Component> supplyTooltip(MatchSnapshot.SupplyView view) {
+        return List.of(Component.literal(view.name()).withStyle(ChatFormatting.YELLOW),
+                Component.translatable("sfgame.supply.quantity", view.quantity()).withStyle(ChatFormatting.AQUA),
+                Component.translatable("sfgame.supply.claim").withStyle(ChatFormatting.GRAY));
     }
 
     private static class DarkButton extends Button {
@@ -553,31 +627,44 @@ public final class SFGameScreen extends Screen {
         }
     }
 
-    private static final class ShopCardButton extends DarkButton {
+    private static final class TallCardButton extends DarkButton {
         private final ItemStack icon;
         private final String name;
-        private final int price;
+        private final Component detail;
+        private final int detailColor;
         private final List<Component> tooltipLines;
 
-        private ShopCardButton(int x, int y, MatchSnapshot.ShopView view, OnPress onPress) {
-            super(x, y, SHOP_CARD_WIDTH, SHOP_CARD_HEIGHT, Component.empty(), onPress);
-            this.icon = iconStack(view.icon());
-            this.name = view.name();
-            this.price = view.price();
-            this.tooltipLines = shopTooltip(view);
+        private TallCardButton(int x, int y, String icon, String name, Component detail,
+                               int detailColor, List<Component> tooltipLines, OnPress onPress) {
+            super(x, y, TALL_CARD_WIDTH, TALL_CARD_HEIGHT, Component.empty(), onPress);
+            this.icon = iconStack(icon);
+            this.name = name;
+            this.detail = detail;
+            this.detailColor = detailColor;
+            this.tooltipLines = tooltipLines;
+        }
+
+        static TallCardButton shop(int x, int y, MatchSnapshot.ShopView view, OnPress onPress) {
+            return new TallCardButton(x, y, view.icon(), view.name(),
+                    Component.translatable("sfgame.shop.price", view.price()).withStyle(ChatFormatting.GOLD),
+                    0xFFFFD54F, shopTooltip(view), onPress);
+        }
+
+        static TallCardButton supply(int x, int y, MatchSnapshot.SupplyView view, OnPress onPress) {
+            return new TallCardButton(x, y, view.icon(), view.name(),
+                    Component.translatable("sfgame.supply.quantity", view.quantity()).withStyle(ChatFormatting.AQUA),
+                    0xFF55FFFF, supplyTooltip(view), onPress);
         }
 
         @Override
         protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
             super.renderWidget(graphics, mouseX, mouseY, partialTick);
             renderIcon(graphics, icon, null, getX() + 20, getY() + 6, 32);
-
-            String displayName = Minecraft.getInstance().font.plainSubstrByWidth(name, SHOP_CARD_WIDTH - 6);
+            String displayName = Minecraft.getInstance().font.plainSubstrByWidth(name, TALL_CARD_WIDTH - 6);
             graphics.drawCenteredString(Minecraft.getInstance().font, Component.literal(displayName),
                     getX() + width / 2, getY() + 52, 0xFFFFFFFF);
-            graphics.drawCenteredString(Minecraft.getInstance().font,
-                    Component.literal("价格 " + price).withStyle(ChatFormatting.GOLD),
-                    getX() + width / 2, getY() + 68, 0xFFFFD54F);
+            graphics.drawCenteredString(Minecraft.getInstance().font, detail,
+                    getX() + width / 2, getY() + 68, detailColor);
         }
     }
 }

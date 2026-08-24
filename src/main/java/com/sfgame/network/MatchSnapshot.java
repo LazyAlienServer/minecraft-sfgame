@@ -17,7 +17,8 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
                             String currentCaptainClass, String pendingCaptainClass, List<ClassView> captainClasses,
                             List<CaptainCandidate> captainCandidates, boolean awaitingRespawnSelection,
                             List<RespawnOption> respawnOptions, String ctfVariant, String ctfCarrierRestriction,
-                            int ctfCurrency, List<CtfFlagView> ctfFlags, List<ShopView> ctfShopItems) {
+                            int currency, List<CtfFlagView> ctfFlags, List<ShopView> shopItems,
+                            List<SupplyView> supplyItems) {
     public record ClassView(String id, String name, String description, String icon, String iconRender,
                             String iconTexture, String gunId, double health, double speed, int reserveAmmo) {
         void encode(FriendlyByteBuf buffer) {
@@ -57,6 +58,17 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         void encode(FriendlyByteBuf buffer) { buffer.writeUtf(id); buffer.writeUtf(name); buffer.writeUtf(icon); buffer.writeVarInt(price); }
         static ShopView decode(FriendlyByteBuf buffer) { return new ShopView(buffer.readUtf(), buffer.readUtf(), buffer.readUtf(), buffer.readVarInt()); }
     }
+    public record SupplyView(String id, String type, String name, String icon, int quantity) {
+        void encode(FriendlyByteBuf buffer) {
+            buffer.writeUtf(id); buffer.writeUtf(type); buffer.writeUtf(name); buffer.writeUtf(icon);
+            buffer.writeVarInt(quantity);
+        }
+        static SupplyView decode(FriendlyByteBuf buffer) {
+            return new SupplyView(buffer.readUtf(), buffer.readUtf(), buffer.readUtf(), buffer.readUtf(),
+                    buffer.readVarInt());
+        }
+    }
+
 
     public int score(TeamSide team) {
         return switch (team) { case RED -> redScore; case BLUE -> blueScore; case YELLOW -> yellowScore;
@@ -85,9 +97,10 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         buffer.writeBoolean(awaitingRespawnSelection);
         buffer.writeVarInt(respawnOptions.size()); respawnOptions.forEach(option -> option.encode(buffer));
         writeNullable(buffer, ctfVariant); writeNullable(buffer, ctfCarrierRestriction);
-        buffer.writeVarInt(ctfCurrency);
+        buffer.writeVarInt(currency);
         buffer.writeVarInt(ctfFlags.size()); ctfFlags.forEach(flag -> flag.encode(buffer));
-        buffer.writeVarInt(ctfShopItems.size()); ctfShopItems.forEach(item -> item.encode(buffer));
+        buffer.writeVarInt(shopItems.size()); shopItems.forEach(item -> item.encode(buffer));
+        buffer.writeVarInt(supplyItems.size()); supplyItems.forEach(item -> item.encode(buffer));
     }
 
     public static MatchSnapshot decode(FriendlyByteBuf buffer) {
@@ -110,16 +123,19 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         int optionCount = buffer.readVarInt(); List<RespawnOption> options = new ArrayList<>(optionCount);
         for (int i = 0; i < optionCount; i++) options.add(RespawnOption.decode(buffer));
         String ctfVariant = readNullable(buffer), ctfRestriction = readNullable(buffer);
-        int ctfCurrency = buffer.readVarInt();
+        int currency = buffer.readVarInt();
         int flagCount = buffer.readVarInt(); List<CtfFlagView> ctfFlags = new ArrayList<>(flagCount);
         for (int i = 0; i < flagCount; i++) ctfFlags.add(CtfFlagView.decode(buffer));
         int shopCount = buffer.readVarInt(); List<ShopView> shopItems = new ArrayList<>(shopCount);
         for (int i = 0; i < shopCount; i++) shopItems.add(ShopView.decode(buffer));
+        int supplyCount = buffer.readVarInt(); List<SupplyView> supplyItems = new ArrayList<>(supplyCount);
+        for (int i = 0; i < supplyCount; i++) supplyItems.add(SupplyView.decode(buffer));
         return new MatchSnapshot(modeId, phase, side, redScore, blueScore, yellowScore, greenScore, scoreLimit, remaining,
                 redPlayers, bluePlayers, yellowPlayers, greenPlayers, current, pending, participating, queued, classes,
                 variant, attacker, defender, tickets, leg, sector, sectors, subState, captainId, captainName, election,
                 isCaptain, currentCaptain, pendingCaptain, captainClasses, List.copyOf(candidates), awaitingRespawn,
-                List.copyOf(options), ctfVariant, ctfRestriction, ctfCurrency, List.copyOf(ctfFlags), List.copyOf(shopItems));
+                List.copyOf(options), ctfVariant, ctfRestriction, currency, List.copyOf(ctfFlags),
+                List.copyOf(shopItems), List.copyOf(supplyItems));
     }
 
     private static void writeNullable(FriendlyByteBuf buffer, String value) {

@@ -10,6 +10,7 @@ public final class PlayerMatchState {
     private final Map<String, String> pendingClasses = new HashMap<>();
     private final Map<String, String> currentCaptainClasses = new HashMap<>();
     private final Map<String, String> pendingCaptainClasses = new HashMap<>();
+    private final Map<String, String> grantedEliteClasses = new HashMap<>();
     private TeamSide cachedSide = TeamSide.NONE;
     private boolean participating;
     private boolean queued;
@@ -44,6 +45,13 @@ public final class PlayerMatchState {
     public void pendingCaptainClass(String modeId, String value) { putOrRemove(pendingCaptainClasses, modeId, value); }
     public String pendingCaptainClass(String modeId, TeamSide side) { return scopedValue(pendingCaptainClasses, modeId, side); }
     public void pendingCaptainClass(String modeId, TeamSide side, String value) { putOrRemove(pendingCaptainClasses, scopeKey(modeId, side), value); }
+    public String grantedEliteClass(String modeId, TeamSide side) {
+        return grantedEliteClasses.get(scopeKey(modeId, side));
+    }
+    public void grantedEliteClass(String modeId, TeamSide side, String value) {
+        putOrRemove(grantedEliteClasses, scopeKey(modeId, side), value);
+    }
+    public void clearGrantedEliteClasses() { grantedEliteClasses.clear(); }
     public TeamSide cachedSide() { return cachedSide; }
     public void cachedSide(TeamSide value) { cachedSide = value; }
     public boolean participating() { return participating; }
@@ -79,6 +87,7 @@ public final class PlayerMatchState {
         protectionTicks = 0;
         pendingImmediateJoin = false;
         currencies.clear();
+        grantedEliteClasses.clear();
     }
 
     private static void putOrRemove(Map<String, String> map, String key, String value) {

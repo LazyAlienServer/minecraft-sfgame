@@ -52,6 +52,8 @@ public final class LoadoutService {
                     side.id() + "/" + definition.id(), definition));
             if (includeCaptain) registry.captainClassesForTeam(modeId, mapId, side).forEach(definition -> definitions.putIfAbsent(
                     side.id() + "/captain/" + definition.id(), definition));
+            registry.eliteClassesForTeam(modeId, mapId, side).forEach(definition -> definitions.putIfAbsent(
+                    side.id() + "/elite/" + definition.id(), definition));
         }
         for (ClassDefinition definition : definitions.values()) {
             errors.addAll(validateInventoryShape(definition));

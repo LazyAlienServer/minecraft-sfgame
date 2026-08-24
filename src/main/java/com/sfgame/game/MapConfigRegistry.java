@@ -132,6 +132,7 @@ public final class MapConfigRegistry {
     private void reloadMode(String modeId, Collection<ArenaMap> legacyMaps, SFGameSavedData data,
                             List<String> problems) throws IOException {
         Path modeDirectory = directory.resolve(modeId);
+        int problemCount = problems.size();
         Files.createDirectories(modeDirectory);
         Map<String, ArenaMap> loaded = new LinkedHashMap<>();
         try (var paths = Files.list(modeDirectory)) {
@@ -158,6 +159,7 @@ public final class MapConfigRegistry {
                 }
             }
         }
+        if (problems.size() > problemCount) return;
 
         // A world created before the JSON layout still has its maps in SavedData.
         // Keep those maps during the one-time migration, and write them immediately.

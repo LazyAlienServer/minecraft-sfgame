@@ -9,7 +9,7 @@ import java.util.function.Supplier;
 
 public record ClientActionPacket(Action action, String value) {
     public enum Action { REQUEST_SNAPSHOT, JOIN, LEAVE, SELECT_CLASS, SELECT_CAPTAIN_CLASS, CAPTAIN_VOTE, CAPTAIN_ABSTAIN,
-        SELECT_RESPAWN, SHOP_BUY }
+        SELECT_RESPAWN, SHOP_BUY, SUPPLY_CLAIM }
 
     public static void encode(ClientActionPacket packet, FriendlyByteBuf buffer) {
         buffer.writeEnum(packet.action);
@@ -40,7 +40,13 @@ public record ClientActionPacket(Action action, String value) {
                     } catch (IllegalArgumentException ignored) { }
                 }
                 case SELECT_RESPAWN -> manager.selectRespawn(player, packet.value);
-                case SHOP_BUY -> manager.ctfPurchase(player, packet.value);
+                case SHOP_BUY -> manager.purchase(player, packet.value);
+                case SUPPLY_CLAIM -> {
+                    if (!manager.claimSupply(player, packet.value)) {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                                "sfgame.supply.claim_failed"), true);
+                    }
+                }
             }
         });
         context.setPacketHandled(true);

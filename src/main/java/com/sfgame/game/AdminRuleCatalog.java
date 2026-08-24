@@ -74,6 +74,9 @@ public final class AdminRuleCatalog {
             bool("captureUsePlayerDifference", true, CAPTURE_MODES),
             decimal("captureDifferenceCoefficient", 0.1, 10.0, true, CAPTURE_MODES),
             integer("captureMaxMultiplier", 1, 64, true, CAPTURE_MODES),
+            // Economy.
+            integer("killCurrency", 0, 100_000, true, CAPTURE_MODES),
+
 
             // Domination.
             enumeration("dominationStrategy", false, GameModeRegistry.DOMINATION),
@@ -102,6 +105,10 @@ public final class AdminRuleCatalog {
             enumeration("ctfCarrierRestriction", false, GameModeRegistry.CAPTURE_THE_FLAG),
             integer("ctfFlagReturnSeconds", 5, 600, true, GameModeRegistry.CAPTURE_THE_FLAG),
             integer("ctfHomeCaptureTimeSeconds", 1, 600, true, GameModeRegistry.CAPTURE_THE_FLAG),
+            integer("ctfTerritoryUnlockCurrency", 0, 100_000, true, GameModeRegistry.CAPTURE_THE_FLAG),
+            integer("ctfForwardFlagReplantCurrency", 0, 100_000, true, GameModeRegistry.CAPTURE_THE_FLAG),
+            integer("ctfForwardFlagCaptureCurrency", 0, 100_000, true, GameModeRegistry.CAPTURE_THE_FLAG),
+            integer("ctfHomeFlagCaptureCurrency", 0, 100_000, true, GameModeRegistry.CAPTURE_THE_FLAG),
 
             // These values define the next state transition and deliberately
             // remain locked while a round is active.

@@ -58,6 +58,11 @@ public final class MatchRules {
     private double defenderCaptureWeight;
     private int ctfFlagReturnSeconds;
     private int ctfHomeCaptureTimeSeconds;
+    private int killCurrency;
+    private int ctfTerritoryUnlockCurrency;
+    private int ctfForwardFlagReplantCurrency;
+    private int ctfForwardFlagCaptureCurrency;
+    private int ctfHomeFlagCaptureCurrency;
     private PointActivationStrategy dominationStrategy;
     private BreakthroughVariant breakthroughVariant;
     private int breakthroughLegs;
@@ -107,6 +112,11 @@ public final class MatchRules {
     public double defenderCaptureWeight() { return defenderCaptureWeight; }
     public int ctfFlagReturnSeconds() { return ctfFlagReturnSeconds; }
     public int ctfHomeCaptureTimeSeconds() { return ctfHomeCaptureTimeSeconds; }
+    public int killCurrency() { return killCurrency; }
+    public int ctfTerritoryUnlockCurrency() { return ctfTerritoryUnlockCurrency; }
+    public int ctfForwardFlagReplantCurrency() { return ctfForwardFlagReplantCurrency; }
+    public int ctfForwardFlagCaptureCurrency() { return ctfForwardFlagCaptureCurrency; }
+    public int ctfHomeFlagCaptureCurrency() { return ctfHomeFlagCaptureCurrency; }
     public PointActivationStrategy dominationStrategy() { return dominationStrategy; }
     public BreakthroughVariant breakthroughVariant() { return breakthroughVariant; }
     public int breakthroughLegs() { return breakthroughLegs; }
@@ -156,6 +166,11 @@ public final class MatchRules {
     public void defenderCaptureWeight(double value) { defenderCaptureWeight = clamp(value, 0.1, 10.0); }
     public void ctfFlagReturnSeconds(int value) { ctfFlagReturnSeconds = clamp(value, 5, 600); }
     public void ctfHomeCaptureTimeSeconds(int value) { ctfHomeCaptureTimeSeconds = clamp(value, 1, 600); }
+    public void killCurrency(int value) { killCurrency = clamp(value, 0, 100000); }
+    public void ctfTerritoryUnlockCurrency(int value) { ctfTerritoryUnlockCurrency = clamp(value, 0, 100000); }
+    public void ctfForwardFlagReplantCurrency(int value) { ctfForwardFlagReplantCurrency = clamp(value, 0, 100000); }
+    public void ctfForwardFlagCaptureCurrency(int value) { ctfForwardFlagCaptureCurrency = clamp(value, 0, 100000); }
+    public void ctfHomeFlagCaptureCurrency(int value) { ctfHomeFlagCaptureCurrency = clamp(value, 0, 100000); }
     public void dominationStrategy(PointActivationStrategy value) {
         dominationStrategy = value == null ? PointActivationStrategy.ASYNC : value;
     }
@@ -205,6 +220,11 @@ public final class MatchRules {
         defenderCaptureWeight = 1.4;
         ctfFlagReturnSeconds = 30;
         ctfHomeCaptureTimeSeconds = 15;
+        killCurrency = 25;
+        ctfTerritoryUnlockCurrency = 10;
+        ctfForwardFlagReplantCurrency = 50;
+        ctfForwardFlagCaptureCurrency = 100;
+        ctfHomeFlagCaptureCurrency = 100;
         dominationStrategy = PointActivationStrategy.ASYNC;
         breakthroughVariant = BreakthroughVariant.NORMAL;
         breakthroughLegs = 1;
@@ -242,6 +262,11 @@ public final class MatchRules {
         tag.putDouble("DefenderCaptureWeight", defenderCaptureWeight);
         tag.putInt("CtfFlagReturnSeconds", ctfFlagReturnSeconds);
         tag.putInt("CtfHomeCaptureTimeSeconds", ctfHomeCaptureTimeSeconds);
+        tag.putInt("KillCurrency", killCurrency);
+        tag.putInt("CtfTerritoryUnlockCurrency", ctfTerritoryUnlockCurrency);
+        tag.putInt("CtfForwardFlagReplantCurrency", ctfForwardFlagReplantCurrency);
+        tag.putInt("CtfForwardFlagCaptureCurrency", ctfForwardFlagCaptureCurrency);
+        tag.putInt("CtfHomeFlagCaptureCurrency", ctfHomeFlagCaptureCurrency);
         tag.putString("DominationStrategy", dominationStrategy.name().toLowerCase(java.util.Locale.ROOT));
         tag.putString("BreakthroughVariant", breakthroughVariant.name().toLowerCase(java.util.Locale.ROOT));
         tag.putInt("BreakthroughLegs", breakthroughLegs);
@@ -290,6 +315,11 @@ public final class MatchRules {
         if (tag.contains("DefenderCaptureWeight")) defenderCaptureWeight(tag.getDouble("DefenderCaptureWeight"));
         if (tag.contains("CtfFlagReturnSeconds")) ctfFlagReturnSeconds(tag.getInt("CtfFlagReturnSeconds"));
         if (tag.contains("CtfHomeCaptureTimeSeconds")) ctfHomeCaptureTimeSeconds(tag.getInt("CtfHomeCaptureTimeSeconds"));
+        if (tag.contains("KillCurrency")) killCurrency(tag.getInt("KillCurrency"));
+        if (tag.contains("CtfTerritoryUnlockCurrency")) ctfTerritoryUnlockCurrency(tag.getInt("CtfTerritoryUnlockCurrency"));
+        if (tag.contains("CtfForwardFlagReplantCurrency")) ctfForwardFlagReplantCurrency(tag.getInt("CtfForwardFlagReplantCurrency"));
+        if (tag.contains("CtfForwardFlagCaptureCurrency")) ctfForwardFlagCaptureCurrency(tag.getInt("CtfForwardFlagCaptureCurrency"));
+        if (tag.contains("CtfHomeFlagCaptureCurrency")) ctfHomeFlagCaptureCurrency(tag.getInt("CtfHomeFlagCaptureCurrency"));
         if (tag.contains("DominationStrategy")) dominationStrategy(PointActivationStrategy.parse(tag.getString("DominationStrategy")));
         if (tag.contains("BreakthroughVariant")) breakthroughVariant(BreakthroughVariant.valueOf(tag.getString("BreakthroughVariant").toUpperCase(java.util.Locale.ROOT)));
         if (tag.contains("BreakthroughLegs")) breakthroughLegs(tag.getInt("BreakthroughLegs"));

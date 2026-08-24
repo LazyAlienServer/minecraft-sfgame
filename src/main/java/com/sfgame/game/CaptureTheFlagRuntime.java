@@ -132,10 +132,6 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
     }
 
 
-    @Override
-    public void onKill(ServerPlayer killer, TeamSide side, MatchManager manager) {
-        manager.addCurrency(killer, 25);
-    }
 
     @Override
     public void onPlayerDeath(ServerPlayer victim, TeamSide side, MatchManager manager) {
@@ -246,7 +242,7 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
                     && leader != flag.owner) {
                 flag.unlocked = true;
                 announce(manager, Component.translatable("sfgame.ctf.forward_unlocked", displayId(flag.key)));
-                awardUnlock(leader, manager);
+                awardUnlock(leader, manager, rules);
             }
         }
         for (Map.Entry<TeamSide, CapturePointState> entry : homeCapture.entrySet()) {
@@ -339,26 +335,33 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         if (carrierHome == null) return;
         if (flag.forward != null && carrierSide == flag.owner) {
             if (near(player, flag.forward.stand())) {
-                manager.addTeamScore(carrierSide, 1); manager.addCurrency(player, 50);
+                manager.addTeamScore(carrierSide, 1);
+                manager.addCurrency(player, rules.ctfForwardFlagReplantCurrency());
                 resetFlag(flag); announce(manager, Component.translatable("sfgame.ctf.forward_replanted", displayId(flag.key)));
             }
             return;
         }
         if (flag.forward != null && carrierSide != flag.owner && carrierHome.depotPosition() != null
                 && near(player, carrierHome.depotPosition())) {
-            manager.addTeamScore(carrierSide, 1); manager.addCurrency(player, 100);
+            manager.addTeamScore(carrierSide, 1);
+            manager.addCurrency(player, rules.ctfForwardFlagCaptureCurrency());
             clearCarrierAppearance(flag);
             flag.location = Location.DEPOT; flag.depotTeam = carrierSide; flag.carrier = null; flag.droppedPosition = null;
             flag.droppedTicks = 0; flag.unlocked = false;
             announce(manager, Component.translatable("sfgame.ctf.captured", displayId(flag.key)));
+            manager.supplyEvent(com.sfgame.data.SupplyTriggerDefinition.CTF_CAPTURE,
+                    carrierSide, 0, "", "");
             return;
         }
         if (flag.home && carrierSide != flag.owner && carrierHome.captureRegion() != null
                 && carrierHome.captureRegion().contains(player)) {
             FlagState ownHome = flags.get(homeKey(carrierSide));
             if (ownHome == null || ownHome.location != Location.STAND) return;
-            manager.addTeamScore(carrierSide, 1); manager.addCurrency(player, 100);
+            manager.addTeamScore(carrierSide, 1);
+            manager.addCurrency(player, rules.ctfHomeFlagCaptureCurrency());
             resetFlag(flag); announce(manager, Component.translatable("sfgame.ctf.captured", displayId(flag.key)));
+            manager.supplyEvent(com.sfgame.data.SupplyTriggerDefinition.CTF_CAPTURE,
+                    carrierSide, 0, "", "");
         }
     }
 
@@ -538,7 +541,9 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         }
     }
 
-    private void awardUnlock(TeamSide side, MatchManager manager) { manager.addCurrencyToTeamPlayers(side, 10); }
+    private void awardUnlock(TeamSide side, MatchManager manager, MatchRules rules) {
+        manager.addCurrencyToTeamPlayers(side, rules.ctfTerritoryUnlockCurrency());
+    }
 
     private Map<TeamSide, Integer> countsIn(CaptureRegion region, MatchManager manager) {
         Map<TeamSide, Integer> counts = new EnumMap<>(TeamSide.class);

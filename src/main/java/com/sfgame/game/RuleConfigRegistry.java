@@ -50,13 +50,16 @@ public final class RuleConfigRegistry {
             "mapRestoreMaxPartitionsPerTick");
     private static final Set<String> CAPTURE = Set.of("captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier");
+    private static final Set<String> ECONOMY = Set.of("killCurrency");
     private static final Set<String> DOMINATION = Set.of("dominationStrategy", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds");
     private static final Set<String> BREAKTHROUGH = Set.of("breakthroughVariant", "breakthroughLegs",
             "breakthroughAttacker", "breakthroughDefender", "attackerTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
             "attackerCaptainCaptureWeight", "defenderCaptureWeight");
     private static final Set<String> CTF = Set.of("ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction",
-            "attackerTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds");
+            "attackerTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds",
+            "ctfTerritoryUnlockCurrency", "ctfForwardFlagReplantCurrency",
+            "ctfForwardFlagCaptureCurrency", "ctfHomeFlagCaptureCurrency");
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
             "mapBlockBreaking", "mapRestoreAdaptiveThrottling");
     private static final Set<String> STRING_RULES = Set.of("mapSnapshotMode", "dominationStrategy",
@@ -696,6 +699,11 @@ public final class RuleConfigRegistry {
                     case "defenderCaptureWeight" -> rules.defenderCaptureWeight(value.getAsDouble());
                     case "ctfFlagReturnSeconds" -> rules.ctfFlagReturnSeconds(value.getAsInt());
                     case "ctfHomeCaptureTimeSeconds" -> rules.ctfHomeCaptureTimeSeconds(value.getAsInt());
+                    case "killCurrency" -> rules.killCurrency(value.getAsInt());
+                    case "ctfTerritoryUnlockCurrency" -> rules.ctfTerritoryUnlockCurrency(value.getAsInt());
+                    case "ctfForwardFlagReplantCurrency" -> rules.ctfForwardFlagReplantCurrency(value.getAsInt());
+                    case "ctfForwardFlagCaptureCurrency" -> rules.ctfForwardFlagCaptureCurrency(value.getAsInt());
+                    case "ctfHomeFlagCaptureCurrency" -> rules.ctfHomeFlagCaptureCurrency(value.getAsInt());
                     case "ctfVariant" -> rules.ctfVariant(parseCtfVariant(value.getAsString()));
                     case "ctfAttacker" -> rules.ctfAttacker(parseTeam(value.getAsString()));
                     case "ctfDefender" -> rules.ctfDefender(parseTeam(value.getAsString()));
@@ -710,9 +718,9 @@ public final class RuleConfigRegistry {
 
     private Set<String> allowed(String modeId) {
         Set<String> result = new LinkedHashSet<>(COMMON);
-        if (GameModeRegistry.DOMINATION.equals(modeId)) { result.addAll(CAPTURE); result.addAll(DOMINATION); }
-        if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) { result.addAll(CAPTURE); result.addAll(BREAKTHROUGH); }
-        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) { result.addAll(CAPTURE); result.addAll(CTF); }
+        if (GameModeRegistry.DOMINATION.equals(modeId)) { result.addAll(CAPTURE); result.addAll(DOMINATION); result.addAll(ECONOMY); }
+        if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) { result.addAll(CAPTURE); result.addAll(BREAKTHROUGH); result.addAll(ECONOMY); }
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) { result.addAll(CAPTURE); result.addAll(CTF); result.addAll(ECONOMY); }
         return result;
     }
 
@@ -747,6 +755,7 @@ public final class RuleConfigRegistry {
             object.addProperty("captureUsePlayerDifference", r.captureUsePlayerDifference());
             object.addProperty("captureDifferenceCoefficient", r.captureDifferenceCoefficient());
             object.addProperty("captureMaxMultiplier", r.captureMaxMultiplier());
+            object.addProperty("killCurrency", r.killCurrency());
         }
         if (GameModeRegistry.DOMINATION.equals(modeId)) {
             object.addProperty("dominationStrategy", r.dominationStrategy().name().toLowerCase(Locale.ROOT));
@@ -775,6 +784,10 @@ public final class RuleConfigRegistry {
             object.addProperty("attackerTickets", r.attackerTickets());
             object.addProperty("ctfFlagReturnSeconds", r.ctfFlagReturnSeconds());
             object.addProperty("ctfHomeCaptureTimeSeconds", r.ctfHomeCaptureTimeSeconds());
+            object.addProperty("ctfTerritoryUnlockCurrency", r.ctfTerritoryUnlockCurrency());
+            object.addProperty("ctfForwardFlagReplantCurrency", r.ctfForwardFlagReplantCurrency());
+            object.addProperty("ctfForwardFlagCaptureCurrency", r.ctfForwardFlagCaptureCurrency());
+            object.addProperty("ctfHomeFlagCaptureCurrency", r.ctfHomeFlagCaptureCurrency());
         }
         return object;
     }

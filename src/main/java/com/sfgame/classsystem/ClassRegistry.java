@@ -118,6 +118,10 @@ public final class ClassRegistry {
     public Optional<ClassDefinition> getCaptainForTeam(String modeId, String mapId, TeamSide side, String id) {
         return getForTeam(modeId, mapId, side, id, true);
     }
+    public Optional<ClassDefinition> getEliteForTeam(String modeId, String mapId, TeamSide side, String id) {
+        if (id == null) return Optional.empty();
+        return Optional.ofNullable(scope(modeId, mapId, side).elites.get(id.toLowerCase(Locale.ROOT)));
+    }
     private Optional<ClassDefinition> getForTeam(String modeId, String mapId, TeamSide side, String id, boolean captain) {
         if (id == null) return Optional.empty();
         Scope scope = scope(modeId, mapId, side);
@@ -128,11 +132,17 @@ public final class ClassRegistry {
     public boolean containsCaptain(String modeId, String id) { return getCaptain(modeId, id).isPresent(); }
     public boolean containsForTeam(String modeId, String mapId, TeamSide side, String id) { return getForTeam(modeId, mapId, side, id).isPresent(); }
     public boolean containsCaptainForTeam(String modeId, String mapId, TeamSide side, String id) { return getCaptainForTeam(modeId, mapId, side, id).isPresent(); }
+    public boolean containsEliteForTeam(String modeId, String mapId, TeamSide side, String id) {
+        return getEliteForTeam(modeId, mapId, side, id).isPresent();
+    }
 
     public Collection<ClassDefinition> all(String modeId) { return allForTeam(modeId, null, TeamSide.NONE); }
     public Collection<ClassDefinition> captainClasses(String modeId) { return captainClassesForTeam(modeId, null, TeamSide.NONE); }
     public Collection<ClassDefinition> allForTeam(String modeId, String mapId, TeamSide side) { return scope(modeId, mapId, side).classes.values(); }
     public Collection<ClassDefinition> captainClassesForTeam(String modeId, String mapId, TeamSide side) { return scope(modeId, mapId, side).captains.values(); }
+    public Collection<ClassDefinition> eliteClassesForTeam(String modeId, String mapId, TeamSide side) {
+        return scope(modeId, mapId, side).elites.values();
+    }
     public Collection<ClassDefinition> allForMode(String modeId, String mapId) {
         LinkedHashMap<String, ClassDefinition> result = new LinkedHashMap<>();
         result.putAll(scope(modeId, mapId, TeamSide.NONE).classes);
@@ -143,6 +153,12 @@ public final class ClassRegistry {
         LinkedHashMap<String, ClassDefinition> result = new LinkedHashMap<>();
         result.putAll(scope(modeId, mapId, TeamSide.NONE).captains);
         for (TeamSide side : TeamSide.PLAYABLE) result.putAll(scope(modeId, mapId, side).captains);
+        return result.values();
+    }
+    public Collection<ClassDefinition> eliteClassesForMode(String modeId, String mapId) {
+        LinkedHashMap<String, ClassDefinition> result = new LinkedHashMap<>();
+        result.putAll(scope(modeId, mapId, TeamSide.NONE).elites);
+        for (TeamSide side : TeamSide.PLAYABLE) result.putAll(scope(modeId, mapId, side).elites);
         return result.values();
     }
     public Optional<ClassDefinition> defaultClass(String modeId) { return all(modeId).stream().findFirst(); }
@@ -196,6 +212,10 @@ public final class ClassRegistry {
         if (!Files.exists(target)) {
             JsonObject document = new JsonObject();
             document.addProperty("parent", new MapParentRef(modeId, "base").canonical());
+            document.add("classes", new JsonArray());
+            document.add("captainClasses", new JsonArray());
+            document.add("eliteClasses", new JsonArray());
+            document.add("teams", new JsonObject());
             writeMapProfile(target, document);
             return;
         }
@@ -220,7 +240,7 @@ public final class ClassRegistry {
         if (file == null) throw new JsonParseException("The root JSON object is missing");
         String parent = base ? null : MapParentRef.parse(file.parent(), modeId).canonical();
         Pool pool = readPool(modeId + "/" + mapId, "classes",
-                file.classes(), file.captainClasses(), errors, false);
+                file.classes(), file.captainClasses(), file.eliteClasses(), errors, false);
         Map<String, RawScope> teams = readScopes(modeId + "/" + mapId, "teams",
                 file.teams(), errors, true);
         return new MapOverride(parent, pool, teams);
@@ -234,16 +254,18 @@ public final class ClassRegistry {
                 source = JsonParser.parseReader(new InputStreamReader(input, StandardCharsets.UTF_8)).getAsJsonObject();
             }
         }
-        JsonArray classes = new JsonArray(), captains = new JsonArray();
+        JsonArray classes = new JsonArray(), captains = new JsonArray(), elites = new JsonArray();
         String parent = source.has("parent") ? source.get("parent").getAsString() : "base";
         if (!isDefaultParent(parent)) {
             JsonObject inherited = defaultMapProfile(parent);
             classes = inherited.getAsJsonArray("classes").deepCopy();
             captains = inherited.getAsJsonArray("captainClasses").deepCopy();
+            elites = inherited.getAsJsonArray("eliteClasses").deepCopy();
         }
         JsonObject object = new JsonObject();
         object.add("classes", mergeDefinitions(classes, source.get("classes")));
         object.add("captainClasses", mergeDefinitions(captains, source.get("captainClasses")));
+        object.add("eliteClasses", mergeDefinitions(elites, source.get("eliteClasses")));
         object.add("teams", source.has("teams") ? source.get("teams").deepCopy() : new JsonObject());
         return object;
     }
@@ -380,10 +402,13 @@ public final class ClassRegistry {
         }
         LinkedHashMap<String, ClassDefinition> classes = new LinkedHashMap<>(parent.classes);
         LinkedHashMap<String, ClassDefinition> captains = new LinkedHashMap<>(parent.captains);
+        LinkedHashMap<String, ClassDefinition> elites = new LinkedHashMap<>(parent.elites);
         classes.putAll(current.pool.classes);
         captains.putAll(current.pool.captains);
+        elites.putAll(current.pool.elites);
         stack.remove(key);
-        return new Scope(Collections.unmodifiableMap(classes), Collections.unmodifiableMap(captains));
+        return new Scope(Collections.unmodifiableMap(classes), Collections.unmodifiableMap(captains),
+                Collections.unmodifiableMap(elites));
     }
 
     private static boolean isDefaultParent(String parent) {
@@ -441,7 +466,8 @@ public final class ClassRegistry {
                     ClassFile file = readClassFile(path);
                     if (file == null) throw new JsonParseException("The root JSON object is missing");
                     String parent = normalizeParent(file.parent(), id, "profile", errors);
-                    Pool pool = readPool(id, "classes", file.classes(), file.captainClasses(), errors, false);
+                    Pool pool = readPool(id, "classes", file.classes(), file.captainClasses(),
+                            file.eliteClasses(), errors, false);
                     Map<String, RawScope> teams = readScopes(id, "teams", file.teams(), errors, true);
                     Map<String, RawScope> maps = readScopes(id, "maps", file.maps(), errors, false);
                     if (pool.classes.isEmpty() && parent == null && teams.isEmpty() && maps.isEmpty()) {
@@ -470,7 +496,8 @@ public final class ClassRegistry {
             ClassFile file = GSON.fromJson(object, ClassFile.class);
             if (file == null) throw new JsonParseException(id + ": the root JSON object is missing");
             String parent = normalizeParent(file.parent(), id, "profile", errors);
-            Pool pool = readPool(id, "classes", file.classes(), file.captainClasses(), errors, false);
+            Pool pool = readPool(id, "classes", file.classes(), file.captainClasses(),
+                    file.eliteClasses(), errors, false);
             Map<String, RawScope> teams = readScopes(id, "teams", file.teams(), errors, true);
             Map<String, RawScope> maps = readScopes(id, "maps", file.maps(), errors, false);
             result.put(id, new RawProfile(parent, pool, teams, maps));
@@ -487,7 +514,8 @@ public final class ClassRegistry {
             if (!validProfileId(id)) { errors.add(profile + "/" + label + ": invalid id " + id); continue; }
             ClassScopeFile file = entry.getValue() == null ? new ClassScopeFile() : entry.getValue();
             String parent = normalizeParent(file.parent(), id, label, errors);
-            Pool pool = readPool(profile + "/" + label + "." + id, "classes", file.classes(), file.captainClasses(), errors, false);
+            Pool pool = readPool(profile + "/" + label + "." + id, "classes", file.classes(),
+                    file.captainClasses(), file.eliteClasses(), errors, false);
             Map<String, RawScope> children = teamScope ? Map.of() : readScopes(profile + "/" + label + "." + id,
                     "teams", file.teams(), errors, true);
             result.put(id, new RawScope(id, parent, pool, children));
@@ -506,9 +534,11 @@ public final class ClassRegistry {
     }
 
     private Pool readPool(String profile, String label, List<ClassDefinition> definitions,
-                          List<ClassDefinition> captains, List<String> errors, boolean requireNonEmpty) {
+                          List<ClassDefinition> captains, List<ClassDefinition> elites,
+                          List<String> errors, boolean requireNonEmpty) {
         return new Pool(validateDefinitions(profile, label, definitions, errors, requireNonEmpty),
-                validateDefinitions(profile, "captainClasses", captains, errors, false));
+                validateDefinitions(profile, "captainClasses", captains, errors, false),
+                validateDefinitions(profile, "eliteClasses", elites, errors, false));
     }
 
     private Profile resolve(String id, Map<String, RawProfile> raw, Map<String, Profile> resolved,
@@ -522,7 +552,7 @@ public final class ClassRegistry {
         Map<String, RawScope> maps = new LinkedHashMap<>();
         if (current.parent != null) {
             Profile inherited = resolve(current.parent, raw, resolved, stack, errors);
-            parent = new Pool(inherited.root.classes, inherited.root.captains);
+            parent = new Pool(inherited.root.classes, inherited.root.captains, inherited.root.elites);
             teams.putAll(inherited.teams);
             maps.putAll(inherited.maps);
         }
@@ -530,7 +560,8 @@ public final class ClassRegistry {
         teams.putAll(current.teams);
         maps.putAll(current.maps);
         stack.remove(id);
-        Profile profile = new Profile(new Scope(root.classes, root.captains), Collections.unmodifiableMap(teams), Collections.unmodifiableMap(maps));
+        Profile profile = new Profile(new Scope(root.classes, root.captains, root.elites),
+                Collections.unmodifiableMap(teams), Collections.unmodifiableMap(maps));
         resolved.put(id, profile);
         return profile;
     }
@@ -538,12 +569,16 @@ public final class ClassRegistry {
     private static Pool merge(Pool parent, Pool child) {
         LinkedHashMap<String, ClassDefinition> classes = new LinkedHashMap<>(parent.classes);
         LinkedHashMap<String, ClassDefinition> captains = new LinkedHashMap<>(parent.captains);
-        classes.putAll(child.classes); captains.putAll(child.captains);
-        return new Pool(Collections.unmodifiableMap(classes), Collections.unmodifiableMap(captains));
+        LinkedHashMap<String, ClassDefinition> elites = new LinkedHashMap<>(parent.elites);
+        classes.putAll(child.classes);
+        captains.putAll(child.captains);
+        elites.putAll(child.elites);
+        return new Pool(Collections.unmodifiableMap(classes), Collections.unmodifiableMap(captains),
+                Collections.unmodifiableMap(elites));
     }
     private static Scope merge(Scope parent, Pool child) {
-        Pool merged = merge(new Pool(parent.classes, parent.captains), child);
-        return new Scope(merged.classes, merged.captains);
+        Pool merged = merge(new Pool(parent.classes, parent.captains, parent.elites), child);
+        return new Scope(merged.classes, merged.captains, merged.elites);
     }
 
     private Map<String, ClassDefinition> validateDefinitions(String profile, String pool,
@@ -578,6 +613,7 @@ public final class ClassRegistry {
             JsonObject object = bundledProfile(mode.id());
             if (object == null) object = JsonParser.parseString(legacy).getAsJsonObject();
             if (!object.has("captainClasses")) object.add("captainClasses", new JsonArray());
+            if (!object.has("eliteClasses")) object.add("eliteClasses", new JsonArray());
             if (!object.has("teams")) object.add("teams", new JsonObject());
             if (!object.has("maps")) object.add("maps", new JsonObject());
             Files.writeString(target, GSON.toJson(object), StandardCharsets.UTF_8);
@@ -594,6 +630,7 @@ public final class ClassRegistry {
         if (defaults == null) throw new IOException("Bundled breakthrough class profile is missing");
         mergeDefaultDefinitions(current, defaults, "classes");
         mergeDefaultDefinitions(current, defaults, "captainClasses");
+        mergeDefaultDefinitions(current, defaults, "eliteClasses");
         renameDefaultClass(current, "smg_assault", "冲锋枪突击手", "冲锋手");
         renameDefaultClass(current, "captain_tank", "坦克（队长加强版）", "坦克");
         current.addProperty("configVersion", BREAKTHROUGH_CONFIG_VERSION);
@@ -631,7 +668,7 @@ public final class ClassRegistry {
         if (empty) target.add(key, fallback.get(key).deepCopy());
     }
     private static void renameDefaultClass(JsonObject profile, String id, String oldName, String newName) {
-        for (String pool : List.of("classes", "captainClasses")) {
+        for (String pool : List.of("classes", "captainClasses", "eliteClasses")) {
             if (!profile.has(pool) || !profile.get(pool).isJsonArray()) continue;
             for (JsonElement element : profile.getAsJsonArray(pool)) {
                 if (!element.isJsonObject()) continue;
@@ -647,13 +684,15 @@ public final class ClassRegistry {
     private record MapOverride(String parent, Pool pool, Map<String, RawScope> teams) { }
     private static String message(Exception exception) { return exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage(); }
 
-    private record Pool(Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains) {
-        private static final Pool EMPTY = new Pool(Map.of(), Map.of());
+    private record Pool(Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains,
+                        Map<String, ClassDefinition> elites) {
+        private static final Pool EMPTY = new Pool(Map.of(), Map.of(), Map.of());
     }
     private record RawScope(String name, String parent, Pool pool, Map<String, RawScope> teams) { }
     private record RawProfile(String parent, Pool pool, Map<String, RawScope> teams, Map<String, RawScope> maps) { }
-    private record Scope(Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains) {
-        private static final Scope EMPTY = new Scope(Map.of(), Map.of());
+    private record Scope(Map<String, ClassDefinition> classes, Map<String, ClassDefinition> captains,
+                         Map<String, ClassDefinition> elites) {
+        private static final Scope EMPTY = new Scope(Map.of(), Map.of(), Map.of());
     }
     private record Profile(Scope root, Map<String, RawScope> teams, Map<String, RawScope> maps) {
         private static final Profile EMPTY = new Profile(Scope.EMPTY, Map.of(), Map.of());

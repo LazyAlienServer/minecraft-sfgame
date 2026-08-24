@@ -9,6 +9,7 @@ final class ClassFile {
     private String parent;
     private List<ClassDefinition> classes = new ArrayList<>();
     private List<ClassDefinition> captainClasses = new ArrayList<>();
+    private List<ClassDefinition> eliteClasses = new ArrayList<>();
     private Map<String, ClassScopeFile> teams = new LinkedHashMap<>();
     private Map<String, ClassScopeFile> maps = new LinkedHashMap<>();
 
@@ -21,6 +22,10 @@ final class ClassFile {
     List<ClassDefinition> captainClasses() {
         return captainClasses == null ? List.of() : captainClasses;
     }
+    List<ClassDefinition> eliteClasses() {
+        return eliteClasses == null ? List.of() : eliteClasses;
+    }
+
 
     Map<String, ClassScopeFile> teams() {
         return teams == null ? Map.of() : teams;
@@ -36,6 +41,7 @@ final class ClassScopeFile {
     private String parent;
     private List<ClassDefinition> classes = new ArrayList<>();
     private List<ClassDefinition> captainClasses = new ArrayList<>();
+    private List<ClassDefinition> eliteClasses = new ArrayList<>();
     private Map<String, ClassScopeFile> teams = new LinkedHashMap<>();
 
     String parent() { return parent == null || parent.isBlank() ? null : parent; }
@@ -47,6 +53,10 @@ final class ClassScopeFile {
     List<ClassDefinition> captainClasses() {
         return captainClasses == null ? List.of() : captainClasses;
     }
+    List<ClassDefinition> eliteClasses() {
+        return eliteClasses == null ? List.of() : eliteClasses;
+    }
+
 
     Map<String, ClassScopeFile> teams() {
         return teams == null ? Map.of() : teams;

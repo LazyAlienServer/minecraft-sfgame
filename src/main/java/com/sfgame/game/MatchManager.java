@@ -56,7 +56,8 @@ public final class MatchManager {
     private final DominationRuntime dominationRuntime = new DominationRuntime();
     private final BreakthroughRuntime breakthroughRuntime = new BreakthroughRuntime();
     private final CaptureTheFlagRuntime captureTheFlagRuntime = new CaptureTheFlagRuntime();
-    private final CtfShopRegistry ctfShopRegistry = new CtfShopRegistry();
+    private final ShopRegistry shopRegistry = new ShopRegistry();
+    private final SupplyService supplyService = new SupplyService();
     private final MapConfigRegistry mapConfigRegistry = new MapConfigRegistry();
     private final RuleConfigRegistry ruleConfigRegistry = new RuleConfigRegistry();
     private final Map<String, MatchModeRuntime> runtimes = Map.of(
@@ -93,7 +94,8 @@ public final class MatchManager {
     public BreakthroughRuntime breakthrough() { return breakthroughRuntime; }
     public CaptureTheFlagRuntime captureTheFlag() { return captureTheFlagRuntime; }
     public MapConfigRegistry mapConfigs() { return mapConfigRegistry; }
-    public CtfShopRegistry ctfShop() { return ctfShopRegistry; }
+    public ShopRegistry shop() { return shopRegistry; }
+    public SupplyService supplies() { return supplyService; }
     public RuleConfigRegistry ruleConfigs() { return ruleConfigRegistry; }
     public MatchRules rules() {
         SFGameSavedData data = data();
@@ -128,17 +130,24 @@ public final class MatchManager {
         syncAll();
         return true;
     }
-    public boolean setCtfCurrency(ServerPlayer player, int value) {
-        if (phase != MatchPhase.RUNNING || server == null
-                || !GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode())
-                || !setCurrencyValue(state(player), value)) return false;
+    public boolean setCurrency(ServerPlayer player, int value) {
+        if (phase != MatchPhase.RUNNING || server == null || !supportsEconomy(data().selectedMode())
+                || !setCurrencyValue(state(player), data().selectedMode(), value)) return false;
         sync(player);
         return true;
     }
-    boolean setCurrencyValue(PlayerMatchState state, int value) {
-        if (state == null || value < 0 || value > MAX_LIVE_SCORE) return false;
-        state.currency(GameModeRegistry.CAPTURE_THE_FLAG, value);
+    boolean setCurrencyValue(PlayerMatchState state, String modeId, int value) {
+        if (state == null || !supportsEconomy(modeId) || value < 0 || value > MAX_LIVE_SCORE) return false;
+        state.currency(modeId, value);
         return true;
+    }
+    public static boolean supportsEconomy(String modeId) {
+        return GameModeRegistry.BREAKTHROUGH.equals(modeId)
+                || GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)
+                || GameModeRegistry.DOMINATION.equals(modeId);
+    }
+    static int killCurrencyFor(String modeId, MatchRules rules) {
+        return rules != null && supportsEconomy(modeId) ? rules.killCurrency() : 0;
     }
     public boolean setBreakthroughTickets(int value) {
         if (!canEditBreakthroughState() || !breakthroughRuntime.setTicketsValue(value)) return false;
@@ -268,22 +277,70 @@ public final class MatchManager {
         return captureTheFlagRuntime.carrierRestriction();
     }
 
-    public boolean ctfPurchase(ServerPlayer player, String itemId) {
-        if (!GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode()) || phase != MatchPhase.RUNNING
+    public boolean purchase(ServerPlayer player, String itemId) {
+        String modeId = data().selectedMode();
+        if (!supportsEconomy(modeId) || phase != MatchPhase.RUNNING
                 || !state(player).participating() || state(player).respawning()) return false;
-        CtfShopRegistry.ShopItem item = ctfShopRegistry.item(itemId);
+        ShopRegistry.ShopItem item = shopRegistry.item(modeId, itemId);
         if (item == null) return false;
         ItemStack stack = item.stack();
         if (stack.isEmpty()) return false;
         PlayerMatchState playerState = state(player);
-        int balance = playerState.currency(GameModeRegistry.CAPTURE_THE_FLAG);
+        int balance = playerState.currency(modeId);
         if (balance < item.price()) return false;
-        if (player.getInventory().getFreeSlot() < 0 && player.getInventory().getSlotWithRemainingSpace(stack) < 0) return false;
+        if (player.getInventory().getFreeSlot() < 0
+                && player.getInventory().getSlotWithRemainingSpace(stack) < 0) return false;
         if (!player.getInventory().add(stack)) return false;
-        playerState.currency(GameModeRegistry.CAPTURE_THE_FLAG, balance - item.price());
-        player.sendSystemMessage(Component.translatable("sfgame.ctf.shop_bought", item.name()).withStyle(ChatFormatting.GREEN), true);
+        playerState.currency(modeId, balance - item.price());
+        player.sendSystemMessage(Component.translatable("sfgame.shop.bought", item.name())
+                .withStyle(ChatFormatting.GREEN), true);
         sync(player);
         return true;
+    }
+    public boolean pushSupplyPreset(TeamSide side, String offerId, int quantity) {
+        if (!canMutateSupply(side)) return false;
+        com.sfgame.data.SupplyOfferDefinition offer = data().activeMap() == null ? null
+                : data().activeMap().supply().offer(offerId).orElse(null);
+        if (offer == null) return false;
+        if (com.sfgame.data.SupplyOfferDefinition.ELITE_CLASS.equals(offer.type())
+                && !classRegistry.containsEliteForTeam(data().selectedMode(), data().selectedMap(),
+                side, offer.classId())) return false;
+        if (!supplyService.publishPreset(side, offerId, quantity)) return false;
+        syncAll();
+        return true;
+    }
+
+    public boolean pushSupplyItem(TeamSide side, String offerId, int count, int quantity, String item) {
+        if (!canMutateSupply(side) || !supplyService.publishItem(side, offerId, item, count, "", quantity)) return false;
+        syncAll();
+        return true;
+    }
+
+    public boolean pushSupplyElite(TeamSide side, String offerId, String classId, int quantity) {
+        if (!canMutateSupply(side)) return false;
+        ClassDefinition definition = classRegistry.getEliteForTeam(
+                data().selectedMode(), data().selectedMap(), side, classId).orElse(null);
+        if (definition == null || !supplyService.publishElite(side, offerId, definition, quantity)) return false;
+        syncAll();
+        return true;
+    }
+
+    public boolean removeSupply(TeamSide side, String offerId) {
+        if (!canMutateSupply(side) || !supplyService.remove(side, offerId)) return false;
+        syncAll();
+        return true;
+    }
+
+    public int clearSupplies(TeamSide side) {
+        if (!canMutateSupply(side)) return -1;
+        int removed = supplyService.clear(side);
+        syncAll();
+        return removed;
+    }
+
+    private boolean canMutateSupply(TeamSide side) {
+        return phase == MatchPhase.RUNNING && server != null && supportsEconomy(data().selectedMode())
+                && side != null && side != TeamSide.NONE && data().enabledTeams().contains(side);
     }
 
     public boolean canChangeArena() {
@@ -361,14 +418,14 @@ public final class MatchManager {
         mapConfigRegistry.useConfigRoot(configRoot);
         ruleConfigRegistry.useConfigRoot(configRoot);
         classRegistry.useConfigRoot(configRoot);
-        ctfShopRegistry.useConfigRoot(configRoot);
+        shopRegistry.useConfigRoot(configRoot);
         teams.ensureDefaultTeams(server, data);
         List<String> mapErrors = mapConfigRegistry.reload(data);
         if (!mapErrors.isEmpty()) SFGame.LOGGER.warn("SFGame map configuration errors: {}", mapErrors);
         List<String> errors = classRegistry.reload(data);
         if (!errors.isEmpty()) SFGame.LOGGER.warn("SFGame class configuration errors: {}", errors);
-        List<String> shopErrors = ctfShopRegistry.reload();
-        if (!shopErrors.isEmpty()) SFGame.LOGGER.warn("SFGame CTF shop configuration errors: {}", shopErrors);
+        List<String> shopErrors = shopRegistry.reload();
+        if (!shopErrors.isEmpty()) SFGame.LOGGER.warn("SFGame shop configuration errors: {}", shopErrors);
         List<String> ruleErrors = ruleConfigRegistry.reload(data);
         if (!ruleErrors.isEmpty()) SFGame.LOGGER.warn("SFGame rule configuration errors: {}", ruleErrors);
         phase = data.isArenaConfigured() && teams.bindingsValid(server, data) ? MatchPhase.LOBBY : MatchPhase.UNCONFIGURED;
@@ -378,6 +435,7 @@ public final class MatchManager {
     public void serverStopped() {
         clearMapRestoreState();
         activeRuntime.stop();
+        supplyService.clear();
         players.clear();
         server = null;
         phase = MatchPhase.UNCONFIGURED;
@@ -421,6 +479,16 @@ public final class MatchManager {
         List<TeamSide> enabledTeams = data.enabledTeams();
         errors.addAll(loadoutService.validate(classRegistry, data.selectedMode(), data.selectedMap(), enabledTeams, captainMode));
         if (data.activeMap() != null) errors.addAll(modeRuntime().validate(server, data.activeMap(), rules()));
+        if (data.activeMap() != null && supportsEconomy(data.selectedMode())) {
+            TeamSide supplyAttacker = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())
+                    ? rules().breakthroughAttacker()
+                    : GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode()) ? rules().ctfAttacker() : TeamSide.NONE;
+            TeamSide supplyDefender = GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())
+                    ? rules().breakthroughDefender()
+                    : GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode()) ? rules().ctfDefender() : TeamSide.NONE;
+            errors.addAll(supplyService.validate(data.activeMap(), data.selectedMode(), supplyAttacker,
+                    supplyDefender, classRegistry, data.selectedMap()));
+        }
         if (rules().mapBlockBreaking() && data.activeMap() != null) {
             if (data.activeMap().build().region() == null) errors.add("Map build box must be set while mapBlockBreaking is enabled");
             else if (!MapBuildSnapshotService.exists(server, data.selectedMode(), data.activeMap(),
@@ -519,6 +587,7 @@ public final class MatchManager {
         if (server == null) return;
         clearMapRestoreState();
         activeRuntime.stop();
+        supplyService.clear();
         if (showResult) {
             phase = MatchPhase.RESULT;
             phaseTicks = rules().resultSeconds() * 20;
@@ -637,6 +706,7 @@ public final class MatchManager {
         Optional<ClassDefinition> definition = classRegistry.getForTeam(modeId, data().selectedMap(), side, classId);
         if (definition.isEmpty()) return false;
         state.pendingClass(modeId, side, definition.get().id());
+        state.grantedEliteClass(modeId, side, null);
         if (phase == MatchPhase.LOBBY || phase == MatchPhase.UNCONFIGURED) state.currentClass(modeId, side, definition.get().id());
         if (state.pendingImmediateJoin() && phase == MatchPhase.RUNNING) activateImmediateJoin(player, state);
         sync(player);
@@ -716,6 +786,8 @@ public final class MatchManager {
             TeamSide attackerSide = teams.sideOf(serverAttacker, data());
             if (attackerState.participating() && attackerSide != TeamSide.NONE && attackerSide != victimSide) {
                 attackerState.addKill();
+                int reward = killCurrencyFor(data().selectedMode(), rules());
+                if (reward > 0) addCurrency(serverAttacker, reward);
                 activeRuntime.onKill(serverAttacker, attackerSide, this);
             }
         }
@@ -726,6 +798,43 @@ public final class MatchManager {
         victim.setHealth(victim.getMaxHealth());
         victim.setGameMode(GameType.SPECTATOR);
         syncAll();
+    }
+
+    public boolean claimSupply(ServerPlayer player, String offerId) {
+        if (phase != MatchPhase.RUNNING || !supportsEconomy(data().selectedMode())) return false;
+        PlayerMatchState state = state(player);
+        if (!state.participating() || state.respawning() || player.isSpectator() || player.isDeadOrDying()) return false;
+        TeamSide side = teams.sideOf(player, data());
+        if (side == TeamSide.NONE) return false;
+        SupplyService.PublishedSupply supply = supplyService.item(side, offerId).orElse(null);
+        if (supply == null || supply.quantity() <= 0) return false;
+        Component granted;
+        if (com.sfgame.data.SupplyOfferDefinition.ITEM.equals(supply.type())) {
+            ItemStack stack = supply.stack();
+            if (stack.isEmpty()) return false;
+            if (player.getInventory().getFreeSlot() < 0
+                    && player.getInventory().getSlotWithRemainingSpace(stack) < 0) return false;
+            if (!player.getInventory().add(stack)) return false;
+            granted = Component.translatable("sfgame.supply.item_granted", stack.getHoverName());
+        } else if (com.sfgame.data.SupplyOfferDefinition.ELITE_CLASS.equals(supply.type())) {
+            if (activeRuntime.isCaptain(player.getUUID())) return false;
+            ClassDefinition definition = classRegistry.getEliteForTeam(
+                    data().selectedMode(), data().selectedMap(), side, supply.classId()).orElse(null);
+            if (definition == null || !loadoutService.apply(player, definition)) return false;
+            player.setHealth(player.getMaxHealth());
+            player.getFoodData().setFoodLevel(20);
+            player.getFoodData().setSaturation(20.0F);
+            state.grantedEliteClass(data().selectedMode(), side, definition.id());
+            state.currentClass(data().selectedMode(), side, definition.id());
+            state.pendingClass(data().selectedMode(), side, definition.id());
+            granted = Component.translatable("sfgame.supply.elite_granted", definition.displayName());
+        } else {
+            return false;
+        }
+        if (!supplyService.consume(side, offerId)) return false;
+        player.sendSystemMessage(granted.copy().withStyle(ChatFormatting.GREEN), true);
+        syncAll();
+        return true;
     }
 
     public boolean redeploy(ServerPlayer player) {
@@ -872,6 +981,19 @@ public final class MatchManager {
         }
         return errors;
     }
+    public List<String> reloadMapConfigurations() {
+        if (isActiveMatchPhase()) {
+            return List.of("Map and supply files can only be reloaded in the lobby");
+        }
+        List<String> errors = mapConfigRegistry.reload(data());
+        if (errors.isEmpty()) {
+            arenaSelectionChanged();
+            refreshCommandTree();
+            syncAll();
+        }
+        return errors;
+    }
+
 
     private void ensureRuleChangeAllowed(String key) {
         AdminRuleCatalog.find(data().selectedMode(), key).ifPresent(definition -> {
@@ -920,26 +1042,48 @@ public final class MatchManager {
                 ? captureTheFlagRuntime.flagViews(this).stream()
                 .map(flag -> new MatchSnapshot.CtfFlagView(flag.id(), flag.owner(), flag.state(), flag.carrier(), flag.unlocked(), flag.depotTeam()))
                 .toList() : List.of();
-        // Currency and shop data only belong to an active CTF round.  Do not
-        // expose them while the player is in the lobby, queue, countdown or
-        // result screen; those states do not use the economy system.
-        boolean ctfEconomy = ctf && phase == MatchPhase.RUNNING && !ctfShopRegistry.items().isEmpty();
-        List<MatchSnapshot.ShopView> ctfShopItems = ctfEconomy ? ctfShopRegistry.items().stream()
-                .map(item -> new MatchSnapshot.ShopView(item.id(), item.name(), item.icon(), item.price())).toList() : List.of();
+        boolean economy = supportsEconomy(data().selectedMode()) && phase == MatchPhase.RUNNING;
+        List<MatchSnapshot.ShopView> shopItems = economy ? shopRegistry.items(data().selectedMode()).stream()
+                .map(item -> new MatchSnapshot.ShopView(item.id(), item.name(), item.icon(), item.price()))
+                .toList() : List.of();
+        List<MatchSnapshot.SupplyView> supplyItems = new ArrayList<>();
+        if (economy && side != TeamSide.NONE) {
+            for (SupplyService.PublishedSupply supply : supplyService.items(side)) {
+                if (com.sfgame.data.SupplyOfferDefinition.ITEM.equals(supply.type())) {
+                    ItemStack stack = supply.stack();
+                    if (!stack.isEmpty()) {
+                        supplyItems.add(new MatchSnapshot.SupplyView(supply.id(), supply.type(),
+                                stack.getHoverName().getString(), supply.item(), supply.quantity()));
+                    }
+                } else {
+                    classRegistry.getEliteForTeam(data().selectedMode(), data().selectedMap(), side, supply.classId())
+                            .ifPresent(definition -> supplyItems.add(new MatchSnapshot.SupplyView(
+                                    supply.id(), supply.type(), definition.displayName(),
+                                    definition.icon(), supply.quantity())));
+                }
+            }
+        }
         return new MatchSnapshot(data().selectedMode(), phase, side, redScore, blueScore, yellowScore, greenScore,
                 rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
-                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN), state.currentClass(data().selectedMode(), classSide), state.pendingClass(data().selectedMode(), classSide),
+                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN),
+                state.currentClass(data().selectedMode(), classSide),
+                state.pendingClass(data().selectedMode(), classSide),
                 state.participating(), state.queued(), classViews,
                 breakthrough ? rules.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT) : "",
                 attackSide, defenseSide, breakthrough ? breakthroughRuntime.tickets() : 0,
-                breakthrough ? breakthroughRuntime.leg() : 0, breakthrough ? breakthroughRuntime.sectorNumber() : 0,
+                breakthrough ? breakthroughRuntime.leg() : 0,
+                breakthrough ? breakthroughRuntime.sectorNumber() : 0,
                 breakthrough ? breakthroughRuntime.sectorCount(data().activeMap()) : 0,
-                breakthrough ? breakthroughRuntime.subState() : "", captainId == null ? null : captainId.toString(),
+                breakthrough ? breakthroughRuntime.subState() : "",
+                captainId == null ? null : captainId.toString(),
                 captainPlayer == null ? null : captainPlayer.getGameProfile().getName(),
-                breakthrough ? breakthroughRuntime.electionSeconds() : 0, breakthroughRuntime.isCaptain(viewer.getUUID()),
-                state.currentCaptainClass(data().selectedMode(), classSide), state.pendingCaptainClass(data().selectedMode(), classSide),
+                breakthrough ? breakthroughRuntime.electionSeconds() : 0,
+                breakthroughRuntime.isCaptain(viewer.getUUID()),
+                state.currentCaptainClass(data().selectedMode(), classSide),
+                state.pendingCaptainClass(data().selectedMode(), classSide),
                 captainClassViews, candidates, state.awaitingRespawnSelection(), respawnOptions,
-                ctfVariant, ctfRestriction, ctfEconomy ? state.currency(data().selectedMode()) : 0, ctfFlags, ctfShopItems);
+                ctfVariant, ctfRestriction, economy ? state.currency(data().selectedMode()) : 0,
+                ctfFlags, shopItems, List.copyOf(supplyItems));
     }
 
     public PlayerMatchState state(ServerPlayer player) {
@@ -958,9 +1102,18 @@ public final class MatchManager {
                 .filter(player -> state(player).participating() || state(player).queued()).toList();
     }
 
+    void supplyEvent(String event, TeamSide eventSide, int stage, String sectorId, String pointId) {
+        if (GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())) {
+            supplyService.updateRoles(breakthroughRuntime.attacker(), breakthroughRuntime.defender());
+        }
+        if (supplyService.fireEvent(event, eventSide, stage, sectorId, pointId)) syncAll();
+    }
+
     void addCurrency(ServerPlayer player, int amount) {
-        if (player == null || amount <= 0) return;
-        state(player).addCurrency(data().selectedMode(), amount);
+        if (player == null || amount <= 0 || !supportsEconomy(data().selectedMode())) return;
+        PlayerMatchState state = state(player);
+        String modeId = data().selectedMode();
+        state.currency(modeId, Math.min(MAX_LIVE_SCORE, state.currency(modeId) + amount));
     }
 
     void addCurrencyToTeamPlayers(TeamSide side, int amount) {
@@ -1106,6 +1259,13 @@ public final class MatchManager {
         // after the required spectator countdown.
         matchParticipantGameType = participantGameTypeAtMatchStart(rules().mapBlockBreaking());
         activeRuntime.start(server, this, data().activeMap(), rules());
+        TeamSide supplyAttacker = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
+                ? breakthroughRuntime.attacker()
+                : GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode()) ? rules().ctfAttacker() : TeamSide.NONE;
+        TeamSide supplyDefender = GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())
+                ? breakthroughRuntime.defender()
+                : GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode()) ? rules().ctfDefender() : TeamSide.NONE;
+        supplyService.beginRunning(data().activeMap(), data().selectedMode(), supplyAttacker, supplyDefender);
         forParticipants(player -> deploy(player, state(player), false));
         forParticipants(player -> {
             sendTitle(player, Component.translatable("sfgame.match.start").withStyle(ChatFormatting.GREEN),
@@ -1118,6 +1278,7 @@ public final class MatchManager {
 
     private void tickRunning() {
         elapsedTicks++;
+        if (supplyService.tick(elapsedTicks)) syncAll();
         MatchRules rules = rules();
         ModeTickResult modeResult = activeRuntime.tick(server, this, data().activeMap(), rules);
         if (modeResult.finished() || activeRuntime.usesCommonTimeLimit() && commonTimeExpired(rules)) {
@@ -1173,6 +1334,7 @@ public final class MatchManager {
             if (state.cachedSide() == actual) continue;
             TeamSide old = state.cachedSide();
             state.cachedSide(actual);
+            state.clearGrantedEliteClasses();
             if (phase == MatchPhase.RUNNING || phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN) {
                 activeRuntime.onPlayerTeamChanged(player, old, actual, this);
             }
@@ -1210,10 +1372,8 @@ public final class MatchManager {
                 state.currentClass(modeId, side, state.pendingClass(modeId, side));
             }
         }
-        String classId = captain ? selectedCaptainClass(state, side) : selectedClass(state, side);
-        Optional<ClassDefinition> definition = captain
-                ? classRegistry.getCaptainForTeam(modeId, data().selectedMap(), side, classId)
-                : classRegistry.getForTeam(modeId, data().selectedMap(), side, classId);
+        Optional<ClassDefinition> definition = resolveDeploymentDefinition(
+                modeId, data().selectedMap(), side, state, captain);
         ArenaPosition spawn = spawnOverride != null ? spawnOverride
                 : side == TeamSide.NONE ? null : activeRuntime.spawnFor(side, data().activeMap());
         if (definition.isEmpty() || spawn == null) {
@@ -1276,7 +1436,8 @@ public final class MatchManager {
             state.awaitingRespawnSelection(false);
             state.protectionTicks(0);
             state.pendingImmediateJoin(false);
-            state.currency(GameModeRegistry.CAPTURE_THE_FLAG, 0);
+            state.clearGrantedEliteClasses();
+            state.currency(data().selectedMode(), 0);
             if (state.queued()) {
                 if (teams.sideOf(player, data()) == TeamSide.NONE) teams.assign(player, teams.balancedSide(server, data()), data());
                 state.queued(false);
@@ -1330,6 +1491,24 @@ public final class MatchManager {
         yellowScore = 0;
         greenScore = 0;
         result = TeamSide.NONE;
+    }
+
+    Optional<ClassDefinition> resolveDeploymentDefinition(String modeId, String mapId, TeamSide side,
+                                                          PlayerMatchState state, boolean captain) {
+        if (captain) {
+            String pending = state.pendingCaptainClass(modeId, side);
+            Optional<ClassDefinition> definition = classRegistry.getCaptainForTeam(modeId, mapId, side, pending);
+            return definition.isPresent() ? definition
+                    : classRegistry.getCaptainForTeam(modeId, mapId, side,
+                    state.currentCaptainClass(modeId, side));
+        }
+        String eliteId = state.grantedEliteClass(modeId, side);
+        Optional<ClassDefinition> elite = classRegistry.getEliteForTeam(modeId, mapId, side, eliteId);
+        if (elite.isPresent()) return elite;
+        String pending = state.pendingClass(modeId, side);
+        Optional<ClassDefinition> normal = classRegistry.getForTeam(modeId, mapId, side, pending);
+        return normal.isPresent() ? normal
+                : classRegistry.getForTeam(modeId, mapId, side, state.currentClass(modeId, side));
     }
 
     private TeamSide classSide(ServerPlayer player, PlayerMatchState state) {

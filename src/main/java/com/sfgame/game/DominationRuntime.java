@@ -127,6 +127,8 @@ public final class DominationRuntime implements MatchModeRuntime {
         if (change == CapturePointState.Change.CAPTURED) {
             announce(server, manager, Component.translatable("sfgame.point.captured", point.id(),
                     Component.translatable("sfgame.team." + state.owner().id())));
+            manager.supplyEvent(com.sfgame.data.SupplyTriggerDefinition.DOMINATION_CAPTURE,
+                    state.owner(), 0, "", point.id());
         } else if (change == CapturePointState.Change.NEUTRALIZED) {
             announce(server, manager, Component.translatable("sfgame.point.neutralized", point.id()));
         }

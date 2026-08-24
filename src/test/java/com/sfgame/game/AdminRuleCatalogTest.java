@@ -18,6 +18,15 @@ class AdminRuleCatalogTest {
         assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "dominationStrategy").isPresent());
         assertTrue(AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH, "breakthroughVariant").isPresent());
         assertTrue(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, "ctfCarrierRestriction").isPresent());
+        assertTrue(AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH, "killCurrency").orElseThrow().hotReload());
+        assertTrue(AdminRuleCatalog.find(GameModeRegistry.DOMINATION, "killCurrency").orElseThrow().hotReload());
+        assertTrue(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, "killCurrency").orElseThrow().hotReload());
+        assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "killCurrency").isPresent());
+        for (String key : java.util.List.of("ctfTerritoryUnlockCurrency", "ctfForwardFlagReplantCurrency",
+                "ctfForwardFlagCaptureCurrency", "ctfHomeFlagCaptureCurrency")) {
+            assertTrue(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, key).orElseThrow().hotReload());
+            assertFalse(AdminRuleCatalog.find(GameModeRegistry.DOMINATION, key).isPresent());
+        }
     }
 
     @Test
