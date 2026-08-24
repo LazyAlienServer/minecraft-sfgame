@@ -2,6 +2,7 @@ package com.sfgame.command;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
+import com.mojang.brigadier.suggestion.Suggestions;
 import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.BoxCaptureRegion;
 import com.sfgame.game.GameModeRegistry;
@@ -72,6 +73,18 @@ final class SFGameCommandsTest {
         assertParses(dispatcher, "supply push elite red elite_drop elite_assault 1");
         assertParses(dispatcher, "supply remove red emergency_apples");
         assertParses(dispatcher, "supply clear red");
+    }
+    @Test
+    void eliteSupplyTeamArgumentSuggestsEveryPlayableSide() {
+        CommandDispatcher<CommandSourceStack> dispatcher = new CommandDispatcher<>();
+        dispatcher.register(SFGameCommands.supplyCommands());
+
+        Suggestions suggestions = dispatcher.getCompletionSuggestions(
+                dispatcher.parse("supply push elite ", null)).join();
+        assertTrue(suggestions.getList().stream().anyMatch(suggestion -> suggestion.getText().equals("red")));
+        assertTrue(suggestions.getList().stream().anyMatch(suggestion -> suggestion.getText().equals("blue")));
+        assertTrue(suggestions.getList().stream().anyMatch(suggestion -> suggestion.getText().equals("yellow")));
+        assertTrue(suggestions.getList().stream().anyMatch(suggestion -> suggestion.getText().equals("green")));
     }
 
     @Test

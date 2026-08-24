@@ -198,10 +198,10 @@ public final class SFGameScreen extends Screen {
 
         cardStripLeft = center - layout.contentWidth() / 2;
         cardStripRight = cardStripLeft + layout.contentWidth();
-        if (supplyCount > 0) {
+        if (layout.supplyHeading() >= 0) {
             supplyHeadingX = cardStripLeft;
             supplyHeadingY = visibleHeadingY(layout.supplyHeading());
-            addSupplyCards(snapshot.supplyItems(), layout);
+            if (supplyCount > 0) addSupplyCards(snapshot.supplyItems(), layout);
         }
         if (shopCount > 0) {
             shopHeadingX = cardStripLeft;
@@ -215,16 +215,17 @@ public final class SFGameScreen extends Screen {
         int availableWidth = Math.max(TALL_CARD_WIDTH, Math.min(480, width - 40));
         int columns = Math.max(1, availableWidth / (TALL_CARD_WIDTH + TALL_CARD_GAP));
         int contentWidth = columns * TALL_CARD_WIDTH + (columns - 1) * TALL_CARD_GAP;
+        int shopColumns = 1;
         int classHeading = prefixHeight;
         int classStrip = classHeading + 16;
         int cursor = classStrip + CLASS_CARD_SIZE + 16;
         int supplyHeading = -1;
         int supplyStart = -1;
         int supplyRows = 0;
-        if (supplyCount > 0) {
+        if (supplyCount > 0 || shopCount > 0) {
             supplyHeading = cursor;
             supplyStart = cursor + 16;
-            supplyRows = (supplyCount + columns - 1) / columns;
+            supplyRows = Math.max(1, (supplyCount + columns - 1) / columns);
             cursor = supplyStart + supplyRows * TALL_CARD_HEIGHT
                     + Math.max(0, supplyRows - 1) * TALL_CARD_GAP + 16;
         }
@@ -234,12 +235,12 @@ public final class SFGameScreen extends Screen {
         if (shopCount > 0) {
             shopHeading = cursor;
             shopStart = cursor + 16;
-            shopRows = (shopCount + columns - 1) / columns;
+            shopRows = (shopCount + shopColumns - 1) / shopColumns;
             cursor = shopStart + shopRows * TALL_CARD_HEIGHT
                     + Math.max(0, shopRows - 1) * TALL_CARD_GAP + 4;
         }
         return new BodyLayout(classHeading, classStrip, supplyHeading, supplyStart, supplyRows,
-                shopHeading, shopStart, shopRows, cursor, columns, contentWidth);
+                shopHeading, shopStart, shopRows, cursor, columns, shopColumns, contentWidth);
     }
 
     static int maxContentScroll(int contentHeight, int height) {
@@ -255,6 +256,13 @@ public final class SFGameScreen extends Screen {
     private boolean fullyVisible(int y, int widgetHeight) {
         return y >= CONTENT_TOP && y + widgetHeight <= height - CONTENT_BOTTOM_MARGIN;
     }
+    static boolean intersectsContentViewport(int y, int widgetHeight, int viewportBottom) {
+        return y < viewportBottom && y + widgetHeight > CONTENT_TOP;
+    }
+
+    private boolean intersectsContentViewport(int y, int widgetHeight) {
+        return intersectsContentViewport(y, widgetHeight, height - CONTENT_BOTTOM_MARGIN);
+    }
     private void addBodyWidget(Button button) {
         if (fullyVisible(button.getY(), button.getHeight())) addRenderableWidget(button);
     }
@@ -266,8 +274,9 @@ public final class SFGameScreen extends Screen {
             int y = contentToScreen(layout.supplyStart()
                     + i / layout.columns() * (TALL_CARD_HEIGHT + TALL_CARD_GAP));
             TallCardButton card = TallCardButton.supply(x, y, item,
-                    button -> action(ClientActionPacket.Action.SUPPLY_CLAIM, item.id()));
-            if (fullyVisible(y, TALL_CARD_HEIGHT)) {
+                    button -> action(ClientActionPacket.Action.SUPPLY_CLAIM, item.id()))
+                    .clipTo(0, CONTENT_TOP, width, height - CONTENT_BOTTOM_MARGIN);
+            if (intersectsContentViewport(y, TALL_CARD_HEIGHT)) {
                 tallCards.add(card);
                 addRenderableWidget(card);
             }
@@ -275,14 +284,16 @@ public final class SFGameScreen extends Screen {
     }
 
     private void addShopCards(List<MatchSnapshot.ShopView> items, BodyLayout layout) {
+        int shopLeft = cardStripLeft + (layout.contentWidth() - TALL_CARD_WIDTH) / 2;
         for (int i = 0; i < items.size(); i++) {
             MatchSnapshot.ShopView item = items.get(i);
-            int x = cardStripLeft + i % layout.columns() * (TALL_CARD_WIDTH + TALL_CARD_GAP);
+            int x = shopLeft + i % layout.shopColumns() * (TALL_CARD_WIDTH + TALL_CARD_GAP);
             int y = contentToScreen(layout.shopStart()
-                    + i / layout.columns() * (TALL_CARD_HEIGHT + TALL_CARD_GAP));
+                    + i / layout.shopColumns() * (TALL_CARD_HEIGHT + TALL_CARD_GAP));
             TallCardButton card = TallCardButton.shop(x, y, item,
-                    button -> action(ClientActionPacket.Action.SHOP_BUY, item.id()));
-            if (fullyVisible(y, TALL_CARD_HEIGHT)) {
+                    button -> action(ClientActionPacket.Action.SHOP_BUY, item.id()))
+                    .clipTo(0, CONTENT_TOP, width, height - CONTENT_BOTTOM_MARGIN);
+            if (intersectsContentViewport(y, TALL_CARD_HEIGHT)) {
                 tallCards.add(card);
                 addRenderableWidget(card);
             }
@@ -291,7 +302,7 @@ public final class SFGameScreen extends Screen {
 
     static record BodyLayout(int classHeading, int classStrip, int supplyHeading, int supplyStart,
                              int supplyRows, int shopHeading, int shopStart, int shopRows,
-                             int contentHeight, int columns, int contentWidth) { }
+                             int contentHeight, int columns, int shopColumns, int contentWidth) { }
 
     private void addClassCards(List<MatchSnapshot.ClassView> classPool, String pendingClass,
                                ClientActionPacket.Action classAction, int center, int y) {
@@ -382,6 +393,36 @@ public final class SFGameScreen extends Screen {
     }
 
     static record ScrollResult(int classOffset, int contentOffset, boolean consumed) { }
+    static ScrollbarGeometry contentScrollbar(int width, int height, int contentHeight, int contentOffset) {
+        int maximum = maxContentScroll(contentHeight, height);
+        if (maximum <= 0) return null;
+        int trackTop = CONTENT_TOP + 8;
+        int trackBottom = Math.max(trackTop, height - CONTENT_BOTTOM_MARGIN - 8);
+        int trackHeight = Math.max(1, trackBottom - trackTop);
+        int thumbHeight = Math.max(18, (int) ((long) trackHeight * trackHeight
+                / Math.max(1, trackHeight + maximum)));
+        thumbHeight = Math.min(trackHeight, thumbHeight);
+        int offset = Math.max(0, Math.min(maximum, contentOffset));
+        int thumbTop = trackTop + (trackHeight - thumbHeight) * offset / maximum;
+        int percent = (int) Math.round(offset * 100.0 / maximum);
+        return new ScrollbarGeometry(Math.max(0, width - 4), Math.max(0, width - 5),
+                trackTop, trackBottom, thumbTop, thumbTop + thumbHeight, percent);
+    }
+
+    static record ScrollbarGeometry(int trackX, int thumbX, int top, int bottom,
+                                    int thumbTop, int thumbBottom, int percent) { }
+    private void renderContentScrollBar(GuiGraphics graphics) {
+        ScrollbarGeometry scrollbar = contentScrollbar(width, height, contentHeight, contentScrollOffset);
+        if (scrollbar == null) return;
+        graphics.fill(scrollbar.trackX(), scrollbar.top(), scrollbar.trackX() + 2,
+                scrollbar.bottom(), 0xFF33363B);
+        graphics.fill(scrollbar.thumbX(), scrollbar.thumbTop(), scrollbar.thumbX() + 4,
+                scrollbar.thumbBottom(), 0xFFBBBBBB);
+        String progress = scrollbar.percent() + "%";
+        graphics.drawString(font, progress,
+                Math.max(0, scrollbar.thumbX() - font.width(progress) - 4),
+                scrollbar.top(), 0xFFBBBBBB, false);
+    }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -440,15 +481,8 @@ public final class SFGameScreen extends Screen {
             graphics.drawString(font, Component.translatable("sfgame.menu.shop"),
                     shopHeadingX, shopHeadingY, 0xFFFFFF, true);
         }
-        int maxScroll = maxContentScroll(contentHeight, height);
-        if (contentScrollOffset > 0) {
-            graphics.drawCenteredString(font, "↑", width - 12, CONTENT_TOP + 2, 0xFFFFFF);
-        }
-        if (contentScrollOffset < maxScroll) {
-            graphics.drawCenteredString(font, "↓", width - 12,
-                    height - CONTENT_BOTTOM_MARGIN - 10, 0xFFFFFF);
-        }
         super.render(graphics, mouseX, mouseY, partialTick);
+        renderContentScrollBar(graphics);
         renderClassTooltip(graphics, mouseX, mouseY);
         renderTallCardTooltip(graphics, mouseX, mouseY);
     }
@@ -633,6 +667,11 @@ public final class SFGameScreen extends Screen {
         private final Component detail;
         private final int detailColor;
         private final List<Component> tooltipLines;
+        private boolean clipped;
+        private int clipLeft;
+        private int clipTop;
+        private int clipRight;
+        private int clipBottom;
 
         private TallCardButton(int x, int y, String icon, String name, Component detail,
                                int detailColor, List<Component> tooltipLines, OnPress onPress) {
@@ -642,6 +681,14 @@ public final class SFGameScreen extends Screen {
             this.detail = detail;
             this.detailColor = detailColor;
             this.tooltipLines = tooltipLines;
+        }
+        TallCardButton clipTo(int left, int top, int right, int bottom) {
+            clipped = true;
+            clipLeft = left;
+            clipTop = top;
+            clipRight = right;
+            clipBottom = bottom;
+            return this;
         }
 
         static TallCardButton shop(int x, int y, MatchSnapshot.ShopView view, OnPress onPress) {
@@ -658,13 +705,25 @@ public final class SFGameScreen extends Screen {
 
         @Override
         protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            super.renderWidget(graphics, mouseX, mouseY, partialTick);
-            renderIcon(graphics, icon, null, getX() + 20, getY() + 6, 32);
-            String displayName = Minecraft.getInstance().font.plainSubstrByWidth(name, TALL_CARD_WIDTH - 6);
-            graphics.drawCenteredString(Minecraft.getInstance().font, Component.literal(displayName),
-                    getX() + width / 2, getY() + 52, 0xFFFFFFFF);
-            graphics.drawCenteredString(Minecraft.getInstance().font, detail,
-                    getX() + width / 2, getY() + 68, detailColor);
+            if (clipped) graphics.enableScissor(clipLeft, clipTop, clipRight, clipBottom);
+            try {
+                super.renderWidget(graphics, mouseX, mouseY, partialTick);
+                renderIcon(graphics, icon, null, getX() + 20, getY() + 6, 32);
+                String displayName = Minecraft.getInstance().font.plainSubstrByWidth(name, TALL_CARD_WIDTH - 6);
+                graphics.drawCenteredString(Minecraft.getInstance().font, Component.literal(displayName),
+                        getX() + width / 2, getY() + 52, 0xFFFFFFFF);
+                graphics.drawCenteredString(Minecraft.getInstance().font, detail,
+                        getX() + width / 2, getY() + 68, detailColor);
+            } finally {
+                if (clipped) graphics.disableScissor();
+            }
+        }
+
+        @Override
+        public boolean isMouseOver(double mouseX, double mouseY) {
+            return super.isMouseOver(mouseX, mouseY) && (!clipped
+                    || mouseX >= clipLeft && mouseX < clipRight
+                    && mouseY >= clipTop && mouseY < clipBottom);
         }
     }
 }

@@ -78,6 +78,8 @@ public final class SFGameCommands {
             SharedSuggestionProvider.suggest(MatchManager.get().classes().captainClassesForMode(
                     SFGameSavedData.get(context.getSource().getServer()).selectedMode(),
                     SFGameSavedData.get(context.getSource().getServer()).selectedMap()).stream().map(ClassDefinition::id), builder);
+    private static final SuggestionProvider<CommandSourceStack> SUPPLY_TEAM_SUGGESTIONS = (context, builder) ->
+            SharedSuggestionProvider.suggest(TeamSide.PLAYABLE.stream().map(TeamSide::id), builder);
     private static final SuggestionProvider<CommandSourceStack> SUPPLY_PRESET_SUGGESTIONS = (context, builder) -> {
         ArenaMap map = SFGameSavedData.get(context.getSource().getServer()).activeMap();
         return SharedSuggestionProvider.suggest(map == null ? java.util.stream.Stream.empty()
@@ -449,15 +451,13 @@ public final class SFGameCommands {
         var team = StringArgumentType.word();
         return Commands.literal("supply")
                 .then(Commands.literal("list").executes(context -> supplyList(context, TeamSide.NONE))
-                        .then(Commands.argument("team", team).suggests((context, builder) ->
-                                        SharedSuggestionProvider.suggest(TeamSide.PLAYABLE.stream().map(TeamSide::id), builder))
+                        .then(Commands.argument("team", team).suggests(SUPPLY_TEAM_SUGGESTIONS)
                                 .executes(context -> supplyList(context,
                                         TeamSide.fromId(StringArgumentType.getString(context, "team"))))))
                 .then(Commands.literal("push")
                         .then(Commands.literal("preset")
                                 .then(Commands.argument("team", StringArgumentType.word())
-                                        .suggests((context, builder) -> SharedSuggestionProvider.suggest(
-                                                TeamSide.PLAYABLE.stream().map(TeamSide::id), builder))
+                                        .suggests(SUPPLY_TEAM_SUGGESTIONS)
                                         .then(Commands.argument("offerId", StringArgumentType.word())
                                                 .suggests(SUPPLY_PRESET_SUGGESTIONS)
                                                 .executes(context -> supplyPushPreset(context, 1))
@@ -466,6 +466,7 @@ public final class SFGameCommands {
                                                                 IntegerArgumentType.getInteger(context, "quantity")))))))
                         .then(Commands.literal("item")
                                 .then(Commands.argument("team", StringArgumentType.word())
+                                        .suggests(SUPPLY_TEAM_SUGGESTIONS)
                                         .then(Commands.argument("offerId", StringArgumentType.word())
                                                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 64))
                                                         .then(Commands.argument("quantity", IntegerArgumentType.integer(1, 100_000))
@@ -474,6 +475,7 @@ public final class SFGameCommands {
                                                                         .executes(SFGameCommands::supplyPushItem)))))))
                         .then(Commands.literal("elite")
                                 .then(Commands.argument("team", StringArgumentType.word())
+                                        .suggests(SUPPLY_TEAM_SUGGESTIONS)
                                         .then(Commands.argument("offerId", StringArgumentType.word())
                                                 .then(Commands.argument("classId", StringArgumentType.word())
                                                         .suggests(ELITE_CLASS_SUGGESTIONS)
@@ -481,10 +483,12 @@ public final class SFGameCommands {
                                                                 .executes(SFGameCommands::supplyPushElite)))))))
                 .then(Commands.literal("remove")
                         .then(Commands.argument("team", StringArgumentType.word())
+                                .suggests(SUPPLY_TEAM_SUGGESTIONS)
                                 .then(Commands.argument("offerId", StringArgumentType.word())
                                         .executes(SFGameCommands::supplyRemove))))
                 .then(Commands.literal("clear")
                         .then(Commands.argument("team", StringArgumentType.word())
+                                .suggests(SUPPLY_TEAM_SUGGESTIONS)
                                 .executes(SFGameCommands::supplyClear)));
     }
 

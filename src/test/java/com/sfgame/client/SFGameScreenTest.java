@@ -7,7 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class SFGameScreenTest {
     @Test
-    void shortViewportRegistersOnlyFullyVisibleCardsAndReachesTwentiethProduct() {
+    void shortViewportKeepsPartialCardsAndReachesTwentiethProduct() {
         int width = 320;
         int height = 240;
         SFGameScreen.BodyLayout layout = SFGameScreen.layoutBody(width, 0, 2, 20);
@@ -21,9 +21,50 @@ final class SFGameScreenTest {
 
         int twentiethIndex = 19;
         int twentiethY = SFGameScreen.CONTENT_TOP + layout.shopStart()
-                + twentiethIndex / layout.columns() * (96 + 8) - maxScroll;
+                + twentiethIndex / layout.shopColumns() * (96 + 8) - maxScroll;
         assertTrue(twentiethY >= SFGameScreen.CONTENT_TOP);
         assertTrue(twentiethY + 96 <= bottom);
+    }
+    @Test
+    void shopUsesSingleColumnWhileSupplyKeepsResponsiveColumns() {
+        SFGameScreen.BodyLayout layout = SFGameScreen.layoutBody(320, 0, 2, 20);
+
+        assertEquals(3, layout.columns());
+        assertEquals(1, layout.shopColumns());
+        assertEquals(20, layout.shopRows());
+    }
+
+    @Test
+    void scrollbarThumbShowsContentProgress() {
+        int width = 320;
+        int height = 240;
+        SFGameScreen.BodyLayout layout = SFGameScreen.layoutBody(width, 0, 0, 20);
+        int maximum = SFGameScreen.maxContentScroll(layout.contentHeight(), height);
+
+        SFGameScreen.ScrollbarGeometry start = SFGameScreen.contentScrollbar(
+                width, height, layout.contentHeight(), 0);
+        SFGameScreen.ScrollbarGeometry middle = SFGameScreen.contentScrollbar(
+                width, height, layout.contentHeight(), maximum / 2);
+        SFGameScreen.ScrollbarGeometry end = SFGameScreen.contentScrollbar(
+                width, height, layout.contentHeight(), maximum);
+
+        assertTrue(start != null && middle != null && end != null);
+        assertEquals(0, start.percent());
+        assertEquals(100, end.percent());
+        assertEquals(start.top(), start.thumbTop());
+        assertEquals(end.bottom(), end.thumbBottom());
+        assertTrue(middle.thumbTop() > start.thumbTop());
+        assertTrue(middle.thumbBottom() < end.thumbBottom());
+    }
+
+    @Test
+    void partialCardsIntersectingViewportRemainEligibleForRendering() {
+        int bottom = 240 - SFGameScreen.CONTENT_BOTTOM_MARGIN;
+
+        assertTrue(SFGameScreen.intersectsContentViewport(
+                SFGameScreen.CONTENT_TOP - 48, 96, bottom));
+        assertTrue(SFGameScreen.intersectsContentViewport(bottom - 48, 96, bottom));
+        assertTrue(!SFGameScreen.intersectsContentViewport(bottom, 96, bottom));
     }
 
     @Test
@@ -40,13 +81,13 @@ final class SFGameScreenTest {
     }
 
     @Test
-    void emptySupplyRemovesSectionWithoutGap() {
+    void emptySupplyReservesSectionBeforeShop() {
         SFGameScreen.BodyLayout empty = SFGameScreen.layoutBody(320, 0, 0, 20);
         SFGameScreen.BodyLayout populated = SFGameScreen.layoutBody(320, 0, 2, 20);
 
-        assertEquals(-1, empty.supplyHeading());
-        assertEquals(empty.classStrip() + 44 + 16, empty.shopHeading());
-        assertTrue(populated.shopHeading() > empty.shopHeading());
+        assertTrue(empty.supplyHeading() >= 0);
+        assertTrue(empty.shopHeading() > empty.supplyHeading());
+        assertEquals(populated.shopHeading(), empty.shopHeading());
     }
 
     private static void assertVisibleCardBottoms(SFGameScreen.BodyLayout layout, int scroll, int bottom) {
@@ -57,7 +98,7 @@ final class SFGameScreenTest {
         }
         for (int i = 0; i < 20; i++) {
             int y = SFGameScreen.CONTENT_TOP + layout.shopStart()
-                    + i / layout.columns() * (96 + 8) - scroll;
+                    + i / layout.shopColumns() * (96 + 8) - scroll;
             if (y >= SFGameScreen.CONTENT_TOP && y + 96 <= bottom) assertTrue(y + 96 <= bottom);
         }
     }
