@@ -119,7 +119,7 @@ public final class SFGameScreen extends Screen {
         boolean showLeave = !activeMatch;
         boolean joinedLobby = showLeave && snapshot.side() != TeamSide.NONE;
         boolean showElection = snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker();
-        boolean economy = MatchManager.supportsEconomy(snapshot.modeId()) && snapshot.phase() == MatchPhase.RUNNING;
+        boolean economy = snapshot.economyEnabled();
         int supplyCount = economy && snapshot.side() != TeamSide.NONE ? snapshot.supplyItems().size() : 0;
         int shopCount = economy ? snapshot.shopItems().size() : 0;
 
@@ -501,6 +501,7 @@ public final class SFGameScreen extends Screen {
                     ? "ATTACK " + snapshot.attacker().id().toUpperCase(Locale.ROOT)
                     + " · DEFEND " + snapshot.defender().id().toUpperCase(Locale.ROOT)
                     + " · TICKETS " + snapshot.attackerTickets()
+                    + " · ROUND " + snapshot.attackRoundsRemaining()
                     : ctf ? "CTF " + (snapshot.ctfVariant() == null ? "" : snapshot.ctfVariant().toUpperCase(Locale.ROOT))
                     + " · " + TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
                     .map(team -> team.id().toUpperCase(Locale.ROOT) + " " + snapshot.score(team))
@@ -510,7 +511,7 @@ public final class SFGameScreen extends Screen {
                     .collect(java.util.stream.Collectors.joining("  ·  "));
             graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD),
                     width / 2, 36, 0xFFFFFF);
-            if (MatchManager.supportsEconomy(snapshot.modeId()) && snapshot.phase() == MatchPhase.RUNNING) {
+            if (snapshot.economyEnabled()) {
                 graphics.drawCenteredString(font,
                         Component.translatable("sfgame.menu.currency", snapshot.currency()).withStyle(ChatFormatting.GOLD),
                         width / 2, 52, 0xFFFFFF);

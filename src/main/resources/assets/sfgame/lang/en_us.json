@@ -183,6 +183,7 @@
   "sfgame.supply.elite_granted": "Elite class %s applied",
   "sfgame.supply.available": "Your team received supply [%s]; claim it from the menu",
   "sfgame.supply.published": "%s supply %s published for %s (quantity %s)",
+  "sfgame.breakthrough.attack_round.transition": "Attack round remaining: %s · Resting %s seconds",
   "sfgame.supply.removed": "Supply %s removed for %s",
   "sfgame.supply.cleared": "Cleared %s supplies for %s",
   "sfgame.currency.set": "%s currency set to %s",

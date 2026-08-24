@@ -12,12 +12,12 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
                             int yellowPlayers, int greenPlayers, String currentClass, String pendingClass,
                             boolean participating, boolean queued, List<ClassView> classes,
                             String breakthroughVariant, TeamSide attacker, TeamSide defender, int attackerTickets,
-                            int leg, int sector, int sectorCount, String modeSubState, String captainId,
+                            int attackRoundsRemaining, int leg, int sector, int sectorCount, String modeSubState, String captainId,
                             String captainName, int electionSeconds, boolean captain,
                             String currentCaptainClass, String pendingCaptainClass, List<ClassView> captainClasses,
                             List<CaptainCandidate> captainCandidates, boolean awaitingRespawnSelection,
                             List<RespawnOption> respawnOptions, String ctfVariant, String ctfCarrierRestriction,
-                            int currency, List<CtfFlagView> ctfFlags, List<ShopView> shopItems,
+                            boolean economyEnabled, int currency, List<CtfFlagView> ctfFlags, List<ShopView> shopItems,
                             List<SupplyView> supplyItems) {
     public record ClassView(String id, String name, String description, String icon, String iconRender,
                             String iconTexture, String gunId, double health, double speed, int reserveAmmo) {
@@ -88,7 +88,8 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         buffer.writeBoolean(participating); buffer.writeBoolean(queued);
         writeClasses(buffer, classes);
         buffer.writeUtf(breakthroughVariant); buffer.writeEnum(attacker); buffer.writeEnum(defender);
-        buffer.writeVarInt(attackerTickets); buffer.writeVarInt(leg); buffer.writeVarInt(sector); buffer.writeVarInt(sectorCount);
+        buffer.writeVarInt(attackerTickets); buffer.writeVarInt(attackRoundsRemaining);
+        buffer.writeVarInt(leg); buffer.writeVarInt(sector); buffer.writeVarInt(sectorCount);
         buffer.writeUtf(modeSubState); writeNullable(buffer, captainId); writeNullable(buffer, captainName);
         buffer.writeVarInt(electionSeconds); buffer.writeBoolean(captain);
         writeNullable(buffer, currentCaptainClass); writeNullable(buffer, pendingCaptainClass);
@@ -97,7 +98,7 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         buffer.writeBoolean(awaitingRespawnSelection);
         buffer.writeVarInt(respawnOptions.size()); respawnOptions.forEach(option -> option.encode(buffer));
         writeNullable(buffer, ctfVariant); writeNullable(buffer, ctfCarrierRestriction);
-        buffer.writeVarInt(currency);
+        buffer.writeBoolean(economyEnabled); buffer.writeVarInt(currency);
         buffer.writeVarInt(ctfFlags.size()); ctfFlags.forEach(flag -> flag.encode(buffer));
         buffer.writeVarInt(shopItems.size()); shopItems.forEach(item -> item.encode(buffer));
         buffer.writeVarInt(supplyItems.size()); supplyItems.forEach(item -> item.encode(buffer));
@@ -112,7 +113,8 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         boolean participating = buffer.readBoolean(), queued = buffer.readBoolean();
         List<ClassView> classes = readClasses(buffer);
         String variant = buffer.readUtf(); TeamSide attacker = buffer.readEnum(TeamSide.class), defender = buffer.readEnum(TeamSide.class);
-        int tickets = buffer.readVarInt(), leg = buffer.readVarInt(), sector = buffer.readVarInt(), sectors = buffer.readVarInt();
+        int tickets = buffer.readVarInt(), attackRounds = buffer.readVarInt();
+        int leg = buffer.readVarInt(), sector = buffer.readVarInt(), sectors = buffer.readVarInt();
         String subState = buffer.readUtf(), captainId = readNullable(buffer), captainName = readNullable(buffer);
         int election = buffer.readVarInt(); boolean isCaptain = buffer.readBoolean();
         String currentCaptain = readNullable(buffer), pendingCaptain = readNullable(buffer);
@@ -123,6 +125,7 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         int optionCount = buffer.readVarInt(); List<RespawnOption> options = new ArrayList<>(optionCount);
         for (int i = 0; i < optionCount; i++) options.add(RespawnOption.decode(buffer));
         String ctfVariant = readNullable(buffer), ctfRestriction = readNullable(buffer);
+        boolean economyEnabled = buffer.readBoolean();
         int currency = buffer.readVarInt();
         int flagCount = buffer.readVarInt(); List<CtfFlagView> ctfFlags = new ArrayList<>(flagCount);
         for (int i = 0; i < flagCount; i++) ctfFlags.add(CtfFlagView.decode(buffer));
@@ -132,9 +135,9 @@ public record MatchSnapshot(String modeId, MatchPhase phase, TeamSide side, int 
         for (int i = 0; i < supplyCount; i++) supplyItems.add(SupplyView.decode(buffer));
         return new MatchSnapshot(modeId, phase, side, redScore, blueScore, yellowScore, greenScore, scoreLimit, remaining,
                 redPlayers, bluePlayers, yellowPlayers, greenPlayers, current, pending, participating, queued, classes,
-                variant, attacker, defender, tickets, leg, sector, sectors, subState, captainId, captainName, election,
+                variant, attacker, defender, tickets, attackRounds, leg, sector, sectors, subState, captainId, captainName, election,
                 isCaptain, currentCaptain, pendingCaptain, captainClasses, List.copyOf(candidates), awaitingRespawn,
-                List.copyOf(options), ctfVariant, ctfRestriction, currency, List.copyOf(ctfFlags),
+                List.copyOf(options), ctfVariant, ctfRestriction, economyEnabled, currency, List.copyOf(ctfFlags),
                 List.copyOf(shopItems), List.copyOf(supplyItems));
     }
 

@@ -84,16 +84,30 @@ final class MatchManagerGameModeTest {
     @Test
     void killCurrencyIsLiveAndModeScopedAcrossEconomyModes() {
         com.sfgame.data.MatchRules breakthrough = new com.sfgame.data.MatchRules(GameModeRegistry.BREAKTHROUGH);
+        breakthrough.economyEnabled(true);
         breakthrough.killCurrency(41);
         com.sfgame.data.MatchRules domination = new com.sfgame.data.MatchRules(GameModeRegistry.DOMINATION);
+        domination.economyEnabled(true);
         domination.killCurrency(42);
         com.sfgame.data.MatchRules ctf = new com.sfgame.data.MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
+        ctf.economyEnabled(true);
         ctf.killCurrency(43);
 
         assertEquals(41, MatchManager.killCurrencyFor(GameModeRegistry.BREAKTHROUGH, breakthrough));
         assertEquals(42, MatchManager.killCurrencyFor(GameModeRegistry.DOMINATION, domination));
         assertEquals(43, MatchManager.killCurrencyFor(GameModeRegistry.CAPTURE_THE_FLAG, ctf));
         assertEquals(0, MatchManager.killCurrencyFor(GameModeRegistry.TEAM_DEATHMATCH,
+                new com.sfgame.data.MatchRules(GameModeRegistry.TEAM_DEATHMATCH)));
+    }
+    @Test
+    void disabledEconomyBlocksSupplyEvents() {
+        com.sfgame.data.MatchRules rules = new com.sfgame.data.MatchRules(GameModeRegistry.BREAKTHROUGH);
+        rules.economyEnabled(true);
+        assertTrue(MatchManager.shouldFireSupplyEvents(GameModeRegistry.BREAKTHROUGH, rules));
+
+        rules.economyEnabled(false);
+        assertFalse(MatchManager.shouldFireSupplyEvents(GameModeRegistry.BREAKTHROUGH, rules));
+        assertFalse(MatchManager.shouldFireSupplyEvents(GameModeRegistry.TEAM_DEATHMATCH,
                 new com.sfgame.data.MatchRules(GameModeRegistry.TEAM_DEATHMATCH)));
     }
 
@@ -103,7 +117,7 @@ final class MatchManagerGameModeTest {
         Files.writeString(directory.resolve("classes/tdm.json"), """
                 {
                   "classes":[{"id":"normal"}],
-                  "captainClasses":[],
+                  "captainClasses":[{"id":"captain"}],
                   "eliteClasses":[{"id":"elite"}],
                   "teams":{},
                   "maps":{}
@@ -117,6 +131,10 @@ final class MatchManagerGameModeTest {
         state.pendingClass(GameModeRegistry.TEAM_DEATHMATCH, TeamSide.RED, "elite");
         state.grantedEliteClass(GameModeRegistry.TEAM_DEATHMATCH, TeamSide.RED, "elite");
 
+        state.currentCaptainClass(GameModeRegistry.TEAM_DEATHMATCH, TeamSide.RED, "captain");
+        state.pendingCaptainClass(GameModeRegistry.TEAM_DEATHMATCH, TeamSide.RED, "captain");
+        assertEquals("elite", manager.resolveDeploymentDefinition(
+                GameModeRegistry.TEAM_DEATHMATCH, null, TeamSide.RED, state, true).orElseThrow().id());
         assertEquals("elite", manager.resolveDeploymentDefinition(
                 GameModeRegistry.TEAM_DEATHMATCH, null, TeamSide.RED, state, false).orElseThrow().id());
         assertEquals("elite", manager.resolveDeploymentDefinition(

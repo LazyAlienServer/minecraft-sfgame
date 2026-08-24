@@ -76,6 +76,7 @@ public final class AdminRuleCatalog {
             integer("captureMaxMultiplier", 1, 64, true, CAPTURE_MODES),
             // Economy.
             integer("killCurrency", 0, 100_000, true, CAPTURE_MODES),
+            bool("economyEnabled", false, CAPTURE_MODES),
 
 
             // Domination.
@@ -86,6 +87,7 @@ public final class AdminRuleCatalog {
 
             // Breakthrough.
             enumeration("breakthroughVariant", false, GameModeRegistry.BREAKTHROUGH),
+            integer("breakthroughAttackRounds", 1, 100, false, GameModeRegistry.BREAKTHROUGH),
             integer("breakthroughLegs", 1, 2, false, GameModeRegistry.BREAKTHROUGH),
             enumeration("breakthroughAttacker", false, GameModeRegistry.BREAKTHROUGH),
             enumeration("breakthroughDefender", false, GameModeRegistry.BREAKTHROUGH),

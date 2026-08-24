@@ -15,6 +15,7 @@ public final class MatchHudService {
     private static final String TIME_LINE = ChatFormatting.GOLD + "TIME";
     private static final String TICKETS_LINE = ChatFormatting.RED + "TICKETS";
     private static final String LEG_LINE = ChatFormatting.AQUA + "LEG";
+    private static final String ROUND_LINE = ChatFormatting.LIGHT_PURPLE + "ROUND";
     private static final String SECTOR_LINE = ChatFormatting.YELLOW + "SECTOR";
 
     public void update(MinecraftServer server, MatchManager manager) {
@@ -51,19 +52,22 @@ public final class MatchHudService {
             BreakthroughRuntime runtime = manager.breakthrough();
             scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(runtime.tickets());
             scoreboard.getOrCreatePlayerScore(LEG_LINE, objective).setScore(runtime.leg());
+            scoreboard.getOrCreatePlayerScore(ROUND_LINE, objective).setScore(runtime.attackRoundsRemaining());
             scoreboard.getOrCreatePlayerScore(SECTOR_LINE, objective).setScore(runtime.sectorNumber());
         } else if (GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode())
                 && data.activeMap() != null
                 && rules.ctfVariant() == com.sfgame.data.CtfVariant.ASSAULT) {
             scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(manager.captureTheFlag().attackerTickets());
             scoreboard.resetPlayerScore(LEG_LINE, objective);
+            scoreboard.resetPlayerScore(ROUND_LINE, objective);
             scoreboard.resetPlayerScore(SECTOR_LINE, objective);
         } else {
             scoreboard.resetPlayerScore(TICKETS_LINE, objective);
             scoreboard.resetPlayerScore(LEG_LINE, objective);
+            scoreboard.resetPlayerScore(ROUND_LINE, objective);
             scoreboard.resetPlayerScore(SECTOR_LINE, objective);
         }
-        if (MatchManager.supportsEconomy(data.selectedMode())
+        if (manager.economyEnabled()
                 && manager.phase() == MatchPhase.RUNNING
                 && !manager.shop().items(data.selectedMode()).isEmpty()) {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {

@@ -913,8 +913,7 @@ public final class SFGameCommands {
 
     private static boolean supplyRunning(CommandContext<CommandSourceStack> context) {
         return MatchManager.get().phase() == MatchPhase.RUNNING
-                && MatchManager.supportsEconomy(
-                        SFGameSavedData.get(context.getSource().getServer()).selectedMode());
+                && MatchManager.get().economyEnabled();
     }
 
 
@@ -1074,8 +1073,7 @@ public final class SFGameCommands {
     private static int scoreCurrency(CommandContext<CommandSourceStack> context)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         MatchManager manager = MatchManager.get();
-        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
-        if (manager.phase() != MatchPhase.RUNNING || !MatchManager.supportsEconomy(data.selectedMode())) {
+        if (manager.phase() != MatchPhase.RUNNING || !manager.economyEnabled()) {
             return failure(context, "Currency editing is only available during a running economy match");
         }
         ServerPlayer player = EntityArgument.getPlayer(context, "player");
@@ -2234,6 +2232,7 @@ public final class SFGameCommands {
             case "breakthroughVariant" -> rules.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT);
             case "breakthroughLegs" -> Integer.toString(rules.breakthroughLegs());
             case "breakthroughAttacker" -> rules.breakthroughAttacker().id();
+            case "breakthroughAttackRounds" -> Integer.toString(rules.breakthroughAttackRounds());
             case "breakthroughDefender" -> rules.breakthroughDefender().id();
             case "attackerTickets" -> Integer.toString(rules.attackerTickets());
             case "sectorTransitionSeconds" -> Integer.toString(rules.sectorTransitionSeconds());
@@ -2250,6 +2249,7 @@ public final class SFGameCommands {
             case "defenderCaptureWeight" -> Double.toString(rules.defenderCaptureWeight());
             case "ctfFlagReturnSeconds" -> Integer.toString(rules.ctfFlagReturnSeconds());
             case "ctfHomeCaptureTimeSeconds" -> Integer.toString(rules.ctfHomeCaptureTimeSeconds());
+            case "economyEnabled" -> Boolean.toString(rules.economyEnabled());
             case "killCurrency" -> Integer.toString(rules.killCurrency());
             case "ctfTerritoryUnlockCurrency" -> Integer.toString(rules.ctfTerritoryUnlockCurrency());
             case "ctfForwardFlagReplantCurrency" -> Integer.toString(rules.ctfForwardFlagReplantCurrency());
@@ -2275,6 +2275,7 @@ public final class SFGameCommands {
 
     private static boolean isBreakthroughOnlyRule(String key) {
         return key.equals("breakthroughVariant") || key.equals("breakthroughLegs")
+                || key.equals("breakthroughAttackRounds")
                 || key.equals("breakthroughAttacker") || key.equals("breakthroughDefender")
                 || key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
                 || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainGlowing")

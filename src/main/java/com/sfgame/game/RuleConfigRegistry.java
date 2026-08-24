@@ -50,10 +50,10 @@ public final class RuleConfigRegistry {
             "mapRestoreMaxPartitionsPerTick");
     private static final Set<String> CAPTURE = Set.of("captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier");
-    private static final Set<String> ECONOMY = Set.of("killCurrency");
+    private static final Set<String> ECONOMY = Set.of("economyEnabled", "killCurrency");
     private static final Set<String> DOMINATION = Set.of("dominationStrategy", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds");
     private static final Set<String> BREAKTHROUGH = Set.of("breakthroughVariant", "breakthroughLegs",
-            "breakthroughAttacker", "breakthroughDefender", "attackerTickets", "sectorTransitionSeconds",
+            "breakthroughAttackRounds", "breakthroughAttacker", "breakthroughDefender", "attackerTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
             "attackerCaptainCaptureWeight", "defenderCaptureWeight");
     private static final Set<String> CTF = Set.of("ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction",
@@ -61,7 +61,7 @@ public final class RuleConfigRegistry {
             "ctfTerritoryUnlockCurrency", "ctfForwardFlagReplantCurrency",
             "ctfForwardFlagCaptureCurrency", "ctfHomeFlagCaptureCurrency");
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
-            "mapBlockBreaking", "mapRestoreAdaptiveThrottling");
+            "mapBlockBreaking", "mapRestoreAdaptiveThrottling", "economyEnabled");
     private static final Set<String> STRING_RULES = Set.of("mapSnapshotMode", "dominationStrategy",
             "breakthroughVariant", "breakthroughAttacker", "breakthroughDefender",
             "ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction");
@@ -683,6 +683,7 @@ public final class RuleConfigRegistry {
                             value.getAsString().toUpperCase(Locale.ROOT)));
                     case "breakthroughLegs" -> rules.breakthroughLegs(value.getAsInt());
                     case "breakthroughAttacker" -> rules.breakthroughAttacker(parseTeam(value.getAsString()));
+                    case "breakthroughAttackRounds" -> rules.breakthroughAttackRounds(value.getAsInt());
                     case "breakthroughDefender" -> rules.breakthroughDefender(parseTeam(value.getAsString()));
                     case "attackerTickets" -> rules.attackerTickets(value.getAsInt());
                     case "sectorTransitionSeconds" -> rules.sectorTransitionSeconds(value.getAsInt());
@@ -699,6 +700,7 @@ public final class RuleConfigRegistry {
                     case "defenderCaptureWeight" -> rules.defenderCaptureWeight(value.getAsDouble());
                     case "ctfFlagReturnSeconds" -> rules.ctfFlagReturnSeconds(value.getAsInt());
                     case "ctfHomeCaptureTimeSeconds" -> rules.ctfHomeCaptureTimeSeconds(value.getAsInt());
+                    case "economyEnabled" -> rules.economyEnabled(value.getAsBoolean());
                     case "killCurrency" -> rules.killCurrency(value.getAsInt());
                     case "ctfTerritoryUnlockCurrency" -> rules.ctfTerritoryUnlockCurrency(value.getAsInt());
                     case "ctfForwardFlagReplantCurrency" -> rules.ctfForwardFlagReplantCurrency(value.getAsInt());
@@ -755,6 +757,7 @@ public final class RuleConfigRegistry {
             object.addProperty("captureUsePlayerDifference", r.captureUsePlayerDifference());
             object.addProperty("captureDifferenceCoefficient", r.captureDifferenceCoefficient());
             object.addProperty("captureMaxMultiplier", r.captureMaxMultiplier());
+            object.addProperty("economyEnabled", r.economyEnabled());
             object.addProperty("killCurrency", r.killCurrency());
         }
         if (GameModeRegistry.DOMINATION.equals(modeId)) {
@@ -764,6 +767,7 @@ public final class RuleConfigRegistry {
             object.addProperty("syncHoldSeconds", r.syncHoldSeconds());
         }
         if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) {
+            object.addProperty("breakthroughAttackRounds", r.breakthroughAttackRounds());
             object.addProperty("breakthroughVariant", r.breakthroughVariant().name().toLowerCase(Locale.ROOT));
             object.addProperty("breakthroughLegs", r.breakthroughLegs());
             object.addProperty("breakthroughAttacker", r.breakthroughAttacker().id());

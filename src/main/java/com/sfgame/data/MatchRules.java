@@ -20,6 +20,7 @@ public final class MatchRules {
     public static final int DEFAULT_START_COUNTDOWN_SECONDS = 5;
     public static final int DEFAULT_RESPAWN_SECONDS = 5;
     public static final int DEFAULT_BREAKTHROUGH_RESPAWN_SECONDS = 10;
+    public static final int DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS = 2;
     public static final int DEFAULT_RESPAWN_PROTECTION_SECONDS = 3;
     public static final int DEFAULT_RESULT_SECONDS = 20;
     public static final int DEFAULT_MAP_RESTORE_DELAY_TICKS = 0;
@@ -59,6 +60,7 @@ public final class MatchRules {
     private int ctfFlagReturnSeconds;
     private int ctfHomeCaptureTimeSeconds;
     private int killCurrency;
+    private boolean economyEnabled;
     private int ctfTerritoryUnlockCurrency;
     private int ctfForwardFlagReplantCurrency;
     private int ctfForwardFlagCaptureCurrency;
@@ -66,6 +68,7 @@ public final class MatchRules {
     private PointActivationStrategy dominationStrategy;
     private BreakthroughVariant breakthroughVariant;
     private int breakthroughLegs;
+    private int breakthroughAttackRounds;
     private TeamSide breakthroughAttacker;
     private TeamSide breakthroughDefender;
     private CtfVariant ctfVariant;
@@ -113,11 +116,13 @@ public final class MatchRules {
     public int ctfFlagReturnSeconds() { return ctfFlagReturnSeconds; }
     public int ctfHomeCaptureTimeSeconds() { return ctfHomeCaptureTimeSeconds; }
     public int killCurrency() { return killCurrency; }
+    public boolean economyEnabled() { return economyEnabled; }
     public int ctfTerritoryUnlockCurrency() { return ctfTerritoryUnlockCurrency; }
     public int ctfForwardFlagReplantCurrency() { return ctfForwardFlagReplantCurrency; }
     public int ctfForwardFlagCaptureCurrency() { return ctfForwardFlagCaptureCurrency; }
     public int ctfHomeFlagCaptureCurrency() { return ctfHomeFlagCaptureCurrency; }
     public PointActivationStrategy dominationStrategy() { return dominationStrategy; }
+    public int breakthroughAttackRounds() { return breakthroughAttackRounds; }
     public BreakthroughVariant breakthroughVariant() { return breakthroughVariant; }
     public int breakthroughLegs() { return breakthroughLegs; }
     public TeamSide breakthroughAttacker() { return breakthroughAttacker; }
@@ -167,6 +172,7 @@ public final class MatchRules {
     public void ctfFlagReturnSeconds(int value) { ctfFlagReturnSeconds = clamp(value, 5, 600); }
     public void ctfHomeCaptureTimeSeconds(int value) { ctfHomeCaptureTimeSeconds = clamp(value, 1, 600); }
     public void killCurrency(int value) { killCurrency = clamp(value, 0, 100000); }
+    public void economyEnabled(boolean value) { economyEnabled = value; }
     public void ctfTerritoryUnlockCurrency(int value) { ctfTerritoryUnlockCurrency = clamp(value, 0, 100000); }
     public void ctfForwardFlagReplantCurrency(int value) { ctfForwardFlagReplantCurrency = clamp(value, 0, 100000); }
     public void ctfForwardFlagCaptureCurrency(int value) { ctfForwardFlagCaptureCurrency = clamp(value, 0, 100000); }
@@ -177,6 +183,7 @@ public final class MatchRules {
     public void breakthroughVariant(BreakthroughVariant value) {
         breakthroughVariant = value == null ? BreakthroughVariant.NORMAL : value;
     }
+    public void breakthroughAttackRounds(int value) { breakthroughAttackRounds = clamp(value, 1, 100); }
     public void breakthroughLegs(int value) { breakthroughLegs = clamp(value, 1, 2); }
     public void breakthroughAttacker(TeamSide value) { breakthroughAttacker = playable(value, TeamSide.RED); }
     public void breakthroughDefender(TeamSide value) { breakthroughDefender = playable(value, TeamSide.BLUE); }
@@ -220,11 +227,13 @@ public final class MatchRules {
         defenderCaptureWeight = 1.4;
         ctfFlagReturnSeconds = 30;
         ctfHomeCaptureTimeSeconds = 15;
+        economyEnabled = false;
         killCurrency = 25;
         ctfTerritoryUnlockCurrency = 10;
         ctfForwardFlagReplantCurrency = 50;
         ctfForwardFlagCaptureCurrency = 100;
         ctfHomeFlagCaptureCurrency = 100;
+        breakthroughAttackRounds = DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS;
         dominationStrategy = PointActivationStrategy.ASYNC;
         breakthroughVariant = BreakthroughVariant.NORMAL;
         breakthroughLegs = 1;
@@ -263,7 +272,9 @@ public final class MatchRules {
         tag.putInt("CtfFlagReturnSeconds", ctfFlagReturnSeconds);
         tag.putInt("CtfHomeCaptureTimeSeconds", ctfHomeCaptureTimeSeconds);
         tag.putInt("KillCurrency", killCurrency);
+        tag.putBoolean("EconomyEnabled", economyEnabled);
         tag.putInt("CtfTerritoryUnlockCurrency", ctfTerritoryUnlockCurrency);
+        tag.putInt("BreakthroughAttackRounds", breakthroughAttackRounds);
         tag.putInt("CtfForwardFlagReplantCurrency", ctfForwardFlagReplantCurrency);
         tag.putInt("CtfForwardFlagCaptureCurrency", ctfForwardFlagCaptureCurrency);
         tag.putInt("CtfHomeFlagCaptureCurrency", ctfHomeFlagCaptureCurrency);
@@ -316,8 +327,10 @@ public final class MatchRules {
         if (tag.contains("CtfFlagReturnSeconds")) ctfFlagReturnSeconds(tag.getInt("CtfFlagReturnSeconds"));
         if (tag.contains("CtfHomeCaptureTimeSeconds")) ctfHomeCaptureTimeSeconds(tag.getInt("CtfHomeCaptureTimeSeconds"));
         if (tag.contains("KillCurrency")) killCurrency(tag.getInt("KillCurrency"));
+        if (tag.contains("EconomyEnabled")) economyEnabled(tag.getBoolean("EconomyEnabled"));
         if (tag.contains("CtfTerritoryUnlockCurrency")) ctfTerritoryUnlockCurrency(tag.getInt("CtfTerritoryUnlockCurrency"));
         if (tag.contains("CtfForwardFlagReplantCurrency")) ctfForwardFlagReplantCurrency(tag.getInt("CtfForwardFlagReplantCurrency"));
+        if (tag.contains("BreakthroughAttackRounds")) breakthroughAttackRounds(tag.getInt("BreakthroughAttackRounds"));
         if (tag.contains("CtfForwardFlagCaptureCurrency")) ctfForwardFlagCaptureCurrency(tag.getInt("CtfForwardFlagCaptureCurrency"));
         if (tag.contains("CtfHomeFlagCaptureCurrency")) ctfHomeFlagCaptureCurrency(tag.getInt("CtfHomeFlagCaptureCurrency"));
         if (tag.contains("DominationStrategy")) dominationStrategy(PointActivationStrategy.parse(tag.getString("DominationStrategy")));

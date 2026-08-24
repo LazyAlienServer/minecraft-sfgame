@@ -177,6 +177,9 @@ final class RuleConfigRegistryTest {
         registry.setInt(GameModeRegistry.DOMINATION, "arena", "killCurrency", 42);
         registry.setInt(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "killCurrency", 43);
         registry.setInt(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "ctfHomeFlagCaptureCurrency", 77);
+        registry.setBoolean(GameModeRegistry.BREAKTHROUGH, "arena", "economyEnabled", false);
+        registry.setBoolean(GameModeRegistry.DOMINATION, "arena", "economyEnabled", false);
+        registry.setBoolean(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "economyEnabled", false);
 
         assertEquals(41, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
                 data.rules(GameModeRegistry.BREAKTHROUGH)).killCurrency());
@@ -186,6 +189,12 @@ final class RuleConfigRegistryTest {
                 data.rules(GameModeRegistry.CAPTURE_THE_FLAG)).killCurrency());
         assertEquals(77, registry.rules(GameModeRegistry.CAPTURE_THE_FLAG, "arena",
                 data.rules(GameModeRegistry.CAPTURE_THE_FLAG)).ctfHomeFlagCaptureCurrency());
+        assertFalse(registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+                data.rules(GameModeRegistry.BREAKTHROUGH)).economyEnabled());
+        assertFalse(registry.rules(GameModeRegistry.DOMINATION, "arena",
+                data.rules(GameModeRegistry.DOMINATION)).economyEnabled());
+        assertFalse(registry.rules(GameModeRegistry.CAPTURE_THE_FLAG, "arena",
+                data.rules(GameModeRegistry.CAPTURE_THE_FLAG)).economyEnabled());
         assertThrows(IllegalArgumentException.class, () -> registry.setInt(
                 GameModeRegistry.TEAM_DEATHMATCH, "arena", "killCurrency", 1));
         assertThrows(IllegalArgumentException.class, () -> registry.setInt(

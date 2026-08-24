@@ -146,6 +146,7 @@ final class MatchRulesTest {
     void breakthroughRulesPersistTicketsTransitionsAndWeights() {
         MatchRules rules = new MatchRules(GameModeRegistry.BREAKTHROUGH);
         assertEquals(10, rules.respawnSeconds());
+        assertEquals(MatchRules.DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS, rules.breakthroughAttackRounds());
         rules.attackerTickets(150);
         rules.sectorTransitionSeconds(12);
         rules.captainVoteSeconds(20);
@@ -157,6 +158,9 @@ final class MatchRulesTest {
         rules.breakthroughVariant(BreakthroughVariant.CAPTAIN);
         rules.breakthroughLegs(2);
         rules.breakthroughAttacker(TeamSide.YELLOW);
+        rules.breakthroughAttackRounds(100);
+        assertEquals(100, rules.breakthroughAttackRounds());
+        rules.breakthroughAttackRounds(1);
         rules.breakthroughDefender(TeamSide.GREEN);
 
         MatchRules restored = new MatchRules(GameModeRegistry.BREAKTHROUGH);
@@ -173,6 +177,7 @@ final class MatchRulesTest {
         assertEquals(BreakthroughVariant.CAPTAIN, restored.breakthroughVariant());
         assertEquals(2, restored.breakthroughLegs());
         assertEquals(TeamSide.YELLOW, restored.breakthroughAttacker());
+        assertEquals(1, restored.breakthroughAttackRounds());
         assertEquals(TeamSide.GREEN, restored.breakthroughDefender());
     }
 
@@ -199,6 +204,8 @@ final class MatchRulesTest {
     @Test
     void economyRulesClampDefaultPersistAndCopy() {
         MatchRules rules = new MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
+        assertFalse(rules.economyEnabled());
+        assertFalse(new MatchRules(GameModeRegistry.TEAM_DEATHMATCH).economyEnabled());
         assertEquals(25, rules.killCurrency());
         assertEquals(10, rules.ctfTerritoryUnlockCurrency());
         assertEquals(50, rules.ctfForwardFlagReplantCurrency());
@@ -210,6 +217,7 @@ final class MatchRulesTest {
         rules.ctfForwardFlagReplantCurrency(7);
         rules.ctfForwardFlagCaptureCurrency(8);
         rules.ctfHomeFlagCaptureCurrency(9);
+        rules.economyEnabled(false);
 
         MatchRules restored = new MatchRules(GameModeRegistry.CAPTURE_THE_FLAG);
         restored.load(rules.save());
@@ -218,6 +226,7 @@ final class MatchRulesTest {
         assertEquals(7, restored.ctfForwardFlagReplantCurrency());
         assertEquals(8, restored.ctfForwardFlagCaptureCurrency());
         assertEquals(9, restored.ctfHomeFlagCaptureCurrency());
+        assertFalse(restored.economyEnabled());
         assertEquals(9, restored.copy().ctfHomeFlagCaptureCurrency());
 
         restored.reset();
@@ -226,6 +235,7 @@ final class MatchRulesTest {
         assertEquals(50, restored.ctfForwardFlagReplantCurrency());
         assertEquals(100, restored.ctfForwardFlagCaptureCurrency());
         assertEquals(100, restored.ctfHomeFlagCaptureCurrency());
+        assertFalse(restored.economyEnabled());
     }
 
 }

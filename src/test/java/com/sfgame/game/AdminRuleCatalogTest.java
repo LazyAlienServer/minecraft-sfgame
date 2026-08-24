@@ -22,6 +22,12 @@ class AdminRuleCatalogTest {
         assertTrue(AdminRuleCatalog.find(GameModeRegistry.DOMINATION, "killCurrency").orElseThrow().hotReload());
         assertTrue(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, "killCurrency").orElseThrow().hotReload());
         assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "killCurrency").isPresent());
+        for (String modeId : java.util.List.of(GameModeRegistry.BREAKTHROUGH,
+                GameModeRegistry.CAPTURE_THE_FLAG, GameModeRegistry.DOMINATION)) {
+            assertTrue(AdminRuleCatalog.find(modeId, "economyEnabled").isPresent());
+            assertFalse(AdminRuleCatalog.find(modeId, "economyEnabled").orElseThrow().hotReload());
+        }
+        assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "economyEnabled").isPresent());
         for (String key : java.util.List.of("ctfTerritoryUnlockCurrency", "ctfForwardFlagReplantCurrency",
                 "ctfForwardFlagCaptureCurrency", "ctfHomeFlagCaptureCurrency")) {
             assertTrue(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, key).orElseThrow().hotReload());
@@ -57,6 +63,10 @@ class AdminRuleCatalogTest {
         assertEquals("full", AdminRuleCatalog.parse(snapshotMode, "full"));
         assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(snapshotMode, "partial"));
 
+        AdminRuleCatalog.Definition rounds = AdminRuleCatalog.find(
+                GameModeRegistry.BREAKTHROUGH, "breakthroughAttackRounds").orElseThrow();
+        assertEquals(100, AdminRuleCatalog.parse(rounds, "100"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(rounds, "101"));
         AdminRuleCatalog.Definition roles = AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH,
                 "breakthroughAttacker").orElseThrow();
         assertEquals("yellow", AdminRuleCatalog.parse(roles, "YELLOW"));

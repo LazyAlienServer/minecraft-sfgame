@@ -62,6 +62,7 @@ final class BreakthroughRuntimeTest {
         assertEquals(TeamSide.RED, runtime.attacker());
         assertEquals(TeamSide.BLUE, runtime.defender());
         assertEquals(1, runtime.sectorNumber());
+        assertEquals(MatchRules.DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS, runtime.attackRoundsRemaining());
         assertEquals(120, runtime.tickets());
 
 
@@ -70,6 +71,9 @@ final class BreakthroughRuntimeTest {
         assertTrue(runtime.setSectorState(rules, map, 2));
         assertEquals(2, runtime.sectorNumber());
         assertEquals(120, runtime.tickets());
+        rules.breakthroughAttackRounds(3);
+        assertTrue(runtime.setSectorState(rules, map, 1));
+        assertEquals(3, runtime.attackRoundsRemaining());
 
         assertFalse(runtime.setSectorState(rules, map, 3));
         assertFalse(runtime.setLegState(rules, map, 11));
