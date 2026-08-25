@@ -120,7 +120,7 @@ public final class SFGameScreen extends Screen {
         boolean joinedLobby = showLeave && snapshot.side() != TeamSide.NONE;
         boolean showElection = snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker();
         boolean economy = snapshot.economyEnabled();
-        int supplyCount = economy && snapshot.side() != TeamSide.NONE ? snapshot.supplyItems().size() : 0;
+        int supplyCount = snapshot.side() != TeamSide.NONE ? snapshot.supplyItems().size() : 0;
         int shopCount = economy ? snapshot.shopItems().size() : 0;
 
         int prefixHeight = 0;

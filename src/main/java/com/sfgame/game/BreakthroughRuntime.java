@@ -446,6 +446,9 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         runtimeState = RuntimeState.ACTIVE;
         resetCurrentSector(map);
         if (changingAttackRound) manager.modeRedeployAll(rules.respawnProtectionSeconds() * 20);
+        if (changingAttackRound) {
+            announceNextAttackRound(manager);
+        }
         refreshDisplays(server, manager, map);
         announceObjective(server, manager, map);
         return ModeTickResult.CONTINUE;
@@ -770,6 +773,18 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     }
     private void announceObjective(MinecraftServer server, MatchManager manager, ArenaMap map) {
         announce(server, manager, Component.translatable("sfgame.breakthrough.objective", currentSector(map).id()));
+    }
+    private void announceNextAttackRound(MatchManager manager) {
+        Component title = Component.translatable(
+                "sfgame.breakthrough.attack_round.next_title", attackRoundsRemaining)
+                .withStyle(ChatFormatting.GOLD);
+        Component subtitle = Component.translatable(
+                "sfgame.breakthrough.attack_round.next_subtitle")
+                .withStyle(ChatFormatting.YELLOW);
+        Component chat = Component.translatable(
+                "sfgame.breakthrough.attack_round.next_chat", attackRoundsRemaining)
+                .withStyle(ChatFormatting.AQUA);
+        manager.announceTitleAndChat(title, subtitle, chat, 80);
     }
     private static Component teamName(TeamSide side) { return Component.translatable("sfgame.team." + side.id()); }
     private static String displayId(String id) { return id.toUpperCase(Locale.ROOT); }

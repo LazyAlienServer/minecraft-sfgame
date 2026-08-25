@@ -851,7 +851,7 @@ public final class SFGameCommands {
     }
     private static int supplyList(CommandContext<CommandSourceStack> context, TeamSide selected) {
         MatchManager manager = MatchManager.get();
-        if (!supplyRunning(context)) return failure(context, "Supply commands require a running economy match");
+        if (!supplyRunning(context)) return failure(context, "Supply commands require a running match");
         List<TeamSide> sides = selected == TeamSide.NONE ? TeamSide.PLAYABLE : List.of(selected);
         int count = 0;
         for (TeamSide side : sides) {
@@ -912,8 +912,9 @@ public final class SFGameCommands {
     }
 
     private static boolean supplyRunning(CommandContext<CommandSourceStack> context) {
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         return MatchManager.get().phase() == MatchPhase.RUNNING
-                && MatchManager.get().economyEnabled();
+                && MatchManager.supportsSupply(data.selectedMode());
     }
 
 

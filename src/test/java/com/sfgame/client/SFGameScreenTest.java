@@ -33,6 +33,13 @@ final class SFGameScreenTest {
         assertEquals(3, layout.shopColumns());
         assertEquals(7, layout.shopRows());
     }
+    @Test
+    void supplySectionDoesNotDependOnShopAvailability() {
+        SFGameScreen.BodyLayout layout = SFGameScreen.layoutBody(320, 0, 2, 0);
+
+        assertTrue(layout.supplyHeading() >= 0);
+        assertEquals(-1, layout.shopHeading());
+    }
 
     @Test
     void scrollbarThumbShowsContentProgress() {

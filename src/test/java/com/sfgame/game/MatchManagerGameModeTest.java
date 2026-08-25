@@ -100,15 +100,12 @@ final class MatchManagerGameModeTest {
                 new com.sfgame.data.MatchRules(GameModeRegistry.TEAM_DEATHMATCH)));
     }
     @Test
-    void disabledEconomyBlocksSupplyEvents() {
-        com.sfgame.data.MatchRules rules = new com.sfgame.data.MatchRules(GameModeRegistry.BREAKTHROUGH);
-        rules.economyEnabled(true);
-        assertTrue(MatchManager.shouldFireSupplyEvents(GameModeRegistry.BREAKTHROUGH, rules));
-
-        rules.economyEnabled(false);
-        assertFalse(MatchManager.shouldFireSupplyEvents(GameModeRegistry.BREAKTHROUGH, rules));
-        assertFalse(MatchManager.shouldFireSupplyEvents(GameModeRegistry.TEAM_DEATHMATCH,
-                new com.sfgame.data.MatchRules(GameModeRegistry.TEAM_DEATHMATCH)));
+    void supplyEventsRemainEnabledWhenEconomyIsDisabled() {
+        assertTrue(MatchManager.supportsSupply(GameModeRegistry.BREAKTHROUGH));
+        assertTrue(MatchManager.supportsSupply(GameModeRegistry.CAPTURE_THE_FLAG));
+        assertTrue(MatchManager.supportsSupply(GameModeRegistry.DOMINATION));
+        assertFalse(MatchManager.supportsSupply(GameModeRegistry.TEAM_DEATHMATCH));
+        assertFalse(new com.sfgame.data.MatchRules(GameModeRegistry.BREAKTHROUGH).economyEnabled());
     }
 
     @Test
