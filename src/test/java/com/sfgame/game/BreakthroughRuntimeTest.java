@@ -99,6 +99,13 @@ final class BreakthroughRuntimeTest {
         assertTrue(runtime.setLegState(rules, map, 2));
         assertEquals(0, runtime.remainingLegs(rules));
     }
+    @Test
+    void rotationTimingAndWinnerUseTheCompletedLegResult() {
+        assertEquals(TeamSide.RED, BreakthroughRuntime.roundWinner(true, TeamSide.RED, TeamSide.BLUE));
+        assertEquals(TeamSide.BLUE, BreakthroughRuntime.roundWinner(false, TeamSide.RED, TeamSide.BLUE));
+        assertEquals(5, BreakthroughRuntime.LEG_ROTATION_NOTICE_SECONDS);
+        assertEquals(30, BreakthroughRuntime.LEG_PREPARATION_SECONDS);
+    }
 
     @Test
     void startValidationUsesSectorSpawnsWithoutGlobalTeamSpawns() {

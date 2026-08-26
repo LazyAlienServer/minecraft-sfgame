@@ -39,7 +39,8 @@ public final class ClientEvents {
         public static void renderScoreboard(RenderGuiOverlayEvent.Post event) {
             if (event.getOverlay() != VanillaGuiOverlay.HOTBAR.type()) return;
             SFGameScoreboardOverlay.render(event.getGuiGraphics(),
-                    event.getWindow().getGuiScaledWidth(), ClientMatchState.snapshot());
+                    event.getWindow().getGuiScaledWidth(), event.getWindow().getGuiScaledHeight(),
+                    ClientMatchState.snapshot());
         }
 
         @SubscribeEvent

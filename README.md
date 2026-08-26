@@ -476,7 +476,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 使用 `/sfgame mode select breakthrough` 选择突破模式。该模式严格使用两个阵营：管理员指定一个进攻阵营和一个防守阵营。地图由 1～16 个有序 sector 构成，每个 sector 包含 1～16 个同时开放的点位，并分别保存进攻方和防守方出生点。
 
-进攻方必须同时控制当前 sector 的全部点位才能推进。点位初始归防守方，进攻方需要先中立化再占领；在整个 sector 完成前，防守方可以修复和夺回点位。推进后旧 sector 锁定，经过默认 10 秒整备期，全员无死亡记录地部署到下一个 sector。当前开放点会显示 Bossbar 和中心上方的发光悬浮字母。
+进攻方必须同时控制当前 sector 的全部点位才能推进。点位初始归防守方，进攻方需要先中立化再占领；在整个 sector 完成前，防守方可以修复和夺回点位。推进后旧 sector 锁定，经过默认 10 秒整备期，全员无死亡记录地部署到下一个 sector；阶段完成、下一阶段开始和目标刷新都会通过主标题、副标题及聊天消息提示。当前开放点会显示 Bossbar 和中心上方的发光悬浮字母。
 
 ### 最小建图流程
 
@@ -533,7 +533,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 `breakthroughLegs` 表示当前比赛还要进行几次攻防轮换，不是 sector 数量：
 
 - `breakthroughLegs=0`：只进行一次攻防。`breakthroughAttacker` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜。当前 sector 的最后一个进攻回合中，只有 tickets 归零才判定防守方获胜。
-- `breakthroughLegs=1`：进行一次轮换，共两次攻防。第一轮结束后，进攻与防守阵营中的玩家名单互换，阵营本身的攻守角色不变，并从第一个 sector 重新开始；第二轮结束后比较双方玩家名单推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
+- `breakthroughLegs=1`：进行一次轮换，共两次攻防。第一轮结束后先按实际完成这一轮的进攻方或防守方显示胜利提示，等待 5 秒后再交换进攻与防守阵营中的玩家名单；随后显示固定 30 秒的准备与复盘时间，再从第一个 sector 重新开始。阵营本身的攻守角色不变；第二轮结束后比较双方玩家名单推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
 
 计分板的 LEG 显示剩余轮换：初始为 `0` 或 `1`，第一次轮换完成后变为 `0`。ROUND 显示剩余进攻回合储备：默认初始为 `1`，表示当前正在第一回合且还储备一回合；储备为 `0` 时，时间耗尽不会单独判负，只有 tickets 归零才判定进攻失败。
 
@@ -618,8 +618,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 ### 计分板显示
 
-比赛侧边栏使用本地化文本：TIME 为剩余时间，格式为 `HH:MM:SS`；TICKETS 为剩余兵力；LEG 为剩余轮换；ROUND 为剩余回合储备。`timeLimitSeconds=-1` 时默认隐藏 TIME，`showUnlimitedTime=true` 后显示“无限”；`attackerTickets=-1` 时默认隐藏 TICKETS，`showUnlimitedTickets=true` 后显示“无限”。sector 是开发辅助信息，仅在 `/sfgame dev` 开启时显示。
-计分板标题使用“模式显示名/地图显示名”格式，例如 `突破/默认`；地图文件夹名和地图 ID 仍保持为 `default`。
+比赛侧边栏使用本地化文本，并按原版 Minecraft 侧边栏的布局显示在屏幕右侧中央：TIME 为剩余时间，格式为 `HH:MM:SS`；TICKETS 为剩余兵力；LEG 为剩余轮换；ROUND 为剩余回合储备。`timeLimitSeconds=-1` 时默认隐藏 TIME，`showUnlimitedTime=true` 后显示“无限”；`attackerTickets=-1` 时默认隐藏 TICKETS，`showUnlimitedTickets=true` 后显示“无限”。sector 是开发辅助信息，仅在 `/sfgame dev` 开启时显示。
 
 ### 票数、时间与胜负
 
@@ -629,7 +628,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 - `breakthroughAttackRounds` 默认是 `1`，即当前回合之外还储备一回合。储备为 `0` 时，时间结束不会单独判定防守成功，只有 tickets 为 `0` 才判定进攻失败。
 - 单赛段中，攻陷最后 sector 则进攻方获胜；最后一个回合 tickets 归零则防守方获胜。
 - 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
-- 阶段整备期间全员无敌，不能通过开火提前解除保护。
+- 阶段整备期间全员无敌，不能通过开火提前解除保护；双赛段轮换先提示实际胜利角色并等待 5 秒，交换名单后再进行固定 30 秒准备与复盘。
 - `mapBlockBreaking` 默认关闭；管理员启用后，实际只能编辑地图 build box 内的白名单方块。突破模式的投票、倒计时和 sector 整备期间仍暂停编辑。规则可在比赛中修改并立即生效。
 - 突破模式默认死亡重生倒计时为 10 秒。倒计时结束后自动打开位置选择，可选择当前 sector 的队伍出生点，或当前由本队占领的点位；安全点位使用 `inside` 坐标，人数并列或敌方正在中立化/夺取时使用 `nearby` 坐标。按钮点击时会再次校验归属，已经失守的点不能重生。
 

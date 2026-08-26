@@ -8,6 +8,7 @@ import com.sfgame.config.SFGameServerConfigPaths;
 import com.sfgame.data.ArenaPosition;
 import com.sfgame.data.ArenaMap;
 import com.sfgame.data.BreakthroughVariant;
+import com.sfgame.data.CtfVariant;
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.MapSnapshotMode;
 import com.sfgame.data.SFGameSavedData;
@@ -1546,16 +1547,33 @@ public final class MatchManager {
     }
 
     private void announceResult() {
-        Component title = result == TeamSide.NONE ? Component.translatable("sfgame.result.draw").withStyle(ChatFormatting.GOLD)
-                : Component.translatable("sfgame.result." + result.id()).withStyle(result.color());
+        Component title = resultTitle();
+        Component subtitle = Component.translatable("sfgame.result.finished").withStyle(ChatFormatting.YELLOW);
         server.getPlayerList().broadcastSystemMessage(title, false);
         Component returning = Component.translatable("sfgame.result.returning", rules().resultSeconds())
                 .withStyle(ChatFormatting.YELLOW);
         server.getPlayerList().getPlayers().forEach(player -> {
-            sendTitle(player, title, Component.empty(), rules().resultSeconds() * 20);
+            sendTitle(player, title, subtitle, rules().resultSeconds() * 20);
             player.sendSystemMessage(returning, true);
             playSound(player, SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, 1.0F);
         });
+    }
+    private Component resultTitle() {
+        if (result == TeamSide.NONE) return Component.translatable("sfgame.result.draw").withStyle(ChatFormatting.GOLD);
+        String mode = data().selectedMode();
+        MatchRules currentRules = rules();
+        if (GameModeRegistry.BREAKTHROUGH.equals(mode)) {
+            return roleResult(result, currentRules.breakthroughAttacker(), currentRules.breakthroughDefender());
+        }
+        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(mode) && currentRules.ctfVariant() == CtfVariant.ASSAULT) {
+            return roleResult(result, currentRules.ctfAttacker(), currentRules.ctfDefender());
+        }
+        return Component.translatable("sfgame.result." + result.id()).withStyle(result.color());
+    }
+    private static Component roleResult(TeamSide winner, TeamSide attacker, TeamSide defender) {
+        if (winner == attacker) return Component.translatable("sfgame.result.attacker").withStyle(attacker.color());
+        if (winner == defender) return Component.translatable("sfgame.result.defender").withStyle(defender.color());
+        return Component.translatable("sfgame.result." + winner.id()).withStyle(winner.color());
     }
 
     private static void sendTitle(ServerPlayer player, Component title, Component subtitle, int stayTicks) {

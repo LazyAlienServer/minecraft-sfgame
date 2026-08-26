@@ -26,7 +26,7 @@ final class SFGameScoreboardOverlay {
     private SFGameScoreboardOverlay() {
     }
 
-    static void render(GuiGraphics graphics, int screenWidth, MatchSnapshot snapshot) {
+    static void render(GuiGraphics graphics, int screenWidth, int screenHeight, MatchSnapshot snapshot) {
         if (snapshot == null || snapshot.phase() == MatchPhase.LOBBY
                 || snapshot.phase() == MatchPhase.UNCONFIGURED) return;
 
@@ -48,16 +48,20 @@ final class SFGameScoreboardOverlay {
 
         Font font = Minecraft.getInstance().font;
         int maxWidth = lines.stream().mapToInt(font::width).max().orElse(0);
-        int right = screenWidth - 4;
+        int right = screenWidth - 3;
         int left = Math.max(0, right - maxWidth - HORIZONTAL_PADDING * 2);
-        int top = 4;
+        int top = topFor(screenHeight, lines.size());
         int bottom = top + lines.size() * LINE_HEIGHT + VERTICAL_PADDING * 2;
-        graphics.fill(left, top, right + HORIZONTAL_PADDING, bottom, BACKGROUND);
+        graphics.fill(left, top, screenWidth, bottom, BACKGROUND);
         int y = top + VERTICAL_PADDING;
         for (Component line : lines) {
             graphics.drawString(font, line, right - font.width(line), y, TEXT, true);
             y += LINE_HEIGHT;
         }
+    }
+    static int topFor(int screenHeight, int lineCount) {
+        int contentHeight = Math.max(0, lineCount) * LINE_HEIGHT + VERTICAL_PADDING * 2;
+        return Math.max(0, (screenHeight - contentHeight) / 2);
     }
 
     private static Component title(MatchSnapshot snapshot) {
