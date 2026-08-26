@@ -70,6 +70,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private int sectorIndex;
     private int sectorElapsedTicks;
     private long timeAdjustmentTicks;
+    private boolean unlimitedTimeOverride;
+    private boolean timeOverrideActive;
     private int totalAttackTicks;
     private int transitionTicks;
     private int electionTicks;
@@ -152,7 +154,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         runtimeServer = server;
         clearRuntimeEntities();
         configureRoles(rules);
-        leg = 1; sectorIndex = 0; sectorElapsedTicks = 0; timeAdjustmentTicks = 0L; totalAttackTicks = 0;
+        leg = 1; sectorIndex = 0; sectorElapsedTicks = 0; timeAdjustmentTicks = 0L;
+        unlimitedTimeOverride = false; timeOverrideActive = false; totalAttackTicks = 0;
         transitionTicks = 0; tickets = rules.attackerTickets();
         attackRoundsRemaining = rules.breakthroughAttackRounds();
         firstLeg = null;
@@ -176,7 +179,9 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         refreshDisplays(server, manager, map);
 
         if (allPointsCaptured(map)) return completeSector(server, manager, map, rules);
-        if (tickets <= 0 || remainingTicks(rules) <= 0L) {
+        boolean ticketsExhausted = tickets != MatchRules.UNLIMITED_TICKETS && tickets <= 0;
+        boolean timeExpired = remainingTicks(rules) <= 0L && attackRoundsRemaining > 0;
+        if (ticketsExhausted || timeExpired) {
             return finishAttackRound(server, manager, map, rules);
         }
         return ModeTickResult.CONTINUE;
@@ -184,14 +189,17 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     @Override
     public void onPlayerDeath(TeamSide victim, MatchManager manager) {
-        if (runtimeState == RuntimeState.ACTIVE && victim == attacker) tickets = Math.max(0, tickets - 1);
+        if (runtimeState == RuntimeState.ACTIVE && victim == attacker
+                && tickets != MatchRules.UNLIMITED_TICKETS) {
+            tickets = Math.max(0, tickets - 1);
+        }
     }
 
     @Override
     public void onRuleChanged(String key, MatchRules rules) {
         if ("attackerTickets".equals(key)) tickets = rules.attackerTickets();
         if ("breakthroughAttackRounds".equals(key)) {
-            attackRoundsRemaining = Math.max(1, Math.min(attackRoundsRemaining, rules.breakthroughAttackRounds()));
+            attackRoundsRemaining = Math.max(0, Math.min(attackRoundsRemaining, rules.breakthroughAttackRounds()));
         }
     }
 
@@ -204,16 +212,32 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     @Override
     public int remainingSeconds(MatchManager manager, MatchRules rules) {
-        long ticks = Math.max(0L, remainingTicks(rules));
+        long ticks = remainingTicks(rules);
+        if (ticks == Long.MAX_VALUE) return MatchRules.UNLIMITED_TIME_SECONDS;
+        ticks = Math.max(0L, ticks);
         return (int) Math.min(Integer.MAX_VALUE, (ticks + 19L) / 20L);
     }
     @Override
     public void setRemainingSeconds(MatchManager manager, MatchRules rules, int seconds) {
-        timeAdjustmentTicks = seconds * 20L
-                - (rules.timeLimitSeconds() * 20L - sectorElapsedTicks);
+        timeOverrideActive = true;
+        if (seconds == MatchRules.UNLIMITED_TIME_SECONDS) {
+            unlimitedTimeOverride = true;
+            timeAdjustmentTicks = 0L;
+            return;
+        }
+        unlimitedTimeOverride = false;
+        long baseTicks = rules.timeLimitSeconds() == MatchRules.UNLIMITED_TIME_SECONDS
+                ? -sectorElapsedTicks : rules.timeLimitSeconds() * 20L - sectorElapsedTicks;
+        timeAdjustmentTicks = seconds * 20L - baseTicks;
     }
     private long remainingTicks(MatchRules rules) {
-        return rules.timeLimitSeconds() * 20L - sectorElapsedTicks + timeAdjustmentTicks;
+        if (unlimitedTimeOverride
+                || !timeOverrideActive && rules.timeLimitSeconds() == MatchRules.UNLIMITED_TIME_SECONDS) {
+            return Long.MAX_VALUE;
+        }
+        long limitTicks = rules.timeLimitSeconds() == MatchRules.UNLIMITED_TIME_SECONDS
+                ? 0L : rules.timeLimitSeconds() * 20L;
+        return limitTicks - sectorElapsedTicks + timeAdjustmentTicks;
     }
     @Override public boolean isCaptain(UUID playerId) { return captain != null && captain.equals(playerId); }
     @Override public boolean usesCommonTimeLimit() { return false; }
@@ -231,9 +255,12 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     public int sectorCount(ArenaMap map) { return map.breakthrough().sectors().size(); }
     public int electionSeconds() { return Math.max(0, (electionTicks + 19) / 20); }
     public String subState() { return runtimeState.name().toLowerCase(Locale.ROOT); }
+    public int remainingLegs(MatchRules rules) {
+        return Math.max(0, rules.breakthroughLegs() - Math.max(0, leg - 1));
+    }
 
     boolean setTicketsValue(int value) {
-        if (value < 0 || value > MatchManager.MAX_LIVE_SCORE) return false;
+        if (value < MatchRules.UNLIMITED_TICKETS || value > MatchManager.MAX_LIVE_SCORE) return false;
         tickets = value;
         return true;
     }
@@ -279,6 +306,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private void resetEditedSectorState(MatchRules rules, ArenaMap map) {
         sectorElapsedTicks = 0;
         timeAdjustmentTicks = 0L;
+        unlimitedTimeOverride = false;
+        timeOverrideActive = false;
         transitionTicks = 0;
         tickets = rules.attackerTickets();
         attackRoundsRemaining = rules.breakthroughAttackRounds();
@@ -369,6 +398,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         pointStates.clear(); votes.clear(); abstentions.clear(); captain = null;
         attacker = TeamSide.NONE; defender = TeamSide.NONE; firstLeg = null;
         sectorIndex = 0; sectorElapsedTicks = 0; timeAdjustmentTicks = 0L;
+        unlimitedTimeOverride = false;
+        timeOverrideActive = false;
         totalAttackTicks = 0; tickets = 0; attackRoundsRemaining = 0; electionTicks = 0;
         runtimeServer = null;
     }
@@ -413,6 +444,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
                 TeamSide.NONE, 0, completed, "");
         sectorElapsedTicks = 0;
         timeAdjustmentTicks = 0L;
+        unlimitedTimeOverride = false;
+        timeOverrideActive = false;
         tickets = rules.attackerTickets();
         attackRoundsRemaining = rules.breakthroughAttackRounds();
         runtimeState = RuntimeState.SECTOR_TRANSITION;
@@ -443,6 +476,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         }
         sectorElapsedTicks = 0;
         timeAdjustmentTicks = 0L;
+        unlimitedTimeOverride = false;
+        timeOverrideActive = false;
         runtimeState = RuntimeState.ACTIVE;
         resetCurrentSector(map);
         if (changingAttackRound) manager.modeRedeployAll(rules.respawnProtectionSeconds() * 20);
@@ -463,16 +498,18 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
 
     private ModeTickResult finishAttackRound(MinecraftServer server, MatchManager manager,
                                               ArenaMap map, MatchRules rules) {
-        attackRoundsRemaining = Math.max(0, attackRoundsRemaining - 1);
         if (attackRoundsRemaining > 0) {
+            attackRoundsRemaining--;
             tickets = rules.attackerTickets();
             sectorElapsedTicks = 0;
             timeAdjustmentTicks = 0L;
+            unlimitedTimeOverride = false;
+            timeOverrideActive = false;
             runtimeState = RuntimeState.ATTACK_ROUND_TRANSITION;
             transitionTicks = ATTACK_ROUND_REST_SECONDS * 20;
             clearDisplays();
             announce(server, manager, Component.translatable(
-                    "sfgame.breakthrough.attack_round.transition", attackRoundsRemaining, ATTACK_ROUND_REST_SECONDS));
+                    "sfgame.breakthrough.attack_round.transition", attackRoundsRemaining + 1, ATTACK_ROUND_REST_SECONDS));
             return ModeTickResult.CONTINUE;
         }
         return finishLeg(server, manager, map, rules, false);
@@ -480,7 +517,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     private ModeTickResult finishLeg(MinecraftServer server, MatchManager manager, ArenaMap map,
                                      MatchRules rules, boolean attackSucceeded) {
         LegResult current = snapshotLeg(map, attackSucceeded);
-        if (rules.breakthroughLegs() == 1) return ModeTickResult.finish(attackSucceeded ? attacker : defender);
+        if (rules.breakthroughLegs() == 0) return ModeTickResult.finish(attackSucceeded ? attacker : defender);
         if (leg == 1) {
             firstLeg = current;
             leg = 2;
@@ -492,6 +529,8 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             captain = null;
             clearCaptainAppearance();
             sectorIndex = 0; sectorElapsedTicks = 0; timeAdjustmentTicks = 0L;
+            unlimitedTimeOverride = false;
+            timeOverrideActive = false;
             totalAttackTicks = 0; tickets = rules.attackerTickets();
             attackRoundsRemaining = rules.breakthroughAttackRounds();
             runtimeState = RuntimeState.LEG_TRANSITION;
@@ -776,13 +815,13 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     }
     private void announceNextAttackRound(MatchManager manager) {
         Component title = Component.translatable(
-                "sfgame.breakthrough.attack_round.next_title", attackRoundsRemaining)
+                "sfgame.breakthrough.attack_round.next_title", attackRoundsRemaining + 1)
                 .withStyle(ChatFormatting.GOLD);
         Component subtitle = Component.translatable(
                 "sfgame.breakthrough.attack_round.next_subtitle")
                 .withStyle(ChatFormatting.YELLOW);
         Component chat = Component.translatable(
-                "sfgame.breakthrough.attack_round.next_chat", attackRoundsRemaining)
+                "sfgame.breakthrough.attack_round.next_chat", attackRoundsRemaining + 1)
                 .withStyle(ChatFormatting.AQUA);
         manager.announceTitleAndChat(title, subtitle, chat, 80);
     }

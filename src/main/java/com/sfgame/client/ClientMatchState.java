@@ -17,6 +17,10 @@ public final class ClientMatchState {
         if (Minecraft.getInstance().screen instanceof SFGameScreen screen) screen.refresh();
     }
 
+    public static void clear() {
+        snapshot = null;
+    }
+
     public static void openScreen() {
         Minecraft.getInstance().setScreen(new SFGameScreen());
         SFGameNetwork.sendToServer(new ClientActionPacket(ClientActionPacket.Action.REQUEST_SNAPSHOT, ""));

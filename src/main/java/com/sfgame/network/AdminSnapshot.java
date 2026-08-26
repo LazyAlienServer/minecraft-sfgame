@@ -23,14 +23,15 @@ public record AdminSnapshot(String selectedMode, String selectedMap, MatchPhase 
                             boolean restoringMap, double restoreProgress, long restoreElapsedMillis,
                             int restoredPartitions, int totalPartitions,
                             List<ModeView> modes, List<RuleView> rules) {
-    public record MapView(String id, boolean configured) {
+    public record MapView(String id, String name, boolean configured) {
         void encode(FriendlyByteBuf buffer) {
             buffer.writeUtf(id, 64);
+            buffer.writeUtf(name, 128);
             buffer.writeBoolean(configured);
         }
 
         static MapView decode(FriendlyByteBuf buffer) {
-            return new MapView(buffer.readUtf(64), buffer.readBoolean());
+            return new MapView(buffer.readUtf(64), buffer.readUtf(128), buffer.readBoolean());
         }
     }
 
@@ -77,7 +78,7 @@ public record AdminSnapshot(String selectedMode, String selectedMap, MatchPhase 
         List<ModeView> modeViews = new ArrayList<>();
         for (GameModeDefinition mode : GameModeRegistry.all()) {
             List<MapView> maps = data.maps(mode.id()).stream()
-                    .map(map -> new MapView(map.id(), data.mapConfigured(map, mode.id())))
+                    .map(map -> new MapView(map.id(), map.displayName(), data.mapConfigured(map, mode.id())))
                     .toList();
             modeViews.add(new ModeView(mode.id(), mode.displayName(), maps));
         }

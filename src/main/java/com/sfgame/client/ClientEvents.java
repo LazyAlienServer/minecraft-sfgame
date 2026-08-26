@@ -6,6 +6,8 @@ import net.minecraft.client.KeyMapping;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.RenderGuiOverlayEvent;
+import net.minecraftforge.client.gui.overlay.VanillaGuiOverlay;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -34,8 +36,16 @@ public final class ClientEvents {
         }
 
         @SubscribeEvent
+        public static void renderScoreboard(RenderGuiOverlayEvent.Post event) {
+            if (event.getOverlay() != VanillaGuiOverlay.HOTBAR.type()) return;
+            SFGameScoreboardOverlay.render(event.getGuiGraphics(),
+                    event.getWindow().getGuiScaledWidth(), ClientMatchState.snapshot());
+        }
+
+        @SubscribeEvent
         public static void loggedOut(ClientPlayerNetworkEvent.LoggingOut event) {
             ClientAdminState.clear();
+            ClientMatchState.clear();
         }
     }
 

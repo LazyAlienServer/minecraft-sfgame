@@ -21,11 +21,15 @@ public final class MapConfigJson {
     }
 
     public static JsonObject write(ArenaMap map) {
-        return write(map.save());
+        JsonObject object = write(map.save());
+        object.addProperty("displayName", map.displayName());
+        return object;
     }
 
     public static ArenaMap read(JsonObject object) {
-        return ArenaMap.load(readCompound(object));
+        ArenaMap map = ArenaMap.load(readCompound(object));
+        if (object.has("displayName")) map.displayName(object.get("displayName").getAsString());
+        return map;
     }
 
     public static JsonObject write(CompoundTag tag) {

@@ -158,7 +158,7 @@ public final class SFGameAdminScreen extends Screen {
             AdminSnapshot.MapView map = selectedMode.maps().get(index);
             boolean selected = map.id().equals(snapshot.selectedMap());
             SquareButton button = new SquareButton(panelLeft + visible * (tabWidth + gap), 53, tabWidth, 18,
-                    Component.literal(map.id()), selected,
+                    Component.literal(map.name()), selected,
                     ignored -> SFGameNetwork.sendToServer(AdminActionPacket.selectMap(
                             snapshot.selectedMode(), map.id())));
             button.active = editable && !selected;
@@ -326,7 +326,8 @@ public final class SFGameAdminScreen extends Screen {
         int x0 = panelLeft + 12;
         List<StatusCard> cards = List.of(
                 new StatusCard("sfgame.admin.status.phase", phaseLabel(snapshot.phase()), ACCENT),
-                new StatusCard("sfgame.admin.status.selection", snapshot.selectedMode() + " / " + snapshot.selectedMap(), TEXT),
+                new StatusCard("sfgame.admin.status.selection",
+                        modeLabel(snapshot.selectedMode()).getString() + " / " + selectedMapName(snapshot), TEXT),
                 new StatusCard("sfgame.admin.status.players", snapshot.onlinePlayers() + " / "
                         + snapshot.participatingPlayers() + " / " + snapshot.queuedPlayers(), TEXT),
                 new StatusCard("sfgame.admin.status.time", formatSeconds(snapshot.remainingSeconds()), TEXT),
@@ -470,6 +471,15 @@ public final class SFGameAdminScreen extends Screen {
         String key = "sfgame.mode." + id;
         Component translated = Component.translatable(key);
         return translated.getString().equals(key) ? Component.literal(id) : translated;
+    }
+    private static String selectedMapName(AdminSnapshot snapshot) {
+        return snapshot.modes().stream()
+                .filter(mode -> mode.id().equals(snapshot.selectedMode()))
+                .flatMap(mode -> mode.maps().stream())
+                .filter(map -> map.id().equals(snapshot.selectedMap()))
+                .map(AdminSnapshot.MapView::name)
+                .findFirst()
+                .orElse(snapshot.selectedMap());
     }
 
     private static String formatSeconds(int seconds) {

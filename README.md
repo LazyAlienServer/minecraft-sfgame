@@ -105,7 +105,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame class set <玩家> <职业ID>
 ```
 
-规则统一通过 `/sfgame rule` 管理，并按“模式目录 → 地图目录”保存。每张地图的规则都写在该地图目录的 `map.json` 中；`parent: "base"` 使用模式内置基线，`parent: "<地图ID>"` 继承同模式另一张地图的 `map.json`。`list`、`get` 和命令补全只显示当前模式适用的规则，其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。
+规则统一通过 `/sfgame rule` 管理，并按“模式目录 → 地图目录”保存。每张地图的规则都写在该地图目录的 `map.json` 中；`parent: "base"` 使用模式内置基线，`parent: "<地图ID>"` 继承同模式另一张地图的 `map.json`。`list`、`get` 和命令补全只显示当前模式适用的规则，其他模式的专属规则会被隐藏并拒绝执行。`maxPlayers`、`scoreLimit`、`timeLimitSeconds`、`showUnlimitedTime`、`startCountdownSeconds`、`respawnSeconds`、`respawnProtectionSeconds` 和 `resultSeconds` 是通用规则。`resultSeconds` 默认是 20 秒，即比赛结算后等待 20 秒返回大厅。
 
 ### 规则参数完整说明
 
@@ -115,7 +115,8 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | --- | ---: | ---: | --- | --- |
 | `maxPlayers` | 10 | -1，或 2～1000000 | 全部 | 当前局总参赛人数上限；`-1` 表示不限制人数。降低有限上限不会踢出已参赛玩家，只会阻止新人加入。例：`/sfgame rule set maxPlayers -1`、`/sfgame rule set maxPlayers 1000000`。 |
 | `scoreLimit` | TDM 50、占点 100、CTF 3 | 1～10000 | TDM、占点、CTF | TDM 为击杀目标，占点为团队分数，CTF 为成功夺旗次数；突破不使用团队分数。 |
-| `timeLimitSeconds` | 600 | 30～86400 | 全部 | TDM/占点/CTF 为整局时限；突破为每个 sector 的时限。例：`/sfgame rule set timeLimitSeconds 900`。 |
+| `timeLimitSeconds` | 600 | -1，或 30～86400 | 全部 | TDM/占点/CTF 为整局时限；突破为每个 sector 的时限。`-1` 表示无限时间；设为 `-1` 后不会因时间结束比赛。例：`/sfgame rule set timeLimitSeconds -1`。 |
+| `showUnlimitedTime` | false | true/false | 全部 | 当 `timeLimitSeconds=-1` 时，是否在计分板显示“无限”；默认隐藏 TIME 项。 |
 | `startCountdownSeconds` | 5 | 0～60 | 全部 | 开局倒计时；设为 0 表示跳过倒计时。 |
 | `respawnSeconds` | 5（突破 10） | 0～60 | 全部 | 死亡后等待重生的秒数。突破倒计时结束后会打开出生点/占领点选择。 |
 | `respawnProtectionSeconds` | 3 | 0～30 | 全部 | 重生保护时间；首次使用 TACZ 武器开火会提前解除。 |
@@ -129,10 +130,12 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 | `syncHoldSeconds` | 45 | 1～3600 | 占点 `sync` | `sync` 点位保持归属达到该秒数后切换到下一个点；无人争夺时暂停累计。 |
 | `dominationStrategy` | async | async/sync | 占点 | 点位开放策略。`async` 同时开放全部点，`sync` 每局随机轮换一个开放点。下局规则。例：`/sfgame rule set dominationStrategy sync`。 |
 | `breakthroughVariant` | normal | normal/captain | 突破 | `normal` 为普通突破，`captain` 启用进攻方队长选举。下局规则。 |
-| `breakthroughLegs` | 1 | 1～2 | 突破 | 完整攻防赛段数；2 表示第一赛段后交换双方玩家名单再进行一次。下局规则，不支持对局中热更改；当前局临时跳转使用 `/sfgame score leg`。 |
+| `breakthroughLegs` | 0 | 0～1 | 突破 | 剩余轮换次数；`0` 表示只进行当前这一轮，`1` 表示当前轮结束后再轮换一次、双方各进攻一次。下局规则，不支持对局中热更改；当前局临时跳转使用 `/sfgame score leg`。 |
+| `breakthroughAttackRounds` | 1 | 0～100 | 突破 | 每个 sector 的剩余进攻回合储备。默认 `1` 表示总共两回合：当前回合加一回合储备；计分板初始显示 `1`。 |
 | `breakthroughAttacker` | red | red/blue/yellow/green | 突破 | 固定承担进攻角色的阵营，使用各 sector 的 attacker 出生点。必须与防守方不同。下局规则。 |
 | `breakthroughDefender` | blue | red/blue/yellow/green | 突破 | 固定承担防守角色的阵营，使用各 sector 的 defender 出生点。双赛段时交换双方玩家名单，而不是交换这两个阵营的角色。下局规则。 |
-| `attackerTickets` | 100 | 1～10000 | 突破、CTF assault | 突破为进攻方死亡票数；CTF assault 为进攻方兵力票。设定后当前阶段/回合立即改为该值。 |
+| `attackerTickets` | 100 | -1，或 1～10000 | 突破、CTF assault | 进攻方剩余兵力；`-1` 表示无限兵力。设定后当前阶段/回合立即改为该值。无限兵力默认不显示 TICKETS 项，可用 `showUnlimitedTickets` 显示“无限”。 |
+| `showUnlimitedTickets` | false | true/false | 突破、CTF assault | 当 `attackerTickets=-1` 时，是否在计分板显示“无限”；默认隐藏 TICKETS 项。 |
 | `sectorTransitionSeconds` | 10 | 0～60 | 突破 | 攻陷一个 sector 后的整备和安全部署时间。 |
 | `captainVoteSeconds` | 15 | 1～120 | 突破 captain | 首次队长投票时长。 |
 | `captainReplacementVoteSeconds` | 10 | 1～120 | 突破 captain | 队长掉线、离队或换队后的补选时长。 |
@@ -158,7 +161,7 @@ SFGame 新建默认队伍时会自动将红方设为原版 `red`、蓝方设为�
 /sfgame rule set mapSnapshotMode allowlist
 /sfgame rule set dominationStrategy sync
 /sfgame rule set breakthroughVariant captain
-/sfgame rule set breakthroughLegs 2
+/sfgame rule set breakthroughLegs 1
 /sfgame rule set ctfVariant territory
 /sfgame rule inherit base
 /sfgame rule reset
@@ -224,10 +227,10 @@ tdm/default      指定模式的普通地图
 | `/sfgame menu` | 为执行命令的玩家打开菜单；默认按键为 `M`。 |
 | `/sfgame leave` | 退出当前比赛。比赛未开始时只离开 SFGame 参赛队伍并留在原地；比赛进行中会进入旁观并排入下一局。 |
 | `/sfgame status` | 查看当前模式、地图、阶段、队伍人数、出生点和开赛校验错误。 |
-| `/sfgame score` | 对局进行中查看实时状态。TDM、占点和 CTF 显示剩余时间及已启用队伍比分；突破显示剩余时间、攻守方、进攻方 tickets、leg 和 sector。权限等级要求为 2。 |
-| `/sfgame score time <秒>` | 对局进行中把剩余时间设为 `0～86400` 秒；突破模式修改当前 sector 的剩余时间。设为 0 后将在下一 Tick 正常结算。 |
+| `/sfgame score` | 对局进行中查看实时状态。TIME 以 `时:分:秒` 显示剩余时间；突破还显示剩余兵力、剩余轮换和剩余回合。sector 只在 dev 模式下显示。权限等级要求为 2。 |
+| `/sfgame score time <秒>` | 对局进行中把剩余时间设为 `-1～86400` 秒；`-1` 表示当前计时无限，突破模式修改当前 sector 的剩余时间。设为 0 后将在下一 Tick 正常结算。 |
 | `/sfgame score currency <玩家> <数量>` | 夺旗对局中把指定在线玩家的当前局货币设为 `0～1000000`；只修改 CTF 当前局状态并立即同步该玩家。 |
-| `/sfgame score tickets <数量>` | 突破对局中把当前进攻方 tickets 设为 `0～1000000`；设为 0 后将在下一 Tick 正常结束当前 leg。 |
+| `/sfgame score tickets <数量>` | 突破对局中把当前进攻方 tickets 设为 `-1～1000000`；`-1` 表示无限兵力，设为 0 后按剩余回合规则正常处理。 |
 | `/sfgame score leg <1～10>` | 突破对局中临时跳转当前局的 leg，不受 `breakthroughLegs` 规则限制，也不会修改地图规则。目标 leg 与当前 leg 奇偶性不同时，进攻与防守阵营中的玩家名单互换；阵营本身的攻守角色不变。跳转后重置到 sector 1、完整时间和默认 tickets；没有第一 leg 结果时按独立回合结算。 |
 | `/sfgame score sector <序号>` | 突破对局中跳转到当前 leg 的指定 sector；重置该 sector 的时间、占领点状态和 tickets，并重新部署玩家，但保留当前 leg 已累计的总进攻时间。 |
 | `/sfgame score <red\|blue\|yellow\|green> <比分>` | 在 TDM、占点和 CTF 对局中，把已启用队伍的比分设为 `0～1000000`，并立即同步客户端与侧边栏；达到 `scoreLimit` 后将在下一 Tick 正常结算。突破模式使用 tickets 而非队伍比分，因此会明确拒绝此命令。 |
@@ -244,11 +247,21 @@ tdm/default      指定模式的普通地图
 | `/sfgame map create <地图ID>` | 创建一个模式专属地图。地图 ID 支持字母、数字和下划线，且可为单个字母/数字。 |
 | `/sfgame map select <地图ID>` | 选择当前模式的活动地图；后续 `spawn`、`point`、`sector`、`ctf` 编辑都写入该地图。 |
 | `/sfgame map status` | 查看活动地图 ID、模式配置和校验摘要。 |
+| `/sfgame map setname <显示名称>` | 设置当前地图的显示名称；只写入当前模式地图目录的 `map.json`，不会修改文件夹名或地图 ID。 |
 | `/sfgame map remove <地图ID>` | 删除当前模式下指定地图的全部持久化配置；比赛中不可用，执行前请确认 ID。 |
 
 `<玩家>` 使用单个在线玩家参数，`<玩家选择器>` 使用原版多实体选择器，因此 `/sfgame team set @a random` 会一次处理所有在线玩家；`@a`、`@p`、`@r` 的筛选规则与原版 `/team` 相同。管理员命令统一要求权限等级 2。
 
 地图按照“模式 → 地图”保存。当前内置模式 ID 为 `tdm`、`domination`、`breakthrough` 和 `ctf`，每个模式可以拥有多张地图。`/sfgame spawn setdefault lobby` 将管理员当前位置保存为全局默认大厅；世界首次加载时若尚未配置，会自动使用主世界原版出生点。`/sfgame spawn set lobby` 为当前地图设置覆盖点，`/sfgame spawn clear lobby` 清除覆盖并恢复使用全局默认大厅。长方形区域统一将准星对准两个角方块，依次执行根命令 `/sfgame pos1`、`/sfgame pos2`，再执行对应模式的 `set box` 或 `add box` 命令；两个端点方块都会完整包含在区域内。团队竞技和占点地图可启用红、蓝、黄、绿中的 2～4 个阵营：某阵营只要至少配置一个出生点，就视为该地图启用该阵营；地图至少需要两个启用阵营。每次执行 `/sfgame spawn set <队伍>` 都会追加出生点，玩家部署时从本队坐标中随机选择。随机分队只会使用当前地图已启用阵营，并优先分配人数最少的阵营；也支持 `/sfgame team set random @a` 的随机参数顺序。使用 `/sfgame spawn list` 查看带序号坐标，通过 `remove` 或 `clear` 管理。突破模式地图改用每个 sector 的攻守角色出生点，配置方法见下文。旧版单个红蓝出生点会自动迁移为对应列表中的第 1 个点。比赛进行时禁止修改地图与出生点。
+地图显示名称与地图 ID 分离：文件夹仍使用 `<地图ID>`，`map.json` 中的 `displayName` 仅用于管理员菜单和对局计分板标题。未设置 `displayName` 时自动使用地图 ID。例：
+
+```json
+{
+  "parent": "breakthrough/base",
+  "id": "default",
+  "displayName": "默认"
+}
+```
 
 SFGame 自有 ID（地图、模式、sector、点位、职业及职业配置继承 ID）可以字母或数字开头，支持单个字母和单个数字，例如 `a`、`1`、`a1`、`1a`。后续字符可使用字母、数字和下划线；输入的大写字母会统一按小写 ID 处理。枪械、物品和附件等 Minecraft/TACZ 资源 ID 仍遵循其原有的命名空间格式。
 
@@ -475,7 +488,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 /sfgame spawn set lobby
 
 /sfgame rule set breakthroughVariant normal
-/sfgame rule set breakthroughLegs 1
+/sfgame rule set breakthroughLegs 0
 /sfgame rule set breakthroughAttacker red
 /sfgame rule set breakthroughDefender blue
 
@@ -504,7 +517,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 ```text
 /sfgame rule set breakthroughVariant <normal|captain>
-/sfgame rule set breakthroughLegs <1|2>
+/sfgame rule set breakthroughLegs <0|1>
 /sfgame rule set breakthroughAttacker <red|blue|yellow|green>
 /sfgame rule set breakthroughDefender <red|blue|yellow|green>
 /sfgame rule breakthrough status
@@ -517,12 +530,16 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 /sfgame sector clear
 ```
 
-`legs` 表示整场比赛进行几次完整的攻防赛段，不是 sector 数量：
+`breakthroughLegs` 表示当前比赛还要进行几次攻防轮换，不是 sector 数量：
 
-- `breakthroughLegs=1`：只进行一次攻防。`breakthroughAttacker` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜，任一 sector 超时或进攻票数归零时防守方获胜。比赛结束后不会交换攻守。
-- `breakthroughLegs=2`：双方玩家各进攻一次。第一赛段结束后，进攻与防守阵营中的玩家名单互换，阵营本身的攻守角色不变，并从第一个 sector 重新开始；第二赛段结束后比较双方玩家名单推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
+- `breakthroughLegs=0`：只进行一次攻防。`breakthroughAttacker` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜。当前 sector 的最后一个进攻回合中，只有 tickets 归零才判定防守方获胜。
+- `breakthroughLegs=1`：进行一次轮换，共两次攻防。第一轮结束后，进攻与防守阵营中的玩家名单互换，阵营本身的攻守角色不变，并从第一个 sector 重新开始；第二轮结束后比较双方玩家名单推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
 
-例如 `breakthroughAttacker=red`、`breakthroughDefender=blue` 时，红队始终使用进攻方逻辑和出生点，蓝队始终使用防守方逻辑和出生点。若 `breakthroughLegs=2`，第一赛段结束后原红队玩家加入蓝队、原蓝队玩家加入红队，因此双方玩家都会完成一次进攻。
+计分板的 LEG 显示剩余轮换：初始为 `0` 或 `1`，第一次轮换完成后变为 `0`。ROUND 显示剩余进攻回合储备：默认初始为 `1`，表示当前正在第一回合且还储备一回合；储备为 `0` 时，时间耗尽不会单独判负，只有 tickets 归零才判定进攻失败。
+
+例如 `breakthroughAttacker=red`、`breakthroughDefender=blue` 且 `breakthroughLegs=1` 时，红队始终使用进攻方逻辑和出生点，蓝队始终使用防守方逻辑和出生点；第一轮结束后原红队玩家加入蓝队、原蓝队玩家加入红队，因此双方玩家都会完成一次进攻。
+
+`breakthroughAttackRounds=1` 时，一个 sector 最多有两回合：第一回合失败或超时会消耗储备并进入下一回合；第二回合只有 tickets 归零才结束进攻。设为 `0` 则不提供备用回合。
 
 攻守规则可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。sector 的数量由 `/sfgame sector add` 决定，与 `breakthroughLegs` 无关。
 
@@ -531,7 +548,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 | 参数 | 可选值/范围 | 说明 |
 | --- | --- | --- |
 | `breakthroughVariant` | `normal` / `captain` | `normal` 没有队长选举；`captain` 只为当前进攻方选举队长，防守方不选举。 |
-| `breakthroughLegs` | `1` / `2` | `1` 只进行一次；`2` 第一赛段结束后交换双方玩家名单，各完成一次进攻。 |
+| `breakthroughLegs` | `0` / `1` | `0` 只进行一次攻防；`1` 完成一次轮换后双方各进攻一次。 |
 | `breakthroughAttacker` / `breakthroughDefender` | 两个不同阵营 | 固定地图的进攻/防守角色与出生点；换 leg 时阵营角色不互换，只交换双方玩家名单。 |
 | `<sectorID>` | 资源式 ID | 一个有序攻防阶段，最多 16 个；`sector set order` 的序号决定基础顺序。 |
 | `<pointID>` | 资源式 ID | sector 内的占领点；同一 sector 内不得重叠，不同 sector 可以复用区域。 |
@@ -599,12 +616,18 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 载具能源使用 Forge Energy 兼容层处理，因此卓越前线中表现为燃油或电量的载具都适用。新槽位默认以 `100%` 能源生成，`set energy` 可配置为 `0～100%`；不具有能源能力的实体会忽略此配置。阶段推进和赛段切换不会因为计时而重复生成或清理仍存活的载具。卓越前线载具在一阶段爆炸并进入 `isWreck` 状态的下一个服务端 Tick 会被立即清除，不会继续显示二阶段报废车；此时才开始该槽位的重生计时。停止比赛和返回大厅时会清理全部载具。
 
+### 计分板显示
+
+比赛侧边栏使用本地化文本：TIME 为剩余时间，格式为 `HH:MM:SS`；TICKETS 为剩余兵力；LEG 为剩余轮换；ROUND 为剩余回合储备。`timeLimitSeconds=-1` 时默认隐藏 TIME，`showUnlimitedTime=true` 后显示“无限”；`attackerTickets=-1` 时默认隐藏 TICKETS，`showUnlimitedTickets=true` 后显示“无限”。sector 是开发辅助信息，仅在 `/sfgame dev` 开启时显示。
+计分板标题使用“模式显示名/地图显示名”格式，例如 `突破/默认`；地图文件夹名和地图 ID 仍保持为 `default`。
+
 ### 票数、时间与胜负
 
-- 每个 sector 默认有 100 张进攻票，任意进攻方有效死亡扣除 1；防守方死亡不扣票。
-- 进入下一 sector 时，进攻票数重新补满。
-- `timeLimitSeconds` 在突破模式中表示每个 sector 的独立时限，推进时重置。
-- 单赛段中，攻陷最后 sector 则进攻方获胜；票数归零或超时则防守方获胜。
+- 每个 sector 默认有 100 张进攻票，任意进攻方有效死亡扣除 1；防守方死亡不扣票。`attackerTickets=-1` 时不扣票，也不会因票数触发失败。
+- 进入下一 sector 时，进攻票数重新补满；进入下一回合时也按规则重新补满。
+- `timeLimitSeconds` 在突破模式中表示每个 sector/进攻回合的独立时限，推进或进入下一回合时重置；`-1` 表示无限。
+- `breakthroughAttackRounds` 默认是 `1`，即当前回合之外还储备一回合。储备为 `0` 时，时间结束不会单独判定防守成功，只有 tickets 为 `0` 才判定进攻失败。
+- 单赛段中，攻陷最后 sector 则进攻方获胜；最后一个回合 tickets 归零则防守方获胜。
 - 双赛段结束后依次比较已攻陷 sector 数、当前 sector 已占点数、达到进度所用时间和剩余票数，完全相同则平局。
 - 阶段整备期间全员无敌，不能通过开火提前解除保护。
 - `mapBlockBreaking` 默认关闭；管理员启用后，实际只能编辑地图 build box 内的白名单方块。突破模式的投票、倒计时和 sector 整备期间仍暂停编辑。规则可在比赛中修改并立即生效。
@@ -613,9 +636,10 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 突破模式规则：
 
 ```text
-/sfgame rule set attackerTickets <1-10000>
+/sfgame rule set attackerTickets <-1|1-10000>
+/sfgame rule set showUnlimitedTickets <true|false>
 /sfgame rule set breakthroughVariant <normal|captain>
-/sfgame rule set breakthroughLegs <1|2>
+/sfgame rule set breakthroughLegs <0|1>
 /sfgame rule set breakthroughAttacker <阵营>
 /sfgame rule set breakthroughDefender <阵营>
 /sfgame rule set timeLimitSeconds <秒>
@@ -632,7 +656,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 /sfgame rule set defenderCaptureWeight <小数>
 ```
 
-比赛中修改 `attackerTickets` 会立即把当前 sector 的剩余票数设置为新值，后续 sector 也按新值补满。降低时限至本 sector 已用时间以下，会在下一 Tick 判定防守成功。
+比赛中修改 `attackerTickets` 会立即把当前 sector 的剩余票数设置为新值，后续 sector/回合也按新值补满。降低时限至本 sector 当前回合已用时间以下时：若仍有剩余回合储备，会在下一 Tick 进入下一回合；若剩余回合为 `0`，时间耗尽不会单独判定防守成功，只有 tickets 归零才判定失败。`timeLimitSeconds=-1` 时不进行时间判定。
 
 ### 队长变体用法
 

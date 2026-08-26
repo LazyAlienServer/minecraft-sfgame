@@ -44,7 +44,7 @@ import java.util.Set;
 public final class RuleConfigRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Set<String> COMMON = Set.of("maxPlayers", "scoreLimit", "timeLimitSeconds",
-            "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds", "mapBlockBreaking",
+            "showUnlimitedTime", "startCountdownSeconds", "respawnSeconds", "respawnProtectionSeconds", "resultSeconds", "mapBlockBreaking",
             "mapBlockAllowlist", "mapSnapshotMode",
             "mapRestorePartitionDelayTicks", "mapRestoreAdaptiveThrottling", "mapRestoreTargetTickMillis",
             "mapRestoreMaxPartitionsPerTick");
@@ -53,15 +53,15 @@ public final class RuleConfigRegistry {
     private static final Set<String> ECONOMY = Set.of("economyEnabled", "killCurrency");
     private static final Set<String> DOMINATION = Set.of("dominationStrategy", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds");
     private static final Set<String> BREAKTHROUGH = Set.of("breakthroughVariant", "breakthroughLegs",
-            "breakthroughAttackRounds", "breakthroughAttacker", "breakthroughDefender", "attackerTickets", "sectorTransitionSeconds",
+            "breakthroughAttackRounds", "breakthroughAttacker", "breakthroughDefender", "attackerTickets", "showUnlimitedTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
             "attackerCaptainCaptureWeight", "defenderCaptureWeight");
     private static final Set<String> CTF = Set.of("ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction",
-            "attackerTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds",
+            "attackerTickets", "showUnlimitedTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds",
             "ctfTerritoryUnlockCurrency", "ctfForwardFlagReplantCurrency",
             "ctfForwardFlagCaptureCurrency", "ctfHomeFlagCaptureCurrency");
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
-            "mapBlockBreaking", "mapRestoreAdaptiveThrottling", "economyEnabled");
+            "mapBlockBreaking", "mapRestoreAdaptiveThrottling", "economyEnabled", "showUnlimitedTime", "showUnlimitedTickets");
     private static final Set<String> STRING_RULES = Set.of("mapSnapshotMode", "dominationStrategy",
             "breakthroughVariant", "breakthroughAttacker", "breakthroughDefender",
             "ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction");
@@ -667,6 +667,8 @@ public final class RuleConfigRegistry {
                     case "maxPlayers" -> rules.maxPlayers(value.getAsInt());
                     case "scoreLimit" -> rules.scoreLimit(value.getAsInt());
                     case "timeLimitSeconds" -> rules.timeLimitSeconds(value.getAsInt());
+                    case "showUnlimitedTime" -> rules.showUnlimitedTime(value.getAsBoolean());
+                    case "showUnlimitedTickets" -> rules.showUnlimitedTickets(value.getAsBoolean());
                     case "startCountdownSeconds" -> rules.startCountdownSeconds(value.getAsInt());
                     case "respawnSeconds" -> rules.respawnSeconds(value.getAsInt());
                     case "respawnProtectionSeconds" -> rules.respawnProtectionSeconds(value.getAsInt());
@@ -738,6 +740,7 @@ public final class RuleConfigRegistry {
         object.addProperty("maxPlayers", r.maxPlayers());
         object.addProperty("scoreLimit", r.scoreLimit());
         object.addProperty("timeLimitSeconds", r.timeLimitSeconds());
+        object.addProperty("showUnlimitedTime", r.showUnlimitedTime());
         object.addProperty("startCountdownSeconds", r.startCountdownSeconds());
         object.addProperty("respawnSeconds", r.respawnSeconds());
         object.addProperty("respawnProtectionSeconds", r.respawnProtectionSeconds());
@@ -773,6 +776,7 @@ public final class RuleConfigRegistry {
             object.addProperty("breakthroughAttacker", r.breakthroughAttacker().id());
             object.addProperty("breakthroughDefender", r.breakthroughDefender().id());
             object.addProperty("attackerTickets", r.attackerTickets());
+            object.addProperty("showUnlimitedTickets", r.showUnlimitedTickets());
             object.addProperty("sectorTransitionSeconds", r.sectorTransitionSeconds());
             object.addProperty("captainVoteSeconds", r.captainVoteSeconds());
             object.addProperty("captainReplacementVoteSeconds", r.captainReplacementVoteSeconds());
@@ -786,6 +790,7 @@ public final class RuleConfigRegistry {
             object.addProperty("ctfDefender", r.ctfDefender().id());
             object.addProperty("ctfCarrierRestriction", r.ctfCarrierRestriction().id());
             object.addProperty("attackerTickets", r.attackerTickets());
+            object.addProperty("showUnlimitedTickets", r.showUnlimitedTickets());
             object.addProperty("ctfFlagReturnSeconds", r.ctfFlagReturnSeconds());
             object.addProperty("ctfHomeCaptureTimeSeconds", r.ctfHomeCaptureTimeSeconds());
             object.addProperty("ctfTerritoryUnlockCurrency", r.ctfTerritoryUnlockCurrency());

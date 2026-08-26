@@ -29,12 +29,12 @@ class MatchSnapshotTest {
     @Test
     void roundTripsGenericEconomyAndShopFields() {
         MatchSnapshot expected = new MatchSnapshot(
-                GameModeRegistry.DOMINATION, MatchPhase.RUNNING, TeamSide.RED,
-                1, 2, 3, 4, 100, 321, 1, 2, 3, 4,
+                GameModeRegistry.DOMINATION, "Default", MatchPhase.RUNNING, TeamSide.RED,
+                1, 2, 3, 4, 100, 321, true, 1, 2, 3, 4,
                 "assault", "medic", true, false, List.of(),
-                "", TeamSide.NONE, TeamSide.NONE, 0, 0, 0, 0, 0, "",
+                "", TeamSide.NONE, TeamSide.NONE, 0, true, 0, 0, 0, 0, "",
                 null, null, 0, false, null, null, List.of(), List.of(),
-                false, List.of(), null, null, true, 73, List.of(),
+                false, List.of(), null, null, true, 73, true, List.of(),
                 List.of(new MatchSnapshot.ShopView("medkit", "医疗包", "minecraft:golden_apple", 50)),
                 List.of(new MatchSnapshot.SupplyView(
                         "elite_drop", "elite_class", "精英突击", "minecraft:iron_sword", 2)));
@@ -43,7 +43,11 @@ class MatchSnapshotTest {
             expected.encode(buffer);
             MatchSnapshot actual = MatchSnapshot.decode(buffer);
             assertEquals(expected, actual);
+            assertEquals("Default", actual.mapName());
             assertTrue(actual.economyEnabled());
+            assertTrue(actual.showUnlimitedTime());
+            assertTrue(actual.showUnlimitedTickets());
+            assertTrue(actual.devMode());
             assertEquals(73, actual.currency());
             assertEquals("medkit", actual.shopItems().get(0).id());
             assertEquals(2, actual.supplyItems().get(0).quantity());

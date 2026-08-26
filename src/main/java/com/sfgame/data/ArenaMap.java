@@ -14,7 +14,9 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 public final class ArenaMap {
+    public static final int MAX_DISPLAY_NAME_LENGTH = 64;
     private final String id;
+    private String displayName;
     private ArenaPosition lobby;
     private final Map<TeamSide, List<ArenaPosition>> spawns = new EnumMap<>(TeamSide.class);
     private DominationMapConfig domination = new DominationMapConfig();
@@ -25,10 +27,20 @@ public final class ArenaMap {
 
     public ArenaMap(String id) {
         this.id = SFGameId.normalize(id);
+        this.displayName = this.id;
         TeamSide.PLAYABLE.forEach(side -> spawns.put(side, new ArrayList<>()));
     }
 
     public String id() { return id; }
+    public String displayName() { return displayName; }
+    public void displayName(String value) {
+        String normalized = value == null ? "" : value.trim();
+        if (normalized.length() > MAX_DISPLAY_NAME_LENGTH) {
+            throw new IllegalArgumentException("Map display name must be at most "
+                    + MAX_DISPLAY_NAME_LENGTH + " characters");
+        }
+        displayName = normalized.isEmpty() ? id : normalized;
+    }
     @Nullable public ArenaPosition lobby() { return lobby; }
     public void lobby(ArenaPosition value) { lobby = value; }
     public void clearLobby() { lobby = null; }
@@ -55,7 +67,7 @@ public final class ArenaMap {
     public MapBuildConfig build() { return build; }
     public SupplyMapConfig supply() { return supply; }
     public boolean hasLocalConfiguration() {
-        return lobby != null || enabledTeams().size() > 0 || !domination.points().isEmpty()
+        return !displayName.equals(id) || lobby != null || enabledTeams().size() > 0 || !domination.points().isEmpty()
                 || !breakthrough.sectors().isEmpty() || !breakthrough.vehicles().isEmpty()
                 || !captureTheFlag.homes().isEmpty() || !captureTheFlag.forwardFlags().isEmpty()
                 || build.region() != null || build.snapshotSaved() || supply.configured();

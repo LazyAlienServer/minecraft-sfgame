@@ -1,5 +1,6 @@
 package com.sfgame.game;
 
+import com.sfgame.data.MatchRules;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -67,6 +68,16 @@ class AdminRuleCatalogTest {
                 GameModeRegistry.BREAKTHROUGH, "breakthroughAttackRounds").orElseThrow();
         assertEquals(100, AdminRuleCatalog.parse(rounds, "100"));
         assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(rounds, "101"));
+        AdminRuleCatalog.Definition time = AdminRuleCatalog.find(
+                GameModeRegistry.TEAM_DEATHMATCH, "timeLimitSeconds").orElseThrow();
+        assertEquals(MatchRules.UNLIMITED_TIME_SECONDS, AdminRuleCatalog.parse(time, "-1"));
+        AdminRuleCatalog.Definition tickets = AdminRuleCatalog.find(
+                GameModeRegistry.BREAKTHROUGH, "attackerTickets").orElseThrow();
+        assertEquals(MatchRules.UNLIMITED_TICKETS, AdminRuleCatalog.parse(tickets, "-1"));
+        AdminRuleCatalog.Definition legs = AdminRuleCatalog.find(
+                GameModeRegistry.BREAKTHROUGH, "breakthroughLegs").orElseThrow();
+        assertEquals(1, AdminRuleCatalog.parse(legs, "1"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(legs, "2"));
         AdminRuleCatalog.Definition roles = AdminRuleCatalog.find(GameModeRegistry.BREAKTHROUGH,
                 "breakthroughAttacker").orElseThrow();
         assertEquals("yellow", AdminRuleCatalog.parse(roles, "YELLOW"));

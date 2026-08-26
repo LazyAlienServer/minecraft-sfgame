@@ -71,7 +71,7 @@ public final class MatchManager {
     private MinecraftServer server;
     private int phaseTicks;
     private int elapsedTicks;
-    private long commonTimeAdjustmentTicks;
+    private Long commonTimeOverrideEndTick;
     private int redScore;
     private int blueScore;
     private int yellowScore;
@@ -118,7 +118,8 @@ public final class MatchManager {
     public int elapsedTicks() { return elapsedTicks; }
     public int remainingSeconds() { return activeRuntime.remainingSeconds(this, rules()); }
     public boolean setRemainingSeconds(int seconds) {
-        if (phase != MatchPhase.RUNNING || seconds < 0 || seconds > MAX_LIVE_TIME_SECONDS) return false;
+        if (phase != MatchPhase.RUNNING || seconds < MatchRules.UNLIMITED_TIME_SECONDS
+                || seconds > MAX_LIVE_TIME_SECONDS) return false;
         activeRuntime.setRemainingSeconds(this, rules(), seconds);
         syncAll();
         return true;
@@ -182,18 +183,26 @@ public final class MatchManager {
                 && GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode());
     }
     int commonRemainingSeconds(MatchRules rules) {
-        long ticks = Math.max(0L, commonRemainingTicks(rules));
+        long ticks = commonRemainingTicks(rules);
+        if (ticks == Long.MAX_VALUE) return MatchRules.UNLIMITED_TIME_SECONDS;
+        ticks = Math.max(0L, ticks);
         return (int) Math.min(Integer.MAX_VALUE, (ticks + 19L) / 20L);
     }
     void setCommonRemainingSeconds(MatchRules rules, int seconds) {
-        commonTimeAdjustmentTicks = seconds * 20L
-                - (rules.timeLimitSeconds() * 20L - elapsedTicks);
+        commonTimeOverrideEndTick = seconds == MatchRules.UNLIMITED_TIME_SECONDS
+                ? Long.MAX_VALUE : elapsedTicks + seconds * 20L;
     }
     boolean commonTimeExpired(MatchRules rules) {
-        return commonRemainingTicks(rules) <= 0L;
+        long ticks = commonRemainingTicks(rules);
+        return ticks != Long.MAX_VALUE && ticks <= 0L;
     }
     private long commonRemainingTicks(MatchRules rules) {
-        return rules.timeLimitSeconds() * 20L - elapsedTicks + commonTimeAdjustmentTicks;
+        if (commonTimeOverrideEndTick != null) {
+            return commonTimeOverrideEndTick == Long.MAX_VALUE
+                    ? Long.MAX_VALUE : commonTimeOverrideEndTick - elapsedTicks;
+        }
+        if (rules.timeLimitSeconds() == MatchRules.UNLIMITED_TIME_SECONDS) return Long.MAX_VALUE;
+        return rules.timeLimitSeconds() * 20L - elapsedTicks;
     }
     public boolean restoringMap() { return mapRestoreSession != null; }
     public boolean devMode() { return server != null && data().devMode(); }
@@ -554,7 +563,7 @@ public final class MatchManager {
         yellowScore = 0;
         greenScore = 0;
         elapsedTicks = 0;
-        commonTimeAdjustmentTicks = 0L;
+        commonTimeOverrideEndTick = null;
         result = TeamSide.NONE;
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             TeamSide side = teams.sideOf(player, data());
@@ -929,6 +938,12 @@ public final class MatchManager {
                     throw new IllegalArgumentException("Set the map build box and save its snapshot before enabling mapBlockBreaking");
                 }
             }
+            case "showUnlimitedTime" -> { }
+            case "showUnlimitedTickets" -> {
+                if (!breakthrough && !ctf) {
+                    throw new IllegalArgumentException(key + " is only available in breakthrough or ctf mode");
+                }
+            }
             case "mapRestoreAdaptiveThrottling", "economyEnabled" -> {
                 if ("economyEnabled".equals(key) && !domination && !breakthrough && !ctf) {
                     throw new IllegalArgumentException(key + " is only available in a capture mode");
@@ -1052,6 +1067,7 @@ public final class MatchManager {
         List<MatchSnapshot.RespawnOption> respawnOptions = breakthrough && state.awaitingRespawnSelection()
                 ? breakthroughRuntime.respawnOptions(viewer, this, data().activeMap()) : List.of();
         boolean ctf = GameModeRegistry.CAPTURE_THE_FLAG.equals(data().selectedMode()) && data().activeMap() != null;
+        boolean ctfAssault = ctf && rules.ctfVariant() == com.sfgame.data.CtfVariant.ASSAULT;
         String ctfVariant = ctf ? rules.ctfVariant().id() : null;
         String ctfRestriction = ctf ? rules.ctfCarrierRestriction().id() : null;
         List<MatchSnapshot.CtfFlagView> ctfFlags = ctf
@@ -1079,16 +1095,19 @@ public final class MatchManager {
                 }
             }
         }
-        return new MatchSnapshot(data().selectedMode(), phase, side, redScore, blueScore, yellowScore, greenScore,
-                rules.scoreLimit(), remaining, countSide(TeamSide.RED), countSide(TeamSide.BLUE),
-                countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN),
+        String mapName = data().activeMap() == null ? data().selectedMap() : data().activeMap().displayName();
+        return new MatchSnapshot(data().selectedMode(), mapName, phase, side, redScore, blueScore, yellowScore, greenScore,
+                rules.scoreLimit(), remaining, rules.showUnlimitedTime(), countSide(TeamSide.RED),
+                countSide(TeamSide.BLUE), countSide(TeamSide.YELLOW), countSide(TeamSide.GREEN),
                 state.currentClass(data().selectedMode(), classSide),
                 state.pendingClass(data().selectedMode(), classSide),
                 state.participating(), state.queued(), classViews,
                 breakthrough ? rules.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT) : "",
-                attackSide, defenseSide, breakthrough ? breakthroughRuntime.tickets() : 0,
+                attackSide, defenseSide,
+                breakthrough ? breakthroughRuntime.tickets() : ctfAssault ? captureTheFlagRuntime.attackerTickets() : 0,
+                (breakthrough || ctfAssault) && rules.showUnlimitedTickets(),
                 breakthrough ? breakthroughRuntime.attackRoundsRemaining() : 0,
-                breakthrough ? breakthroughRuntime.leg() : 0,
+                breakthrough ? breakthroughRuntime.remainingLegs(rules) : 0,
                 breakthrough ? breakthroughRuntime.sectorNumber() : 0,
                 breakthrough ? breakthroughRuntime.sectorCount(data().activeMap()) : 0,
                 breakthrough ? breakthroughRuntime.subState() : "",
@@ -1100,6 +1119,7 @@ public final class MatchManager {
                 state.pendingCaptainClass(data().selectedMode(), classSide),
                 captainClassViews, candidates, state.awaitingRespawnSelection(), respawnOptions,
                 ctfVariant, ctfRestriction, economy, economy ? state.currency(data().selectedMode()) : 0,
+                data().devMode(),
                 ctfFlags, shopItems, List.copyOf(supplyItems));
     }
 

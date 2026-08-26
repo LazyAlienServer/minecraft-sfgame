@@ -19,10 +19,10 @@ final class MapConfigRegistryTest {
     @Test
     void storesEachMapInItsModeFolderAndReloadsTopology() throws Exception {
         SFGameSavedData source = new SFGameSavedData();
+        source.activeMap().displayName("默认");
         source.lobby(new ArenaPosition("minecraft:overworld", 1, 64, 2, 90, 0));
         source.addSpawn(TeamSide.RED, new ArenaPosition("minecraft:overworld", 10, 65, 10, 0, 0));
         source.addSpawn(TeamSide.BLUE, new ArenaPosition("minecraft:overworld", -10, 65, -10, 180, 0));
-
         MapConfigRegistry registry = new MapConfigRegistry();
         registry.useConfigRoot(directory);
         assertTrue(registry.reload(source).isEmpty());
@@ -30,6 +30,7 @@ final class MapConfigRegistryTest {
         Path mapPath = directory.resolve("maps").resolve("tdm").resolve("default").resolve("map.json");
         assertTrue(Files.isRegularFile(mapPath));
         assertTrue(Files.readString(mapPath).contains("\"redSpawns\""));
+        assertTrue(Files.readString(mapPath).contains("\"displayName\""));
 
         SFGameSavedData restored = new SFGameSavedData();
         MapConfigRegistry second = new MapConfigRegistry();
@@ -37,6 +38,7 @@ final class MapConfigRegistryTest {
         assertTrue(second.reload(restored).isEmpty());
         assertEquals(1, restored.spawns(TeamSide.RED).size());
         assertEquals(1, restored.spawns(TeamSide.BLUE).size());
+        assertEquals("默认", restored.activeMap().displayName());
     }
 
     @Test

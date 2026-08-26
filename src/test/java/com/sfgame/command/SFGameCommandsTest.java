@@ -51,13 +51,14 @@ final class SFGameCommandsTest {
         assertParses(dispatcher, "score time 300");
         assertParses(dispatcher, "score currency Dev 500");
         assertParses(dispatcher, "score tickets 75");
+        assertParses(dispatcher, "score tickets -1");
         assertParses(dispatcher, "score leg 10");
         assertParses(dispatcher, "score sector 3");
         assertParses(dispatcher, "score red 12");
         assertParses(dispatcher, "score green 1000000");
 
         ParseResults<CommandSourceStack> negativeTime = dispatcher.parse("score time -1", null);
-        assertFalse(negativeTime.getExceptions().isEmpty());
+        assertTrue(negativeTime.getExceptions().isEmpty());
     }
 
     @Test
@@ -91,7 +92,7 @@ final class SFGameCommandsTest {
     void breakthroughReportsRuntimeStateAndRejectsTeamScores() {
         assertFalse(SFGameCommands.supportsTeamScores(GameModeRegistry.BREAKTHROUGH));
         assertTrue(SFGameCommands.supportsTeamScores(GameModeRegistry.TEAM_DEATHMATCH));
-        assertEquals("Remaining time=420s, attacker=red, defender=blue, tickets=73, leg=2, sector=3/5",
+        assertEquals("Remaining time=00:07:00, attacker=red, defender=blue, tickets=73, leg=2, sector=3/5",
                 SFGameCommands.breakthroughScoreStatus(
                         420, TeamSide.RED, TeamSide.BLUE, 73, 2, 3, 5));
         assertTrue(SFGameCommands.scoreFieldVisible(GameModeRegistry.BREAKTHROUGH, "tickets"));

@@ -152,14 +152,20 @@ final class RuleConfigRegistryTest {
                 data.rules(GameModeRegistry.DOMINATION)).dominationStrategy());
 
         registry.setString(GameModeRegistry.BREAKTHROUGH, "arena", "breakthroughVariant", "captain");
-        registry.setInt(GameModeRegistry.BREAKTHROUGH, "arena", "breakthroughLegs", 2);
+        registry.setInt(GameModeRegistry.BREAKTHROUGH, "arena", "breakthroughLegs", 1);
+        registry.setInt(GameModeRegistry.BREAKTHROUGH, "arena", "attackerTickets", -1);
+        registry.setBoolean(GameModeRegistry.BREAKTHROUGH, "arena", "showUnlimitedTickets", true);
         registry.setString(GameModeRegistry.BREAKTHROUGH, "arena", "breakthroughAttacker", "yellow");
         assertEquals(BreakthroughVariant.CAPTAIN, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
                 data.rules(GameModeRegistry.BREAKTHROUGH)).breakthroughVariant());
-        assertEquals(2, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+        assertEquals(1, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
                 data.rules(GameModeRegistry.BREAKTHROUGH)).breakthroughLegs());
         assertEquals(TeamSide.YELLOW, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
                 data.rules(GameModeRegistry.BREAKTHROUGH)).breakthroughAttacker());
+        assertEquals(-1, registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+                data.rules(GameModeRegistry.BREAKTHROUGH)).attackerTickets());
+        assertTrue(registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
+                data.rules(GameModeRegistry.BREAKTHROUGH)).showUnlimitedTickets());
 
         registry.setString(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "ctfCarrierRestriction", "no_weapons");
         assertEquals(CarrierRestriction.NO_WEAPONS, registry.rules(GameModeRegistry.CAPTURE_THE_FLAG, "arena",

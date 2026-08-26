@@ -12,11 +12,11 @@ import net.minecraft.world.scores.criteria.ObjectiveCriteria;
 
 public final class MatchHudService {
     private static final String OBJECTIVE_NAME = "sfgame_match";
-    private static final String TIME_LINE = ChatFormatting.GOLD + "TIME";
-    private static final String TICKETS_LINE = ChatFormatting.RED + "TICKETS";
-    private static final String LEG_LINE = ChatFormatting.AQUA + "LEG";
-    private static final String ROUND_LINE = ChatFormatting.LIGHT_PURPLE + "ROUND";
-    private static final String SECTOR_LINE = ChatFormatting.YELLOW + "SECTOR";
+    private static final String TIME_LINE = "sfgame_time";
+    private static final String TICKETS_LINE = "sfgame_tickets";
+    private static final String LEG_LINE = "sfgame_leg";
+    private static final String ROUND_LINE = "sfgame_round";
+    private static final String SECTOR_LINE = "sfgame_sector";
 
     public void update(MinecraftServer server, MatchManager manager) {
         Scoreboard scoreboard = server.getScoreboard();
@@ -32,13 +32,18 @@ public final class MatchHudService {
         }
         SFGameSavedData data = SFGameSavedData.get(server);
         MatchRules rules = manager.rules();
+        String mapName = data.activeMap() == null ? data.selectedMap() : data.activeMap().displayName();
         if (objective == null) {
             objective = scoreboard.addObjective(OBJECTIVE_NAME, ObjectiveCriteria.DUMMY,
-                    Component.literal(title(data.selectedMode(), rules.scoreLimit())), ObjectiveCriteria.RenderType.INTEGER);
+                    title(data.selectedMode(), mapName), ObjectiveCriteria.RenderType.INTEGER);
         } else {
-            objective.setDisplayName(Component.literal(title(data.selectedMode(), rules.scoreLimit())));
+            objective.setDisplayName(title(data.selectedMode(), mapName));
         }
-        scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, objective);
+        // The client draws this objective from MatchSnapshot so labels and
+        // formatted values stay as Components and resolve in each client locale.
+        if (scoreboard.getDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR) == objective) {
+            scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, null);
+        }
         for (TeamSide side : TeamSide.PLAYABLE) {
             String line = side.color() + side.id().toUpperCase();
             if (!GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.enabledTeams().contains(side)) {
@@ -47,25 +52,34 @@ public final class MatchHudService {
                 scoreboard.resetPlayerScore(line, objective);
             }
         }
-        scoreboard.getOrCreatePlayerScore(TIME_LINE, objective).setScore(manager.remainingSeconds());
+
+        int remainingSeconds = manager.remainingSeconds();
+        setLine(scoreboard, objective, TIME_LINE,
+                remainingSeconds != MatchRules.UNLIMITED_TIME_SECONDS || rules.showUnlimitedTime(),
+                remainingSeconds == MatchRules.UNLIMITED_TIME_SECONDS ? 0 : remainingSeconds);
         if (GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode())) {
             BreakthroughRuntime runtime = manager.breakthrough();
-            scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(runtime.tickets());
-            scoreboard.getOrCreatePlayerScore(LEG_LINE, objective).setScore(runtime.leg());
-            scoreboard.getOrCreatePlayerScore(ROUND_LINE, objective).setScore(runtime.attackRoundsRemaining());
-            scoreboard.getOrCreatePlayerScore(SECTOR_LINE, objective).setScore(runtime.sectorNumber());
+            setLine(scoreboard, objective, TICKETS_LINE,
+                    runtime.tickets() != MatchRules.UNLIMITED_TICKETS || rules.showUnlimitedTickets(),
+                    runtime.tickets() == MatchRules.UNLIMITED_TICKETS ? 0 : runtime.tickets());
+            setLine(scoreboard, objective, LEG_LINE, true, runtime.remainingLegs(rules));
+            setLine(scoreboard, objective, ROUND_LINE, true, runtime.attackRoundsRemaining());
+            setLine(scoreboard, objective, SECTOR_LINE, manager.devMode(), runtime.sectorNumber());
         } else if (GameModeRegistry.CAPTURE_THE_FLAG.equals(data.selectedMode())
                 && data.activeMap() != null
                 && rules.ctfVariant() == com.sfgame.data.CtfVariant.ASSAULT) {
-            scoreboard.getOrCreatePlayerScore(TICKETS_LINE, objective).setScore(manager.captureTheFlag().attackerTickets());
-            scoreboard.resetPlayerScore(LEG_LINE, objective);
-            scoreboard.resetPlayerScore(ROUND_LINE, objective);
-            scoreboard.resetPlayerScore(SECTOR_LINE, objective);
+            int tickets = manager.captureTheFlag().attackerTickets();
+            setLine(scoreboard, objective, TICKETS_LINE,
+                    tickets != MatchRules.UNLIMITED_TICKETS || rules.showUnlimitedTickets(),
+                    tickets == MatchRules.UNLIMITED_TICKETS ? 0 : tickets);
+            setLine(scoreboard, objective, LEG_LINE, false, 0);
+            setLine(scoreboard, objective, ROUND_LINE, false, 0);
+            setLine(scoreboard, objective, SECTOR_LINE, false, 0);
         } else {
-            scoreboard.resetPlayerScore(TICKETS_LINE, objective);
-            scoreboard.resetPlayerScore(LEG_LINE, objective);
-            scoreboard.resetPlayerScore(ROUND_LINE, objective);
-            scoreboard.resetPlayerScore(SECTOR_LINE, objective);
+            setLine(scoreboard, objective, TICKETS_LINE, false, 0);
+            setLine(scoreboard, objective, LEG_LINE, false, 0);
+            setLine(scoreboard, objective, ROUND_LINE, false, 0);
+            setLine(scoreboard, objective, SECTOR_LINE, false, 0);
         }
         if (manager.economyEnabled()
                 && manager.phase() == MatchPhase.RUNNING
@@ -80,10 +94,29 @@ public final class MatchHudService {
         }
     }
 
-    private static String title(String modeId, int scoreLimit) {
-        if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) return "SFGame BREAKTHROUGH";
-        if (GameModeRegistry.CAPTURE_THE_FLAG.equals(modeId)) return "SFGame CTF / " + scoreLimit;
-        return "SFGame " + (GameModeRegistry.DOMINATION.equals(modeId) ? "DOMINATION" : "TDM") + " / " + scoreLimit;
+    private static void setLine(Scoreboard scoreboard, Objective objective,
+                                String holder, boolean visible, int score) {
+        if (!visible) {
+            scoreboard.resetPlayerScore(holder, objective);
+            return;
+        }
+        scoreboard.getOrCreatePlayerScore(holder, objective).setScore(score);
+    }
+
+    public static String formatRemainingTime(int seconds) {
+        if (seconds == MatchRules.UNLIMITED_TIME_SECONDS) return "∞";
+        long safeSeconds = Math.max(0L, seconds);
+        long hours = safeSeconds / 3600L;
+        long minutes = safeSeconds % 3600L / 60L;
+        long remainder = safeSeconds % 60L;
+        return String.format(java.util.Locale.ROOT, "%02d:%02d:%02d", hours, minutes, remainder);
+    }
+
+    private static Component title(String modeId, String mapName) {
+        String key = "sfgame.mode." + modeId;
+        Component mode = Component.translatable(key);
+        if (mode.getString().equals(key)) mode = Component.literal(modeId);
+        return Component.empty().append(mode).append("/").append(Component.literal(mapName));
     }
 
     public void clear(MinecraftServer server) {

@@ -54,6 +54,16 @@ final class MatchManagerGameModeTest {
         assertEquals(0, manager.commonRemainingSeconds(rules));
         assertTrue(manager.commonTimeExpired(rules));
     }
+    @Test
+    void commonClockSupportsUnlimitedTime() {
+        MatchManager manager = new MatchManager();
+        com.sfgame.data.MatchRules rules = new com.sfgame.data.MatchRules();
+        rules.timeLimitSeconds(com.sfgame.data.MatchRules.UNLIMITED_TIME_SECONDS);
+
+        assertEquals(com.sfgame.data.MatchRules.UNLIMITED_TIME_SECONDS,
+                manager.commonRemainingSeconds(rules));
+        assertFalse(manager.commonTimeExpired(rules));
+    }
 
     @Test
     void breakthroughRosterSwapExchangesPlayersNotTeamRoles() {

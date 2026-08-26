@@ -122,7 +122,8 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
         refreshDisplays(manager, map);
         refreshBossBars(manager, map, rules);
 
-        if (variant == CtfVariant.ASSAULT && attackerTickets <= 0) {
+        if (variant == CtfVariant.ASSAULT
+                && attackerTickets != MatchRules.UNLIMITED_TICKETS && attackerTickets <= 0) {
             return ModeTickResult.finish(defender);
         }
         for (TeamSide side : manager.savedData().enabledTeams()) {
@@ -135,7 +136,8 @@ public final class CaptureTheFlagRuntime implements MatchModeRuntime {
 
     @Override
     public void onPlayerDeath(ServerPlayer victim, TeamSide side, MatchManager manager) {
-        if (activeMap != null && variant == CtfVariant.ASSAULT && side == attacker) {
+        if (activeMap != null && variant == CtfVariant.ASSAULT && side == attacker
+                && attackerTickets != MatchRules.UNLIMITED_TICKETS) {
             attackerTickets = Math.max(0, attackerTickets - 1);
         }
         dropCarriedFlag(victim, manager);

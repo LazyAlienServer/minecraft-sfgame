@@ -63,7 +63,8 @@ public final class AdminRuleCatalog {
             // Live-safe common rules.
             integer("maxPlayers", MatchRules.UNLIMITED_PLAYERS, MatchRules.MAX_PLAYER_LIMIT, true),
             integer("scoreLimit", 1, 10_000, true),
-            integer("timeLimitSeconds", 30, 86_400, true),
+            integer("timeLimitSeconds", MatchRules.UNLIMITED_TIME_SECONDS, 86_400, true),
+            bool("showUnlimitedTime", false),
             integer("respawnSeconds", 0, 60, true),
             integer("respawnProtectionSeconds", 0, 30, true),
             bool("mapBlockBreaking", false),
@@ -87,12 +88,13 @@ public final class AdminRuleCatalog {
 
             // Breakthrough.
             enumeration("breakthroughVariant", false, GameModeRegistry.BREAKTHROUGH),
-            integer("breakthroughAttackRounds", 1, 100, false, GameModeRegistry.BREAKTHROUGH),
-            integer("breakthroughLegs", 1, 2, false, GameModeRegistry.BREAKTHROUGH),
+            integer("breakthroughAttackRounds", 0, 100, false, GameModeRegistry.BREAKTHROUGH),
+            integer("breakthroughLegs", 0, 1, false, GameModeRegistry.BREAKTHROUGH),
             enumeration("breakthroughAttacker", false, GameModeRegistry.BREAKTHROUGH),
             enumeration("breakthroughDefender", false, GameModeRegistry.BREAKTHROUGH),
-            integer("attackerTickets", 1, 10_000, true,
+            integer("attackerTickets", MatchRules.UNLIMITED_TICKETS, 10_000, true,
                     GameModeRegistry.BREAKTHROUGH, GameModeRegistry.CAPTURE_THE_FLAG),
+            bool("showUnlimitedTickets", false, GameModeRegistry.BREAKTHROUGH, GameModeRegistry.CAPTURE_THE_FLAG),
             integer("sectorTransitionSeconds", 0, 60, true, GameModeRegistry.BREAKTHROUGH),
             integer("captainVoteSeconds", 1, 120, true, GameModeRegistry.BREAKTHROUGH),
             integer("captainReplacementVoteSeconds", 1, 120, true, GameModeRegistry.BREAKTHROUGH),

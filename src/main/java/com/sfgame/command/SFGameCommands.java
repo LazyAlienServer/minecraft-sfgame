@@ -24,6 +24,7 @@ import com.sfgame.data.CtfForwardFlagDefinition;
 import com.sfgame.data.CtfHomeFlagDefinition;
 import com.sfgame.data.CaptureTheFlagMapConfig;
 import com.sfgame.game.BreakthroughRuntime;
+import com.sfgame.game.MatchHudService;
 import com.sfgame.game.GameModeDefinition;
 import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.MatchManager;
@@ -220,7 +221,10 @@ public final class SFGameCommands {
                         .then(Commands.literal("select").then(Commands.argument("map", StringArgumentType.word())
                                 .suggests(MAP_SUGGESTIONS).executes(SFGameCommands::mapSelect)))
                         .then(Commands.literal("remove").then(Commands.argument("map", StringArgumentType.word())
-                                .suggests(MAP_SUGGESTIONS).executes(SFGameCommands::mapRemove))))
+                                .suggests(MAP_SUGGESTIONS).executes(SFGameCommands::mapRemove)))
+                        .then(Commands.literal("setname")
+                                .then(Commands.argument("name", StringArgumentType.greedyString())
+                                        .executes(SFGameCommands::mapSetName))))
                 .then(Commands.literal("team").requires(s -> s.hasPermission(2))
                         .then(Commands.literal("status").executes(SFGameCommands::teamStatus))
                         .then(Commands.literal("bind")
@@ -269,7 +273,7 @@ public final class SFGameCommands {
                 .executes(SFGameCommands::scoreStatus);
         root.then(Commands.literal("time")
                 .then(Commands.argument("seconds", IntegerArgumentType.integer(
-                                0, MatchManager.MAX_LIVE_TIME_SECONDS))
+                                MatchRules.UNLIMITED_TIME_SECONDS, MatchManager.MAX_LIVE_TIME_SECONDS))
                         .executes(SFGameCommands::scoreTime)));
         root.then(Commands.literal("currency").requires(source -> scoreFieldVisible(source, "currency"))
                 .then(Commands.argument("player", EntityArgument.player())
@@ -278,7 +282,7 @@ public final class SFGameCommands {
                                 .executes(SFGameCommands::scoreCurrency))));
         root.then(Commands.literal("tickets").requires(source -> scoreFieldVisible(source, "tickets"))
                 .then(Commands.argument("value", IntegerArgumentType.integer(
-                                0, MatchManager.MAX_LIVE_SCORE))
+                                MatchRules.UNLIMITED_TICKETS, MatchManager.MAX_LIVE_SCORE))
                         .executes(SFGameCommands::scoreTickets)));
         root.then(Commands.literal("leg").requires(source -> scoreFieldVisible(source, "leg"))
                 .then(Commands.argument("value", IntegerArgumentType.integer(1, MatchManager.MAX_LIVE_LEG))
@@ -1055,7 +1059,8 @@ public final class SFGameCommands {
             String scores = data.enabledTeams().stream()
                     .map(side -> side.id() + "=" + manager.score(side))
                     .collect(java.util.stream.Collectors.joining(", "));
-            send(context, "Remaining time=" + manager.remainingSeconds() + "s, scores: " + scores);
+            send(context, "Remaining time=" + MatchHudService.formatRemainingTime(manager.remainingSeconds())
+                    + ", scores: " + scores);
         }
         return 1;
     }
@@ -1161,7 +1166,8 @@ public final class SFGameCommands {
 
     static String breakthroughScoreStatus(int remainingSeconds, TeamSide attacker, TeamSide defender,
                                           int tickets, int leg, int sector, int sectors) {
-        return "Remaining time=" + remainingSeconds + "s, attacker=" + attacker.id()
+        return "Remaining time=" + MatchHudService.formatRemainingTime(remainingSeconds)
+                + ", attacker=" + attacker.id()
                 + ", defender=" + defender.id() + ", tickets=" + tickets
                 + ", leg=" + leg + ", sector=" + sector + "/" + sectors;
     }
@@ -1936,7 +1942,8 @@ public final class SFGameCommands {
     private static int mapList(CommandContext<CommandSourceStack> context) {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         data.maps().forEach(map -> send(context, (map.id().equals(data.selectedMap()) ? "* " : "  ")
-                + map.id() + (data.mapConfigured(map) ? " [configured]" : " [incomplete]")));
+                + map.id() + " (" + map.displayName() + ")"
+                + (data.mapConfigured(map) ? " [configured]" : " [incomplete]")));
         return data.maps().size();
     }
 
@@ -1944,7 +1951,8 @@ public final class SFGameCommands {
         SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
         ArenaMap map = data.activeMap();
         if (map == null) return failure(context, "No active map");
-        send(context, "Mode=" + data.selectedMode() + ", map=" + map.id() + ", configured=" + data.mapConfigured(map)
+        send(context, "Mode=" + data.selectedMode() + ", map=" + map.id() + ", name=" + map.displayName()
+                + ", configured=" + data.mapConfigured(map)
                 + ", mapLobby=" + (map.lobby() != null) + ", defaultLobby=" + (data.defaultLobby() != null)
                 + ", enabledTeams=" + map.enabledTeams()
                 + ", spawns=" + TeamSide.PLAYABLE.stream().map(side -> side.id() + ":" + map.spawns(side).size()).toList());
@@ -1953,6 +1961,21 @@ public final class SFGameCommands {
                     + ", capturePoints=" + map.domination().points().size());
         }
         return data.mapConfigured(map) ? 1 : 0;
+    }
+    private static int mapSetName(CommandContext<CommandSourceStack> context) {
+        if (!MatchManager.get().canChangeArena()) return failure(context, "Cannot change a map during a match");
+        SFGameSavedData data = SFGameSavedData.get(context.getSource().getServer());
+        ArenaMap map = data.activeMap();
+        if (map == null) return failure(context, "No active map");
+        try {
+            map.displayName(StringArgumentType.getString(context, "name"));
+            MatchManager.get().saveActiveMapConfiguration();
+            MatchManager.get().arenaSelectionChanged();
+            MatchManager.get().refreshCommandTree();
+            return success(context, "Set map " + map.id() + " display name to " + map.displayName());
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            return failure(context, exception.getMessage());
+        }
     }
 
     private static int mapCreate(CommandContext<CommandSourceStack> context) {
@@ -2211,12 +2234,18 @@ public final class SFGameCommands {
                 && key.equals("attackerTickets")) {
             throw new IllegalArgumentException(key + " is only available in breakthrough or ctf mode");
         }
+        if (!GameModeRegistry.BREAKTHROUGH.equals(rules.modeId())
+                && !GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId())
+                && key.equals("showUnlimitedTickets")) {
+            throw new IllegalArgumentException(key + " is only available in breakthrough or ctf mode");
+        }
         if (!GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId()) && isCtfOnlyRule(key)) {
             throw new IllegalArgumentException(key + " is only available in ctf mode");
         }
         return switch (key) {
             case "maxPlayers" -> Integer.toString(rules.maxPlayers());
             case "scoreLimit" -> Integer.toString(rules.scoreLimit());
+            case "showUnlimitedTime" -> Boolean.toString(rules.showUnlimitedTime());
             case "timeLimitSeconds" -> Integer.toString(rules.timeLimitSeconds());
             case "startCountdownSeconds" -> Integer.toString(rules.startCountdownSeconds());
             case "respawnSeconds" -> Integer.toString(rules.respawnSeconds());
@@ -2236,6 +2265,7 @@ public final class SFGameCommands {
             case "breakthroughAttackRounds" -> Integer.toString(rules.breakthroughAttackRounds());
             case "breakthroughDefender" -> rules.breakthroughDefender().id();
             case "attackerTickets" -> Integer.toString(rules.attackerTickets());
+            case "showUnlimitedTickets" -> Boolean.toString(rules.showUnlimitedTickets());
             case "sectorTransitionSeconds" -> Integer.toString(rules.sectorTransitionSeconds());
             case "captainVoteSeconds" -> Integer.toString(rules.captainVoteSeconds());
             case "captainReplacementVoteSeconds" -> Integer.toString(rules.captainReplacementVoteSeconds());
@@ -2294,7 +2324,9 @@ public final class SFGameCommands {
 
 
     private static String rulesText(MatchRules r) {
-        String common = "maxPlayers=" + r.maxPlayers() + ", scoreLimit=" + r.scoreLimit() + ", timeLimitSeconds=" + r.timeLimitSeconds()
+        String common = "maxPlayers=" + r.maxPlayers() + ", scoreLimit=" + r.scoreLimit()
+                + ", timeLimitSeconds=" + r.timeLimitSeconds()
+                + ", showUnlimitedTime=" + r.showUnlimitedTime()
                 + ", startCountdownSeconds=" + r.startCountdownSeconds() + ", respawnSeconds=" + r.respawnSeconds()
                 + ", respawnProtectionSeconds=" + r.respawnProtectionSeconds() + ", resultSeconds=" + r.resultSeconds()
                 + ", mapBlockBreaking=" + r.mapBlockBreaking()
@@ -2313,11 +2345,13 @@ public final class SFGameCommands {
         if (GameModeRegistry.BREAKTHROUGH.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
                 + ", breakthroughVariant=" + r.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT)
                 + ", breakthroughLegs=" + r.breakthroughLegs()
+                + ", breakthroughAttackRounds=" + r.breakthroughAttackRounds()
                 + ", breakthroughAttacker=" + r.breakthroughAttacker().id()
                 + ", breakthroughDefender=" + r.breakthroughDefender().id()
                 + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
                 + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()
+                + ", showUnlimitedTickets=" + r.showUnlimitedTickets()
                 + ", sectorTransitionSeconds=" + r.sectorTransitionSeconds() + ", captainVoteSeconds=" + r.captainVoteSeconds()
                 + ", captainReplacementVoteSeconds=" + r.captainReplacementVoteSeconds()
                 + ", attackerCaptainGlowing=" + r.attackerCaptainGlowing()
@@ -2330,6 +2364,7 @@ public final class SFGameCommands {
                 + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
                 + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()
+                + ", showUnlimitedTickets=" + r.showUnlimitedTickets()
                 + ", ctfFlagReturnSeconds=" + r.ctfFlagReturnSeconds()
                 + ", ctfHomeCaptureTimeSeconds=" + r.ctfHomeCaptureTimeSeconds();
         return common;

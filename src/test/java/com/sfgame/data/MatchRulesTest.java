@@ -21,10 +21,13 @@ final class MatchRulesTest {
         rules.respawnSeconds(-1);
         rules.respawnProtectionSeconds(31);
         rules.resultSeconds(0);
+        rules.timeLimitSeconds(MatchRules.UNLIMITED_TIME_SECONDS);
+        rules.attackerTickets(MatchRules.UNLIMITED_TICKETS);
 
         assertEquals(2, rules.maxPlayers());
         assertEquals(10_000, rules.scoreLimit());
-        assertEquals(30, rules.timeLimitSeconds());
+        assertEquals(MatchRules.UNLIMITED_TIME_SECONDS, rules.timeLimitSeconds());
+        assertEquals(MatchRules.UNLIMITED_TICKETS, rules.attackerTickets());
         assertEquals(60, rules.startCountdownSeconds());
         assertEquals(0, rules.respawnSeconds());
         assertEquals(30, rules.respawnProtectionSeconds());
@@ -147,7 +150,8 @@ final class MatchRulesTest {
         MatchRules rules = new MatchRules(GameModeRegistry.BREAKTHROUGH);
         assertEquals(10, rules.respawnSeconds());
         assertEquals(MatchRules.DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS, rules.breakthroughAttackRounds());
-        rules.attackerTickets(150);
+        assertEquals(MatchRules.DEFAULT_BREAKTHROUGH_LEGS, rules.breakthroughLegs());
+        rules.attackerTickets(MatchRules.UNLIMITED_TICKETS);
         rules.sectorTransitionSeconds(12);
         rules.captainVoteSeconds(20);
         rules.captainReplacementVoteSeconds(8);
@@ -162,11 +166,14 @@ final class MatchRulesTest {
         assertEquals(100, rules.breakthroughAttackRounds());
         rules.breakthroughAttackRounds(1);
         rules.breakthroughDefender(TeamSide.GREEN);
+        rules.timeLimitSeconds(MatchRules.UNLIMITED_TIME_SECONDS);
+        rules.showUnlimitedTime(true);
+        rules.showUnlimitedTickets(true);
 
         MatchRules restored = new MatchRules(GameModeRegistry.BREAKTHROUGH);
         restored.load(rules.save());
 
-        assertEquals(150, restored.attackerTickets());
+        assertEquals(MatchRules.UNLIMITED_TICKETS, restored.attackerTickets());
         assertEquals(12, restored.sectorTransitionSeconds());
         assertEquals(20, restored.captainVoteSeconds());
         assertEquals(8, restored.captainReplacementVoteSeconds());
@@ -175,10 +182,13 @@ final class MatchRulesTest {
         assertEquals(2.5, restored.attackerCaptainCaptureWeight());
         assertEquals(1.6, restored.defenderCaptureWeight());
         assertEquals(BreakthroughVariant.CAPTAIN, restored.breakthroughVariant());
-        assertEquals(2, restored.breakthroughLegs());
+        assertEquals(1, restored.breakthroughLegs());
         assertEquals(TeamSide.YELLOW, restored.breakthroughAttacker());
         assertEquals(1, restored.breakthroughAttackRounds());
         assertEquals(TeamSide.GREEN, restored.breakthroughDefender());
+        assertEquals(MatchRules.UNLIMITED_TIME_SECONDS, restored.timeLimitSeconds());
+        assertTrue(restored.showUnlimitedTime());
+        assertTrue(restored.showUnlimitedTickets());
     }
 
     @Test

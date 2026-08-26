@@ -49,6 +49,11 @@ final class BreakthroughRuntimeTest {
 
         runtime.setRemainingSeconds(manager, rules, 0);
         assertEquals(0, runtime.remainingSeconds(manager, rules));
+        BreakthroughRuntime unlimitedRuntime = new BreakthroughRuntime();
+        MatchRules unlimitedRules = new MatchRules(GameModeRegistry.BREAKTHROUGH);
+        unlimitedRules.timeLimitSeconds(MatchRules.UNLIMITED_TIME_SECONDS);
+        assertEquals(MatchRules.UNLIMITED_TIME_SECONDS,
+                unlimitedRuntime.remainingSeconds(manager, unlimitedRules));
     }
 
     @Test
@@ -79,7 +84,20 @@ final class BreakthroughRuntimeTest {
         assertFalse(runtime.setLegState(rules, map, 11));
         assertTrue(BreakthroughRuntime.changesRosterParity(1, 10));
         assertFalse(BreakthroughRuntime.changesRosterParity(1, 9));
-        assertFalse(runtime.setTicketsValue(-1));
+        assertTrue(runtime.setTicketsValue(MatchRules.UNLIMITED_TICKETS));
+        assertEquals(MatchRules.UNLIMITED_TICKETS, runtime.tickets());
+    }
+    @Test
+    void remainingLegsCountsRotationsAfterTheCurrentLeg() {
+        BreakthroughRuntime runtime = new BreakthroughRuntime();
+        MatchRules rules = new MatchRules(GameModeRegistry.BREAKTHROUGH);
+        rules.breakthroughLegs(1);
+        ArenaMap map = twoSectorMap();
+
+        assertTrue(runtime.setLegState(rules, map, 1));
+        assertEquals(1, runtime.remainingLegs(rules));
+        assertTrue(runtime.setLegState(rules, map, 2));
+        assertEquals(0, runtime.remainingLegs(rules));
     }
 
     @Test

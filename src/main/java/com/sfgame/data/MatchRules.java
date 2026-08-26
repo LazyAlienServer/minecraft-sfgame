@@ -17,10 +17,13 @@ public final class MatchRules {
     public static final int DEFAULT_DOMINATION_SCORE_LIMIT = 100;
     public static final int DEFAULT_CTF_SCORE_LIMIT = 3;
     public static final int DEFAULT_TIME_LIMIT_SECONDS = 600;
+    public static final int UNLIMITED_TIME_SECONDS = -1;
+    public static final int UNLIMITED_TICKETS = -1;
     public static final int DEFAULT_START_COUNTDOWN_SECONDS = 5;
     public static final int DEFAULT_RESPAWN_SECONDS = 5;
     public static final int DEFAULT_BREAKTHROUGH_RESPAWN_SECONDS = 10;
-    public static final int DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS = 2;
+    public static final int DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS = 1;
+    public static final int DEFAULT_BREAKTHROUGH_LEGS = 0;
     public static final int DEFAULT_RESPAWN_PROTECTION_SECONDS = 3;
     public static final int DEFAULT_RESULT_SECONDS = 20;
     public static final int DEFAULT_MAP_RESTORE_DELAY_TICKS = 0;
@@ -61,6 +64,8 @@ public final class MatchRules {
     private int ctfHomeCaptureTimeSeconds;
     private int killCurrency;
     private boolean economyEnabled;
+    private boolean showUnlimitedTime;
+    private boolean showUnlimitedTickets;
     private int ctfTerritoryUnlockCurrency;
     private int ctfForwardFlagReplantCurrency;
     private int ctfForwardFlagCaptureCurrency;
@@ -117,6 +122,8 @@ public final class MatchRules {
     public int ctfHomeCaptureTimeSeconds() { return ctfHomeCaptureTimeSeconds; }
     public int killCurrency() { return killCurrency; }
     public boolean economyEnabled() { return economyEnabled; }
+    public boolean showUnlimitedTime() { return showUnlimitedTime; }
+    public boolean showUnlimitedTickets() { return showUnlimitedTickets; }
     public int ctfTerritoryUnlockCurrency() { return ctfTerritoryUnlockCurrency; }
     public int ctfForwardFlagReplantCurrency() { return ctfForwardFlagReplantCurrency; }
     public int ctfForwardFlagCaptureCurrency() { return ctfForwardFlagCaptureCurrency; }
@@ -138,7 +145,10 @@ public final class MatchRules {
                 : clamp(value, MIN_PLAYER_LIMIT, MAX_PLAYER_LIMIT);
     }
     public void scoreLimit(int value) { scoreLimit = clamp(value, 1, 10000); }
-    public void timeLimitSeconds(int value) { timeLimitSeconds = clamp(value, 30, 86400); }
+    public void timeLimitSeconds(int value) {
+        timeLimitSeconds = value == UNLIMITED_TIME_SECONDS
+                ? UNLIMITED_TIME_SECONDS : clamp(value, 30, 86400);
+    }
     public void startCountdownSeconds(int value) { startCountdownSeconds = clamp(value, 0, 60); }
     public void respawnSeconds(int value) { respawnSeconds = clamp(value, 0, 60); }
     public void respawnProtectionSeconds(int value) { respawnProtectionSeconds = clamp(value, 0, 30); }
@@ -150,7 +160,9 @@ public final class MatchRules {
     public void scoreIntervalSeconds(int value) { scoreIntervalSeconds = clamp(value, 1, 300); }
     public void scorePerPoint(int value) { scorePerPoint = clamp(value, 1, 1000); }
     public void syncHoldSeconds(int value) { syncHoldSeconds = clamp(value, 1, 3600); }
-    public void attackerTickets(int value) { attackerTickets = clamp(value, 1, 10000); }
+    public void attackerTickets(int value) {
+        attackerTickets = value == UNLIMITED_TICKETS ? UNLIMITED_TICKETS : clamp(value, 1, 10000);
+    }
     public void sectorTransitionSeconds(int value) { sectorTransitionSeconds = clamp(value, 0, 60); }
     public void captainVoteSeconds(int value) { captainVoteSeconds = clamp(value, 1, 120); }
     public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
@@ -173,6 +185,8 @@ public final class MatchRules {
     public void ctfHomeCaptureTimeSeconds(int value) { ctfHomeCaptureTimeSeconds = clamp(value, 1, 600); }
     public void killCurrency(int value) { killCurrency = clamp(value, 0, 100000); }
     public void economyEnabled(boolean value) { economyEnabled = value; }
+    public void showUnlimitedTime(boolean value) { showUnlimitedTime = value; }
+    public void showUnlimitedTickets(boolean value) { showUnlimitedTickets = value; }
     public void ctfTerritoryUnlockCurrency(int value) { ctfTerritoryUnlockCurrency = clamp(value, 0, 100000); }
     public void ctfForwardFlagReplantCurrency(int value) { ctfForwardFlagReplantCurrency = clamp(value, 0, 100000); }
     public void ctfForwardFlagCaptureCurrency(int value) { ctfForwardFlagCaptureCurrency = clamp(value, 0, 100000); }
@@ -183,8 +197,8 @@ public final class MatchRules {
     public void breakthroughVariant(BreakthroughVariant value) {
         breakthroughVariant = value == null ? BreakthroughVariant.NORMAL : value;
     }
-    public void breakthroughAttackRounds(int value) { breakthroughAttackRounds = clamp(value, 1, 100); }
-    public void breakthroughLegs(int value) { breakthroughLegs = clamp(value, 1, 2); }
+    public void breakthroughAttackRounds(int value) { breakthroughAttackRounds = clamp(value, 0, 100); }
+    public void breakthroughLegs(int value) { breakthroughLegs = clamp(value, 0, 1); }
     public void breakthroughAttacker(TeamSide value) { breakthroughAttacker = playable(value, TeamSide.RED); }
     public void breakthroughDefender(TeamSide value) { breakthroughDefender = playable(value, TeamSide.BLUE); }
     public void ctfVariant(CtfVariant value) { ctfVariant = value == null ? CtfVariant.CLASSIC : value; }
@@ -225,9 +239,11 @@ public final class MatchRules {
         mapRestoreMaxPartitionsPerTick = DEFAULT_MAP_RESTORE_MAX_PARTITIONS_PER_TICK;
         attackerCaptainCaptureWeight = 2.0;
         defenderCaptureWeight = 1.4;
+        showUnlimitedTickets = false;
         ctfFlagReturnSeconds = 30;
         ctfHomeCaptureTimeSeconds = 15;
         economyEnabled = false;
+        showUnlimitedTime = false;
         killCurrency = 25;
         ctfTerritoryUnlockCurrency = 10;
         ctfForwardFlagReplantCurrency = 50;
@@ -236,7 +252,7 @@ public final class MatchRules {
         breakthroughAttackRounds = DEFAULT_BREAKTHROUGH_ATTACK_ROUNDS;
         dominationStrategy = PointActivationStrategy.ASYNC;
         breakthroughVariant = BreakthroughVariant.NORMAL;
-        breakthroughLegs = 1;
+        breakthroughLegs = DEFAULT_BREAKTHROUGH_LEGS;
         breakthroughAttacker = TeamSide.RED;
         breakthroughDefender = TeamSide.BLUE;
         ctfVariant = CtfVariant.CLASSIC;
@@ -247,9 +263,12 @@ public final class MatchRules {
 
     public CompoundTag save() {
         CompoundTag tag = new CompoundTag();
+        tag.putBoolean("ShowUnlimitedTickets", showUnlimitedTickets);
         tag.putInt("MaxPlayers", maxPlayers); tag.putInt("ScoreLimit", scoreLimit);
-        tag.putInt("TimeLimitSeconds", timeLimitSeconds); tag.putInt("StartCountdownSeconds", startCountdownSeconds);
-        tag.putInt("RespawnSeconds", respawnSeconds); tag.putInt("RespawnProtectionSeconds", respawnProtectionSeconds);
+        tag.putInt("TimeLimitSeconds", timeLimitSeconds); tag.putBoolean("ShowUnlimitedTime", showUnlimitedTime);
+        tag.putInt("RespawnSeconds", respawnSeconds);
+        tag.putInt("RespawnProtectionSeconds", respawnProtectionSeconds);
+        tag.putInt("StartCountdownSeconds", startCountdownSeconds);
         tag.putInt("ResultSeconds", resultSeconds); tag.putInt("CaptureTimeSeconds", captureTimeSeconds);
         tag.putBoolean("CaptureUsePlayerDifference", captureUsePlayerDifference);
         tag.putDouble("CaptureDifferenceCoefficient", captureDifferenceCoefficient);
@@ -293,10 +312,12 @@ public final class MatchRules {
     public void load(CompoundTag tag) {
         if (tag.contains("MaxPlayers")) maxPlayers(tag.getInt("MaxPlayers"));
         if (tag.contains("ScoreLimit")) scoreLimit(tag.getInt("ScoreLimit"));
+        if (tag.contains("ShowUnlimitedTickets")) showUnlimitedTickets(tag.getBoolean("ShowUnlimitedTickets"));
         if (tag.contains("TimeLimitSeconds")) timeLimitSeconds(tag.getInt("TimeLimitSeconds"));
-        if (tag.contains("StartCountdownSeconds")) startCountdownSeconds(tag.getInt("StartCountdownSeconds"));
+        if (tag.contains("ShowUnlimitedTime")) showUnlimitedTime(tag.getBoolean("ShowUnlimitedTime"));
         if (tag.contains("RespawnSeconds")) respawnSeconds(tag.getInt("RespawnSeconds"));
         if (tag.contains("RespawnProtectionSeconds")) respawnProtectionSeconds(tag.getInt("RespawnProtectionSeconds"));
+        if (tag.contains("StartCountdownSeconds")) startCountdownSeconds(tag.getInt("StartCountdownSeconds"));
         if (tag.contains("ResultSeconds")) resultSeconds(tag.getInt("ResultSeconds"));
         if (tag.contains("CaptureTimeSeconds")) captureTimeSeconds(tag.getInt("CaptureTimeSeconds"));
         if (tag.contains("CaptureUsePlayerDifference")) captureUsePlayerDifference(tag.getBoolean("CaptureUsePlayerDifference"));
