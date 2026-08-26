@@ -17,7 +17,10 @@ public record MatchSnapshot(String modeId, String mapName, MatchPhase phase, Tea
                             String modeSubState, String captainId,
                             String captainName, int electionSeconds, boolean captain,
                             String currentCaptainClass, String pendingCaptainClass, List<ClassView> captainClasses,
-                            List<CaptainCandidate> captainCandidates, boolean awaitingRespawnSelection,
+                            List<CaptainCandidate> captainCandidates,
+                            String anchorCaptainId, String anchorCaptainName, int anchorElectionSeconds,
+                            boolean anchorCaptain, List<CaptainCandidate> anchorCaptainCandidates,
+                            boolean awaitingRespawnSelection,
                             List<RespawnOption> respawnOptions, String ctfVariant, String ctfCarrierRestriction,
                             boolean economyEnabled, int currency, boolean devMode,
                             List<CtfFlagView> ctfFlags, List<ShopView> shopItems,
@@ -40,9 +43,13 @@ public record MatchSnapshot(String modeId, String mapName, MatchPhase phase, Tea
         static CaptainCandidate decode(FriendlyByteBuf buffer) { return new CaptainCandidate(buffer.readUtf(), buffer.readUtf()); }
     }
 
-    public record RespawnOption(String id, String pointId) {
-        void encode(FriendlyByteBuf buffer) { buffer.writeUtf(id); buffer.writeUtf(pointId); }
-        static RespawnOption decode(FriendlyByteBuf buffer) { return new RespawnOption(buffer.readUtf(), buffer.readUtf()); }
+    public record RespawnOption(String id, String type, String targetName) {
+        void encode(FriendlyByteBuf buffer) {
+            buffer.writeUtf(id, 64); buffer.writeUtf(type, 16); buffer.writeUtf(targetName, 64);
+        }
+        static RespawnOption decode(FriendlyByteBuf buffer) {
+            return new RespawnOption(buffer.readUtf(64), buffer.readUtf(16), buffer.readUtf(64));
+        }
     }
 
     public record CtfFlagView(String id, TeamSide owner, String state, String carrier,
@@ -99,6 +106,10 @@ public record MatchSnapshot(String modeId, String mapName, MatchPhase phase, Tea
         writeNullable(buffer, currentCaptainClass); writeNullable(buffer, pendingCaptainClass);
         writeClasses(buffer, captainClasses);
         buffer.writeVarInt(captainCandidates.size()); captainCandidates.forEach(candidate -> candidate.encode(buffer));
+        writeNullable(buffer, anchorCaptainId); writeNullable(buffer, anchorCaptainName);
+        buffer.writeVarInt(anchorElectionSeconds); buffer.writeBoolean(anchorCaptain);
+        buffer.writeVarInt(anchorCaptainCandidates.size());
+        anchorCaptainCandidates.forEach(candidate -> candidate.encode(buffer));
         buffer.writeBoolean(awaitingRespawnSelection);
         buffer.writeVarInt(respawnOptions.size()); respawnOptions.forEach(option -> option.encode(buffer));
         writeNullable(buffer, ctfVariant); writeNullable(buffer, ctfCarrierRestriction);
@@ -128,6 +139,11 @@ public record MatchSnapshot(String modeId, String mapName, MatchPhase phase, Tea
         List<ClassView> captainClasses = readClasses(buffer);
         int candidateCount = buffer.readVarInt(); List<CaptainCandidate> candidates = new ArrayList<>(candidateCount);
         for (int i = 0; i < candidateCount; i++) candidates.add(CaptainCandidate.decode(buffer));
+        String anchorCaptainId = readNullable(buffer), anchorCaptainName = readNullable(buffer);
+        int anchorElection = buffer.readVarInt(); boolean isAnchorCaptain = buffer.readBoolean();
+        int anchorCandidateCount = buffer.readVarInt();
+        List<CaptainCandidate> anchorCandidates = new ArrayList<>(anchorCandidateCount);
+        for (int i = 0; i < anchorCandidateCount; i++) anchorCandidates.add(CaptainCandidate.decode(buffer));
         boolean awaitingRespawn = buffer.readBoolean();
         int optionCount = buffer.readVarInt(); List<RespawnOption> options = new ArrayList<>(optionCount);
         for (int i = 0; i < optionCount; i++) options.add(RespawnOption.decode(buffer));
@@ -145,8 +161,9 @@ public record MatchSnapshot(String modeId, String mapName, MatchPhase phase, Tea
                 showUnlimitedTime, redPlayers, bluePlayers, yellowPlayers, greenPlayers, current, pending,
                 participating, queued, classes, variant, attacker, defender, tickets, showUnlimitedTickets,
                 attackRounds, leg, sector, sectors, subState, captainId, captainName, election,
-                isCaptain, currentCaptain, pendingCaptain, captainClasses, List.copyOf(candidates), awaitingRespawn,
-                List.copyOf(options), ctfVariant, ctfRestriction, economyEnabled, currency, devMode,
+                isCaptain, currentCaptain, pendingCaptain, captainClasses, List.copyOf(candidates),
+                anchorCaptainId, anchorCaptainName, anchorElection, isAnchorCaptain, List.copyOf(anchorCandidates),
+                awaitingRespawn, List.copyOf(options), ctfVariant, ctfRestriction, economyEnabled, currency, devMode,
                 List.copyOf(ctfFlags), List.copyOf(shopItems), List.copyOf(supplyItems));
     }
 

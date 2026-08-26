@@ -6,6 +6,7 @@ import com.sfgame.config.SFGameConfig;
 import com.sfgame.game.CaptureTheFlagRuntime;
 import com.sfgame.game.MatchHudService;
 import com.sfgame.game.MatchManager;
+import com.sfgame.entity.DeployableBeaconEntity;
 import com.sfgame.game.MatchPhase;
 import com.tacz.guns.api.event.common.GunFireEvent;
 import net.minecraft.server.level.ServerPlayer;
@@ -162,12 +163,18 @@ public final class SFGameEvents {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void interactWithFlagDisplay(PlayerInteractEvent.EntityInteract event) {
-        if (CaptureTheFlagRuntime.isFlagDisplay(event.getTarget())) event.setCanceled(true);
+        if (CaptureTheFlagRuntime.isFlagDisplay(event.getTarget())
+                || isRespawnBeacon(event.getTarget())) event.setCanceled(true);
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void interactWithFlagDisplayAt(PlayerInteractEvent.EntityInteractSpecific event) {
-        if (CaptureTheFlagRuntime.isFlagDisplay(event.getTarget())) event.setCanceled(true);
+        if (CaptureTheFlagRuntime.isFlagDisplay(event.getTarget())
+                || isRespawnBeacon(event.getTarget())) event.setCanceled(true);
+    }
+    private static boolean isRespawnBeacon(net.minecraft.world.entity.Entity entity) {
+        return entity instanceof DeployableBeaconEntity beacon
+                && beacon.getTags().contains(DeployableBeaconEntity.BEACON_TAG);
     }
 
     @SubscribeEvent

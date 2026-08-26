@@ -26,6 +26,19 @@ final class SFGameScreenTest {
         assertTrue(twentiethY + 96 <= bottom);
     }
     @Test
+    void respawnLabelsUseSourceTypeAndTargetName() {
+        var squad = SFGameScreen.respawnLabel(new com.sfgame.network.MatchSnapshot.RespawnOption(
+                "squad:id", "squad", "Alpha")).getContents();
+        var beacon = SFGameScreen.respawnLabel(new com.sfgame.network.MatchSnapshot.RespawnOption(
+                "beacon", "beacon", "red")).getContents();
+        assertTrue(squad instanceof net.minecraft.network.chat.contents.TranslatableContents);
+        assertTrue(beacon instanceof net.minecraft.network.chat.contents.TranslatableContents);
+        assertEquals("sfgame.respawn.squad",
+                ((net.minecraft.network.chat.contents.TranslatableContents) squad).getKey());
+        assertEquals("sfgame.respawn.beacon",
+                ((net.minecraft.network.chat.contents.TranslatableContents) beacon).getKey());
+    }
+    @Test
     void shopUsesHorizontalRowsWhileSupplyKeepsResponsiveColumns() {
         SFGameScreen.BodyLayout layout = SFGameScreen.layoutBody(320, 0, 2, 20);
 

@@ -332,13 +332,13 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
     public List<MatchSnapshot.RespawnOption> respawnOptions(ServerPlayer player, MatchManager manager, ArenaMap map) {
         if (runtimeState != RuntimeState.ACTIVE || !manager.state(player).awaitingRespawnSelection()) return List.of();
         List<MatchSnapshot.RespawnOption> options = new ArrayList<>();
-        options.add(new MatchSnapshot.RespawnOption("base", ""));
+        options.add(new MatchSnapshot.RespawnOption("base", "base", ""));
         TeamSide side = manager.teams().sideOf(player, manager.savedData());
         for (CapturePointDefinition point : currentSector(map).points()) {
             CapturePointState state = pointStates.get(point.id());
             if (point.respawnPosition() != null && point.nearbyRespawnPosition() != null
                     && state != null && state.owner() == side) {
-                options.add(new MatchSnapshot.RespawnOption("point:" + point.id(), point.id()));
+                options.add(new MatchSnapshot.RespawnOption("point:" + point.id(), "point", point.id()));
             }
         }
         return List.copyOf(options);

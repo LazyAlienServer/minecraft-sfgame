@@ -33,8 +33,10 @@ class MatchSnapshotTest {
                 1, 2, 3, 4, 100, 321, true, 1, 2, 3, 4,
                 "assault", "medic", true, false, List.of(),
                 "", TeamSide.NONE, TeamSide.NONE, 0, true, 0, 0, 0, 0, "",
-                null, null, 0, false, null, null, List.of(), List.of(),
-                false, List.of(), null, null, true, 73, true, List.of(),
+                null, null, 0, false, null, null, List.of(), List.of(new MatchSnapshot.CaptainCandidate("old", "Old")),
+                "new", "New", 5, true, List.of(new MatchSnapshot.CaptainCandidate("anchor", "Anchor")),
+                false, List.of(new MatchSnapshot.RespawnOption("squad:anchor", "squad", "Anchor")),
+                null, null, true, 73, true, List.of(),
                 List.of(new MatchSnapshot.ShopView("medkit", "医疗包", "minecraft:golden_apple", 50)),
                 List.of(new MatchSnapshot.SupplyView(
                         "elite_drop", "elite_class", "精英突击", "minecraft:iron_sword", 2)));

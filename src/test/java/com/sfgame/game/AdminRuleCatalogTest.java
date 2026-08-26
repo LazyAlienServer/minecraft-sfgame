@@ -23,6 +23,14 @@ class AdminRuleCatalogTest {
         assertTrue(AdminRuleCatalog.find(GameModeRegistry.DOMINATION, "killCurrency").orElseThrow().hotReload());
         assertTrue(AdminRuleCatalog.find(GameModeRegistry.CAPTURE_THE_FLAG, "killCurrency").orElseThrow().hotReload());
         assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "killCurrency").isPresent());
+        for (String modeId : java.util.List.of(GameModeRegistry.DOMINATION,
+                GameModeRegistry.BREAKTHROUGH, GameModeRegistry.CAPTURE_THE_FLAG)) {
+            assertTrue(AdminRuleCatalog.find(modeId, "squadMaxMembers").isPresent());
+            assertTrue(AdminRuleCatalog.find(modeId, "respawnBeaconHealth").isPresent());
+            assertTrue(AdminRuleCatalog.find(modeId, "captainVoteSeconds").isPresent());
+            assertTrue(AdminRuleCatalog.find(modeId, "captainReplacementVoteSeconds").isPresent());
+        }
+        assertFalse(AdminRuleCatalog.find(GameModeRegistry.TEAM_DEATHMATCH, "squadMaxMembers").isPresent());
         for (String modeId : java.util.List.of(GameModeRegistry.BREAKTHROUGH,
                 GameModeRegistry.CAPTURE_THE_FLAG, GameModeRegistry.DOMINATION)) {
             assertTrue(AdminRuleCatalog.find(modeId, "economyEnabled").isPresent());
@@ -74,6 +82,14 @@ class AdminRuleCatalogTest {
         AdminRuleCatalog.Definition tickets = AdminRuleCatalog.find(
                 GameModeRegistry.BREAKTHROUGH, "attackerTickets").orElseThrow();
         assertEquals(MatchRules.UNLIMITED_TICKETS, AdminRuleCatalog.parse(tickets, "-1"));
+        AdminRuleCatalog.Definition squadCap = AdminRuleCatalog.find(
+                GameModeRegistry.DOMINATION, "squadMaxMembers").orElseThrow();
+        assertEquals(8, AdminRuleCatalog.parse(squadCap, "8"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(squadCap, "1"));
+        AdminRuleCatalog.Definition beaconHealth = AdminRuleCatalog.find(
+                GameModeRegistry.CAPTURE_THE_FLAG, "respawnBeaconHealth").orElseThrow();
+        assertEquals(100, AdminRuleCatalog.parse(beaconHealth, "100"));
+        assertThrows(IllegalArgumentException.class, () -> AdminRuleCatalog.parse(beaconHealth, "1001"));
         AdminRuleCatalog.Definition legs = AdminRuleCatalog.find(
                 GameModeRegistry.BREAKTHROUGH, "breakthroughLegs").orElseThrow();
         assertEquals(1, AdminRuleCatalog.parse(legs, "1"));

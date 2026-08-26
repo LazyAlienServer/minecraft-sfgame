@@ -55,6 +55,8 @@ public final class SFGameScreen extends Screen {
     private final List<ClassCardButton> classCards = new ArrayList<>();
     private int captainVoteHeadingX;
     private int captainVoteHeadingY = -1;
+    private int anchorVoteHeadingX;
+    private int anchorVoteHeadingY = -1;
     private int respawnHeadingX;
     private int respawnHeadingY = -1;
     private int supplyHeadingX;
@@ -118,6 +120,7 @@ public final class SFGameScreen extends Screen {
         boolean showLeave = !activeMatch;
         boolean joinedLobby = showLeave && snapshot.side() != TeamSide.NONE;
         boolean showElection = snapshot.electionSeconds() > 0 && snapshot.side() == snapshot.attacker();
+        boolean showAnchorElection = snapshot.anchorElectionSeconds() > 0 && snapshot.side() != TeamSide.NONE;
         boolean economy = snapshot.economyEnabled();
         int supplyCount = snapshot.side() != TeamSide.NONE ? snapshot.supplyItems().size() : 0;
         int shopCount = economy ? snapshot.shopItems().size() : 0;
@@ -129,6 +132,9 @@ public final class SFGameScreen extends Screen {
         }
         if (showElection) {
             prefixHeight += 16 + ((snapshot.captainCandidates().size() + 1) / 2) * 26 + 32;
+        }
+        if (showAnchorElection) {
+            prefixHeight += 16 + ((snapshot.anchorCaptainCandidates().size() + 1) / 2) * 26 + 32;
         }
         BodyLayout layout = layoutBody(width, prefixHeight, supplyCount, shopCount);
         contentHeight = layout.contentHeight();
@@ -151,17 +157,13 @@ public final class SFGameScreen extends Screen {
             leave.active = joinedLobby;
             addBodyWidget(leave);
         }
-        if (showJoin || showLeave) contentY += 34;
-
         if (snapshot.awaitingRespawnSelection()) {
             respawnHeadingX = center - 150;
             respawnHeadingY = visibleHeadingY(contentY);
             contentY += 16;
             for (int i = 0; i < snapshot.respawnOptions().size(); i++) {
                 MatchSnapshot.RespawnOption option = snapshot.respawnOptions().get(i);
-                Component label = option.pointId().isEmpty()
-                        ? Component.translatable("sfgame.respawn.base")
-                        : Component.translatable("sfgame.respawn.point", option.pointId().toUpperCase(Locale.ROOT));
+                Component label = respawnLabel(option);
                 int column = i % 2;
                 int row = i / 2;
                 addBodyWidget(new DarkButton(center - 150 + column * 152,
@@ -186,6 +188,23 @@ public final class SFGameScreen extends Screen {
             contentY += ((snapshot.captainCandidates().size() + 1) / 2) * 26;
             addBodyWidget(new DarkButton(center - 75, contentToScreen(contentY), 150, 22,
                     Component.translatable("sfgame.menu.captain.abstain"),
+                    button -> action(ClientActionPacket.Action.CAPTAIN_ABSTAIN, "")));
+        }
+        if (showAnchorElection) {
+            anchorVoteHeadingX = center - 150;
+            anchorVoteHeadingY = visibleHeadingY(contentY);
+            contentY += 16;
+            for (int i = 0; i < snapshot.anchorCaptainCandidates().size(); i++) {
+                MatchSnapshot.CaptainCandidate candidate = snapshot.anchorCaptainCandidates().get(i);
+                int column = i % 2;
+                int row = i / 2;
+                addBodyWidget(new DarkButton(center - 150 + column * 152,
+                        contentToScreen(contentY + row * 26), 148, 22, Component.literal(candidate.name()),
+                        button -> action(ClientActionPacket.Action.CAPTAIN_VOTE, candidate.uuid())));
+            }
+            contentY += ((snapshot.anchorCaptainCandidates().size() + 1) / 2) * 26;
+            addBodyWidget(new DarkButton(center - 75, contentToScreen(contentY), 150, 22,
+                    Component.translatable("sfgame.anchor_captain.abstain"),
                     button -> action(ClientActionPacket.Action.CAPTAIN_ABSTAIN, "")));
         }
 
@@ -349,6 +368,7 @@ public final class SFGameScreen extends Screen {
         totalClassCount = 0;
         classCards.clear();
         captainVoteHeadingY = -1;
+        anchorVoteHeadingY = -1;
         respawnHeadingY = -1;
         supplyHeadingY = -1;
         supplyEmptyY = -1;
@@ -356,6 +376,17 @@ public final class SFGameScreen extends Screen {
         tallCards.clear();
     }
 
+    static Component respawnLabel(MatchSnapshot.RespawnOption option) {
+        return switch (option.type()) {
+            case "base" -> Component.translatable("sfgame.respawn.base");
+            case "squad" -> Component.translatable("sfgame.respawn.squad", option.targetName());
+            case "captain" -> Component.translatable("sfgame.respawn.captain", option.targetName());
+            case "beacon" -> Component.translatable("sfgame.respawn.beacon", option.targetName());
+            case "point" -> Component.translatable("sfgame.respawn.point",
+                    option.targetName().toUpperCase(Locale.ROOT));
+            default -> Component.literal(option.targetName());
+        };
+    }
     private void action(ClientActionPacket.Action action, String value) {
         SFGameNetwork.sendToServer(new ClientActionPacket(action, value));
         if (action == ClientActionPacket.Action.SELECT_RESPAWN && minecraft != null) {
@@ -526,6 +557,11 @@ public final class SFGameScreen extends Screen {
             Component captainText = Component.translatable("sfgame.menu.captain.vote_title.colored");
             graphics.drawString(font, captainText, captainVoteHeadingX, captainVoteHeadingY,
                     SFGameText.colorOf(captainText), true);
+        }
+        if (anchorVoteHeadingY >= 0) {
+            Component anchorText = Component.translatable("sfgame.anchor_captain.vote_title.colored");
+            graphics.drawString(font, anchorText, anchorVoteHeadingX, anchorVoteHeadingY,
+                    SFGameText.colorOf(anchorText), true);
         }
         if (classHeadingY >= 0) {
             Component classText = Component.translatable("sfgame.menu.class_select.colored");

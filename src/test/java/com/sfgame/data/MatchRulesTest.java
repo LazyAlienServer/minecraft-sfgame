@@ -23,6 +23,8 @@ final class MatchRulesTest {
         rules.resultSeconds(0);
         rules.timeLimitSeconds(MatchRules.UNLIMITED_TIME_SECONDS);
         rules.attackerTickets(MatchRules.UNLIMITED_TICKETS);
+        rules.squadMaxMembers(100);
+        rules.respawnBeaconHealth(0);
 
         assertEquals(2, rules.maxPlayers());
         assertEquals(10_000, rules.scoreLimit());
@@ -32,6 +34,8 @@ final class MatchRulesTest {
         assertEquals(0, rules.respawnSeconds());
         assertEquals(30, rules.respawnProtectionSeconds());
         assertEquals(1, rules.resultSeconds());
+        assertEquals(MatchRules.MAX_SQUAD_MAX_MEMBERS, rules.squadMaxMembers());
+        assertEquals(MatchRules.MIN_RESPAWN_BEACON_HEALTH, rules.respawnBeaconHealth());
     }
 
     @Test
@@ -63,6 +67,8 @@ final class MatchRulesTest {
         source.mapRestoreAdaptiveThrottling(false);
         source.mapRestoreTargetTickMillis(35);
         source.mapRestoreMaxPartitionsPerTick(12);
+        source.squadMaxMembers(6);
+        source.respawnBeaconHealth(275);
 
         CompoundTag saved = source.save();
         MatchRules restored = new MatchRules();
@@ -76,6 +82,8 @@ final class MatchRulesTest {
         assertEquals(false, restored.mapRestoreAdaptiveThrottling());
         assertEquals(35, restored.mapRestoreTargetTickMillis());
         assertEquals(12, restored.mapRestoreMaxPartitionsPerTick());
+        assertEquals(6, restored.squadMaxMembers());
+        assertEquals(275, restored.respawnBeaconHealth());
     }
 
     @Test
@@ -94,6 +102,8 @@ final class MatchRulesTest {
         assertEquals(MatchRules.DEFAULT_RESPAWN_SECONDS, rules.respawnSeconds());
         assertEquals(MatchRules.DEFAULT_RESPAWN_PROTECTION_SECONDS, rules.respawnProtectionSeconds());
         assertEquals(MatchRules.DEFAULT_RESULT_SECONDS, rules.resultSeconds());
+        assertEquals(MatchRules.DEFAULT_SQUAD_MAX_MEMBERS, rules.squadMaxMembers());
+        assertEquals(MatchRules.DEFAULT_RESPAWN_BEACON_HEALTH, rules.respawnBeaconHealth());
         assertFalse(rules.mapBlockBreaking());
         assertTrue(rules.mapBlockAllowlist().isEmpty());
         assertEquals(0, rules.mapRestorePartitionDelayTicks());

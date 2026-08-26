@@ -32,11 +32,23 @@ public record ClientActionPacket(Action action, String value) {
                 case LEAVE -> manager.leaveFromMenu(player);
                 case SELECT_CLASS -> manager.selectClass(player, packet.value);
                 case SELECT_CAPTAIN_CLASS -> manager.selectCaptainClass(player, packet.value);
-                case CAPTAIN_ABSTAIN -> manager.breakthrough().vote(player, null, true, manager);
+                case CAPTAIN_ABSTAIN -> {
+                    MatchSnapshot snapshot = manager.snapshot(player);
+                    if (snapshot.electionSeconds() > 0) {
+                        manager.breakthrough().vote(player, null, true, manager);
+                    } else if (snapshot.anchorElectionSeconds() > 0) {
+                        manager.voteAnchorCaptain(player, null, true);
+                    }
+                }
                 case CAPTAIN_VOTE -> {
                     try {
                         ServerPlayer candidate = player.server.getPlayerList().getPlayer(java.util.UUID.fromString(packet.value));
-                        manager.breakthrough().vote(player, candidate, false, manager);
+                        MatchSnapshot snapshot = manager.snapshot(player);
+                        if (snapshot.electionSeconds() > 0) {
+                            manager.breakthrough().vote(player, candidate, false, manager);
+                        } else if (snapshot.anchorElectionSeconds() > 0) {
+                            manager.voteAnchorCaptain(player, candidate, false);
+                        }
                     } catch (IllegalArgumentException ignored) { }
                 }
                 case SELECT_RESPAWN -> manager.selectRespawn(player, packet.value);

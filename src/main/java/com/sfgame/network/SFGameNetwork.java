@@ -8,7 +8,7 @@ import net.minecraftforge.network.PacketDistributor;
 import net.minecraftforge.network.simple.SimpleChannel;
 
 public final class SFGameNetwork {
-    private static final String PROTOCOL = "10";
+    private static final String PROTOCOL = "11";
     private static final SimpleChannel CHANNEL = NetworkRegistry.newSimpleChannel(
             ResourceLocation.tryParse(SFGame.MOD_ID + ":main"),
             () -> PROTOCOL, PROTOCOL::equals, PROTOCOL::equals);
@@ -27,10 +27,18 @@ public final class SFGameNetwork {
                 AdminActionPacket::handle);
         CHANNEL.registerMessage(id, AdminSnapshotPacket.class, AdminSnapshotPacket::encode, AdminSnapshotPacket::decode,
                 AdminSnapshotPacket::handle);
+        id++;
+        CHANNEL.registerMessage(id++, SquadSnapshotPacket.class, SquadSnapshotPacket::encode, SquadSnapshotPacket::decode,
+                SquadSnapshotPacket::handle);
+        CHANNEL.registerMessage(id, SquadActionPacket.class, SquadActionPacket::encode, SquadActionPacket::decode,
+                SquadActionPacket::handle);
     }
 
     public static void sendSnapshot(ServerPlayer player, MatchSnapshot snapshot) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SnapshotPacket(snapshot));
+    }
+    public static void sendSquadSnapshot(ServerPlayer player, SquadSnapshot snapshot) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SquadSnapshotPacket(snapshot));
     }
 
     public static void openMenu(ServerPlayer player) {
@@ -43,6 +51,9 @@ public final class SFGameNetwork {
     }
 
     public static void sendToServer(AdminActionPacket packet) {
+        CHANNEL.sendToServer(packet);
+    }
+    public static void sendToServer(SquadActionPacket packet) {
         CHANNEL.sendToServer(packet);
     }
 

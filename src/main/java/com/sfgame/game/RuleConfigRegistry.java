@@ -51,15 +51,17 @@ public final class RuleConfigRegistry {
     private static final Set<String> CAPTURE = Set.of("captureTimeSeconds", "captureUsePlayerDifference",
             "captureDifferenceCoefficient", "captureMaxMultiplier");
     private static final Set<String> ECONOMY = Set.of("economyEnabled", "killCurrency");
-    private static final Set<String> DOMINATION = Set.of("dominationStrategy", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds");
+    private static final Set<String> DOMINATION = Set.of("dominationStrategy", "scoreIntervalSeconds", "scorePerPoint", "syncHoldSeconds",
+            "squadMaxMembers", "respawnBeaconHealth", "captainVoteSeconds", "captainReplacementVoteSeconds");
     private static final Set<String> BREAKTHROUGH = Set.of("breakthroughVariant", "breakthroughLegs",
             "breakthroughAttackRounds", "breakthroughAttacker", "breakthroughDefender", "attackerTickets", "showUnlimitedTickets", "sectorTransitionSeconds",
             "captainVoteSeconds", "captainReplacementVoteSeconds", "attackerCaptainGlowing",
-            "attackerCaptainCaptureWeight", "defenderCaptureWeight");
+            "attackerCaptainCaptureWeight", "defenderCaptureWeight", "squadMaxMembers", "respawnBeaconHealth");
     private static final Set<String> CTF = Set.of("ctfVariant", "ctfAttacker", "ctfDefender", "ctfCarrierRestriction",
             "attackerTickets", "showUnlimitedTickets", "ctfFlagReturnSeconds", "ctfHomeCaptureTimeSeconds",
             "ctfTerritoryUnlockCurrency", "ctfForwardFlagReplantCurrency",
-            "ctfForwardFlagCaptureCurrency", "ctfHomeFlagCaptureCurrency");
+            "ctfForwardFlagCaptureCurrency", "ctfHomeFlagCaptureCurrency",
+            "squadMaxMembers", "respawnBeaconHealth", "captainVoteSeconds", "captainReplacementVoteSeconds");
     private static final Set<String> BOOLEAN_RULES = Set.of("captureUsePlayerDifference", "attackerCaptainGlowing",
             "mapBlockBreaking", "mapRestoreAdaptiveThrottling", "economyEnabled", "showUnlimitedTime", "showUnlimitedTickets");
     private static final Set<String> STRING_RULES = Set.of("mapSnapshotMode", "dominationStrategy",
@@ -691,6 +693,8 @@ public final class RuleConfigRegistry {
                     case "sectorTransitionSeconds" -> rules.sectorTransitionSeconds(value.getAsInt());
                     case "captainVoteSeconds" -> rules.captainVoteSeconds(value.getAsInt());
                     case "captainReplacementVoteSeconds" -> rules.captainReplacementVoteSeconds(value.getAsInt());
+                    case "squadMaxMembers" -> rules.squadMaxMembers(value.getAsInt());
+                    case "respawnBeaconHealth" -> rules.respawnBeaconHealth(value.getAsInt());
                     case "attackerCaptainGlowing" -> rules.attackerCaptainGlowing(value.getAsBoolean());
                     case "mapBlockBreaking" -> rules.mapBlockBreaking(value.getAsBoolean());
                     case "mapSnapshotMode" -> rules.mapSnapshotMode(MapSnapshotMode.parse(value.getAsString()));
@@ -762,12 +766,16 @@ public final class RuleConfigRegistry {
             object.addProperty("captureMaxMultiplier", r.captureMaxMultiplier());
             object.addProperty("economyEnabled", r.economyEnabled());
             object.addProperty("killCurrency", r.killCurrency());
+            object.addProperty("squadMaxMembers", r.squadMaxMembers());
+            object.addProperty("respawnBeaconHealth", r.respawnBeaconHealth());
         }
         if (GameModeRegistry.DOMINATION.equals(modeId)) {
             object.addProperty("dominationStrategy", r.dominationStrategy().name().toLowerCase(Locale.ROOT));
             object.addProperty("scoreIntervalSeconds", r.scoreIntervalSeconds());
             object.addProperty("scorePerPoint", r.scorePerPoint());
             object.addProperty("syncHoldSeconds", r.syncHoldSeconds());
+            object.addProperty("captainVoteSeconds", r.captainVoteSeconds());
+            object.addProperty("captainReplacementVoteSeconds", r.captainReplacementVoteSeconds());
         }
         if (GameModeRegistry.BREAKTHROUGH.equals(modeId)) {
             object.addProperty("breakthroughAttackRounds", r.breakthroughAttackRounds());
@@ -797,6 +805,8 @@ public final class RuleConfigRegistry {
             object.addProperty("ctfForwardFlagReplantCurrency", r.ctfForwardFlagReplantCurrency());
             object.addProperty("ctfForwardFlagCaptureCurrency", r.ctfForwardFlagCaptureCurrency());
             object.addProperty("ctfHomeFlagCaptureCurrency", r.ctfHomeFlagCaptureCurrency());
+            object.addProperty("captainVoteSeconds", r.captainVoteSeconds());
+            object.addProperty("captainReplacementVoteSeconds", r.captainReplacementVoteSeconds());
         }
         return object;
     }

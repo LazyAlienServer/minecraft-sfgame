@@ -166,6 +166,17 @@ final class RuleConfigRegistryTest {
                 data.rules(GameModeRegistry.BREAKTHROUGH)).attackerTickets());
         assertTrue(registry.rules(GameModeRegistry.BREAKTHROUGH, "arena",
                 data.rules(GameModeRegistry.BREAKTHROUGH)).showUnlimitedTickets());
+        for (String modeId : java.util.List.of(GameModeRegistry.DOMINATION,
+                GameModeRegistry.BREAKTHROUGH, GameModeRegistry.CAPTURE_THE_FLAG)) {
+            registry.setInt(modeId, "rules", "squadMaxMembers", 4);
+            registry.setInt(modeId, "rules", "respawnBeaconHealth", 100);
+            registry.setInt(modeId, "rules", "captainVoteSeconds", 12);
+            registry.setInt(modeId, "rules", "captainReplacementVoteSeconds", 7);
+            assertEquals(4, registry.rules(modeId, "rules", data.rules(modeId)).squadMaxMembers());
+            assertEquals(100, registry.rules(modeId, "rules", data.rules(modeId)).respawnBeaconHealth());
+            assertEquals(12, registry.rules(modeId, "rules", data.rules(modeId)).captainVoteSeconds());
+            assertEquals(7, registry.rules(modeId, "rules", data.rules(modeId)).captainReplacementVoteSeconds());
+        }
 
         registry.setString(GameModeRegistry.CAPTURE_THE_FLAG, "arena", "ctfCarrierRestriction", "no_weapons");
         assertEquals(CarrierRestriction.NO_WEAPONS, registry.rules(GameModeRegistry.CAPTURE_THE_FLAG, "arena",

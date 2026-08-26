@@ -29,6 +29,12 @@ public final class MatchRules {
     public static final int DEFAULT_MAP_RESTORE_DELAY_TICKS = 0;
     public static final int DEFAULT_MAP_RESTORE_TARGET_TICK_MILLIS = 40;
     public static final int DEFAULT_MAP_RESTORE_MAX_PARTITIONS_PER_TICK = 8;
+    public static final int DEFAULT_SQUAD_MAX_MEMBERS = 2;
+    public static final int MIN_SQUAD_MAX_MEMBERS = 2;
+    public static final int MAX_SQUAD_MAX_MEMBERS = 8;
+    public static final int DEFAULT_RESPAWN_BEACON_HEALTH = 50;
+    public static final int MIN_RESPAWN_BEACON_HEALTH = 1;
+    public static final int MAX_RESPAWN_BEACON_HEALTH = 1000;
 
     private final String modeId;
     private int maxPlayers;
@@ -49,6 +55,8 @@ public final class MatchRules {
     private int sectorTransitionSeconds;
     private int captainVoteSeconds;
     private int captainReplacementVoteSeconds;
+    private int squadMaxMembers;
+    private int respawnBeaconHealth;
     private boolean attackerCaptainGlowing;
     private boolean mapBlockBreaking;
     private Set<String> mapBlockAllowlist;
@@ -105,6 +113,8 @@ public final class MatchRules {
     public int sectorTransitionSeconds() { return sectorTransitionSeconds; }
     public int captainVoteSeconds() { return captainVoteSeconds; }
     public int captainReplacementVoteSeconds() { return captainReplacementVoteSeconds; }
+    public int squadMaxMembers() { return squadMaxMembers; }
+    public int respawnBeaconHealth() { return respawnBeaconHealth; }
     public boolean attackerCaptainGlowing() { return attackerCaptainGlowing; }
     public boolean mapBlockBreaking() { return mapBlockBreaking; }
     public Set<String> mapBlockAllowlist() { return mapBlockAllowlist; }
@@ -166,6 +176,8 @@ public final class MatchRules {
     public void sectorTransitionSeconds(int value) { sectorTransitionSeconds = clamp(value, 0, 60); }
     public void captainVoteSeconds(int value) { captainVoteSeconds = clamp(value, 1, 120); }
     public void captainReplacementVoteSeconds(int value) { captainReplacementVoteSeconds = clamp(value, 1, 120); }
+    public void squadMaxMembers(int value) { squadMaxMembers = clamp(value, MIN_SQUAD_MAX_MEMBERS, MAX_SQUAD_MAX_MEMBERS); }
+    public void respawnBeaconHealth(int value) { respawnBeaconHealth = clamp(value, MIN_RESPAWN_BEACON_HEALTH, MAX_RESPAWN_BEACON_HEALTH); }
     public void attackerCaptainGlowing(boolean value) { attackerCaptainGlowing = value; }
     public void mapBlockBreaking(boolean value) { mapBlockBreaking = value; }
     public void mapBlockAllowlist(java.util.Collection<String> value) {
@@ -229,6 +241,8 @@ public final class MatchRules {
         sectorTransitionSeconds = 10;
         captainVoteSeconds = 15;
         captainReplacementVoteSeconds = 10;
+        squadMaxMembers = DEFAULT_SQUAD_MAX_MEMBERS;
+        respawnBeaconHealth = DEFAULT_RESPAWN_BEACON_HEALTH;
         attackerCaptainGlowing = true;
         mapBlockBreaking = false;
         mapBlockAllowlist(Set.of());
@@ -276,6 +290,7 @@ public final class MatchRules {
         tag.putInt("ScorePerPoint", scorePerPoint); tag.putInt("SyncHoldSeconds", syncHoldSeconds);
         tag.putInt("AttackerTickets", attackerTickets); tag.putInt("SectorTransitionSeconds", sectorTransitionSeconds);
         tag.putInt("CaptainVoteSeconds", captainVoteSeconds); tag.putInt("CaptainReplacementVoteSeconds", captainReplacementVoteSeconds);
+        tag.putInt("SquadMaxMembers", squadMaxMembers); tag.putInt("RespawnBeaconHealth", respawnBeaconHealth);
         tag.putBoolean("AttackerCaptainGlowing", attackerCaptainGlowing);
         tag.putBoolean("MapBlockBreaking", mapBlockBreaking);
         ListTag allowlist = new ListTag();
@@ -330,6 +345,8 @@ public final class MatchRules {
         if (tag.contains("SectorTransitionSeconds")) sectorTransitionSeconds(tag.getInt("SectorTransitionSeconds"));
         if (tag.contains("CaptainVoteSeconds")) captainVoteSeconds(tag.getInt("CaptainVoteSeconds"));
         if (tag.contains("CaptainReplacementVoteSeconds")) captainReplacementVoteSeconds(tag.getInt("CaptainReplacementVoteSeconds"));
+        if (tag.contains("SquadMaxMembers")) squadMaxMembers(tag.getInt("SquadMaxMembers"));
+        if (tag.contains("RespawnBeaconHealth")) respawnBeaconHealth(tag.getInt("RespawnBeaconHealth"));
         if (tag.contains("AttackerCaptainGlowing")) attackerCaptainGlowing(tag.getBoolean("AttackerCaptainGlowing"));
         if (tag.contains("MapBlockBreaking")) mapBlockBreaking(tag.getBoolean("MapBlockBreaking"));
         if (tag.contains("MapBlockAllowlist", Tag.TAG_LIST)) {

@@ -2228,6 +2228,18 @@ public final class SFGameCommands {
         if (!GameModeRegistry.BREAKTHROUGH.equals(rules.modeId()) && isBreakthroughOnlyRule(key)) {
             throw new IllegalArgumentException(key + " is only available in breakthrough mode");
         }
+        if (!GameModeRegistry.DOMINATION.equals(rules.modeId())
+                && !GameModeRegistry.BREAKTHROUGH.equals(rules.modeId())
+                && !GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId())
+                && (key.equals("squadMaxMembers") || key.equals("respawnBeaconHealth"))) {
+            throw new IllegalArgumentException(key + " is only available in a capture mode");
+        }
+        if (!GameModeRegistry.DOMINATION.equals(rules.modeId())
+                && !GameModeRegistry.BREAKTHROUGH.equals(rules.modeId())
+                && !GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId())
+                && (key.equals("captainVoteSeconds") || key.equals("captainReplacementVoteSeconds"))) {
+            throw new IllegalArgumentException(key + " is only available in domination, breakthrough, or ctf mode");
+        }
         if (!GameModeRegistry.BREAKTHROUGH.equals(rules.modeId())
                 && !GameModeRegistry.CAPTURE_THE_FLAG.equals(rules.modeId())
                 && key.equals("attackerTickets")) {
@@ -2257,6 +2269,8 @@ public final class SFGameCommands {
             case "scoreIntervalSeconds" -> Integer.toString(rules.scoreIntervalSeconds());
             case "scorePerPoint" -> Integer.toString(rules.scorePerPoint());
             case "syncHoldSeconds" -> Integer.toString(rules.syncHoldSeconds());
+            case "squadMaxMembers" -> Integer.toString(rules.squadMaxMembers());
+            case "respawnBeaconHealth" -> Integer.toString(rules.respawnBeaconHealth());
             case "dominationStrategy" -> rules.dominationStrategy().name().toLowerCase(java.util.Locale.ROOT);
             case "breakthroughVariant" -> rules.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT);
             case "breakthroughLegs" -> Integer.toString(rules.breakthroughLegs());
@@ -2268,8 +2282,6 @@ public final class SFGameCommands {
             case "sectorTransitionSeconds" -> Integer.toString(rules.sectorTransitionSeconds());
             case "captainVoteSeconds" -> Integer.toString(rules.captainVoteSeconds());
             case "captainReplacementVoteSeconds" -> Integer.toString(rules.captainReplacementVoteSeconds());
-            case "attackerCaptainGlowing" -> Boolean.toString(rules.attackerCaptainGlowing());
-            case "mapBlockBreaking" -> Boolean.toString(rules.mapBlockBreaking());
             case "mapSnapshotMode" -> rules.mapSnapshotMode().id();
             case "mapRestorePartitionDelayTicks" -> Integer.toString(rules.mapRestorePartitionDelayTicks());
             case "mapRestoreAdaptiveThrottling" -> Boolean.toString(rules.mapRestoreAdaptiveThrottling());
@@ -2307,8 +2319,7 @@ public final class SFGameCommands {
         return key.equals("breakthroughVariant") || key.equals("breakthroughLegs")
                 || key.equals("breakthroughAttackRounds")
                 || key.equals("breakthroughAttacker") || key.equals("breakthroughDefender")
-                || key.equals("sectorTransitionSeconds") || key.equals("captainVoteSeconds")
-                || key.equals("captainReplacementVoteSeconds") || key.equals("attackerCaptainGlowing")
+                || key.equals("sectorTransitionSeconds") || key.equals("attackerCaptainGlowing")
                 || key.equals("attackerCaptainCaptureWeight")
                 || key.equals("defenderCaptureWeight");
     }
@@ -2339,8 +2350,11 @@ public final class SFGameCommands {
                 + ", captureUsePlayerDifference=" + r.captureUsePlayerDifference()
                 + ", captureDifferenceCoefficient=" + r.captureDifferenceCoefficient()
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier()
+                + ", squadMaxMembers=" + r.squadMaxMembers() + ", respawnBeaconHealth=" + r.respawnBeaconHealth()
                 + ", scoreIntervalSeconds=" + r.scoreIntervalSeconds() + ", scorePerPoint=" + r.scorePerPoint()
-                + ", syncHoldSeconds=" + r.syncHoldSeconds();
+                + ", syncHoldSeconds=" + r.syncHoldSeconds()
+                + ", captainVoteSeconds=" + r.captainVoteSeconds()
+                + ", captainReplacementVoteSeconds=" + r.captainReplacementVoteSeconds();
         if (GameModeRegistry.BREAKTHROUGH.equals(r.modeId())) return common + ", captureTimeSeconds=" + r.captureTimeSeconds()
                 + ", breakthroughVariant=" + r.breakthroughVariant().name().toLowerCase(java.util.Locale.ROOT)
                 + ", breakthroughLegs=" + r.breakthroughLegs()
@@ -2353,6 +2367,7 @@ public final class SFGameCommands {
                 + ", showUnlimitedTickets=" + r.showUnlimitedTickets()
                 + ", sectorTransitionSeconds=" + r.sectorTransitionSeconds() + ", captainVoteSeconds=" + r.captainVoteSeconds()
                 + ", captainReplacementVoteSeconds=" + r.captainReplacementVoteSeconds()
+                + ", squadMaxMembers=" + r.squadMaxMembers() + ", respawnBeaconHealth=" + r.respawnBeaconHealth()
                 + ", attackerCaptainGlowing=" + r.attackerCaptainGlowing()
                 + ", attackerCaptainCaptureWeight=" + r.attackerCaptainCaptureWeight()
                 + ", defenderCaptureWeight=" + r.defenderCaptureWeight();
@@ -2365,7 +2380,10 @@ public final class SFGameCommands {
                 + ", captureMaxMultiplier=" + r.captureMaxMultiplier() + ", attackerTickets=" + r.attackerTickets()
                 + ", showUnlimitedTickets=" + r.showUnlimitedTickets()
                 + ", ctfFlagReturnSeconds=" + r.ctfFlagReturnSeconds()
-                + ", ctfHomeCaptureTimeSeconds=" + r.ctfHomeCaptureTimeSeconds();
+                + ", ctfHomeCaptureTimeSeconds=" + r.ctfHomeCaptureTimeSeconds()
+                + ", squadMaxMembers=" + r.squadMaxMembers() + ", respawnBeaconHealth=" + r.respawnBeaconHealth()
+                + ", captainVoteSeconds=" + r.captainVoteSeconds()
+                + ", captainReplacementVoteSeconds=" + r.captainReplacementVoteSeconds();
         return common;
     }
 
