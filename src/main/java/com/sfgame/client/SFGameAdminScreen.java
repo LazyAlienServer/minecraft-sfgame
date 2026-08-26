@@ -32,12 +32,9 @@ public final class SFGameAdminScreen extends Screen {
     private static final int SURFACE_ALT = 0xF022252A;
     private static final int SUB_NAV_SURFACE = 0xF017191D;
     private static final int BORDER = 0xFF555A62;
-    private static final int TEXT = 0xFFF4F4F4;
-    private static final int MUTED = 0xFF9A9FA8;
     private static final int ACCENT = 0xFFFFD54F;
     private static final int HOT = 0xFF62D98B;
     private static final int COLD = 0xFFA6ABB3;
-    private static final int DANGER = 0xFFE06C75;
     private static final int RULE_ROW_HEIGHT = 38;
     private static final int TOP_ACTION_MARGIN = 16;
     private static final int TOP_ACTION_TOP = 6;
@@ -301,7 +298,8 @@ public final class SFGameAdminScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics);
         graphics.fill(0, 0, width, height, BACKGROUND);
-        graphics.drawString(font, title, panelLeft, 11, TEXT, false);
+        Component screenTitle = SFGameText.colored("sfgame.ui.text", title);
+        graphics.drawString(font, screenTitle, panelLeft, 11, SFGameText.colorOf(screenTitle), false);
         AdminSnapshot snapshot = ClientAdminState.snapshot();
         if (snapshot != null) {
             // The map selector is a child navigation row of the mode selector.
@@ -325,21 +323,21 @@ public final class SFGameAdminScreen extends Screen {
         int cardWidth = (availableWidth - gap * (columns - 1)) / columns;
         int x0 = panelLeft + 12;
         List<StatusCard> cards = List.of(
-                new StatusCard("sfgame.admin.status.phase", phaseLabel(snapshot.phase()), ACCENT),
+                new StatusCard("sfgame.admin.status.phase", phaseLabel(snapshot.phase()), "sfgame.ui.accent"),
                 new StatusCard("sfgame.admin.status.selection",
-                        modeLabel(snapshot.selectedMode()).getString() + " / " + selectedMapName(snapshot), TEXT),
+                        modeLabel(snapshot.selectedMode()).getString() + " / " + selectedMapName(snapshot), "sfgame.ui.text"),
                 new StatusCard("sfgame.admin.status.players", snapshot.onlinePlayers() + " / "
-                        + snapshot.participatingPlayers() + " / " + snapshot.queuedPlayers(), TEXT),
-                new StatusCard("sfgame.admin.status.time", formatSeconds(snapshot.remainingSeconds()), TEXT),
+                        + snapshot.participatingPlayers() + " / " + snapshot.queuedPlayers(), "sfgame.ui.text"),
+                new StatusCard("sfgame.admin.status.time", formatSeconds(snapshot.remainingSeconds()), "sfgame.ui.text"),
                 new StatusCard("sfgame.admin.status.map", Component.translatable(snapshot.mapConfigured()
                         ? "sfgame.admin.configured" : "sfgame.admin.incomplete").getString(),
-                        snapshot.mapConfigured() ? HOT : DANGER),
-                new StatusCard("sfgame.admin.status.inheritance", snapshot.ruleParent(), TEXT),
+                        snapshot.mapConfigured() ? "sfgame.ui.hot" : "sfgame.ui.danger"),
+                new StatusCard("sfgame.admin.status.inheritance", snapshot.ruleParent(), "sfgame.ui.text"),
                 new StatusCard("sfgame.admin.status.dev", Component.translatable(snapshot.devMode()
                         ? "sfgame.admin.enabled" : "sfgame.admin.disabled").getString(),
-                        snapshot.devMode() ? HOT : MUTED),
+                        snapshot.devMode() ? "sfgame.ui.hot" : "sfgame.ui.muted"),
                 new StatusCard("sfgame.admin.status.scores", "R " + snapshot.redScore() + "  B " + snapshot.blueScore()
-                        + "  Y " + snapshot.yellowScore() + "  G " + snapshot.greenScore(), TEXT)
+                        + "  Y " + snapshot.yellowScore() + "  G " + snapshot.greenScore(), "sfgame.ui.text")
         );
         int cardHeight = 54;
         int rows = (cards.size() + columns - 1) / columns;
@@ -365,14 +363,17 @@ public final class SFGameAdminScreen extends Screen {
     private void renderRestoreStatus(GuiGraphics graphics, AdminSnapshot snapshot, int x, int y, int width, int height) {
         graphics.fill(x, y, x + width, y + height, SURFACE_ALT);
         outline(graphics, x, y, x + width, y + height, BORDER);
-        graphics.drawString(font, Component.translatable("sfgame.admin.status.restore"), x + 10, y + 8, MUTED, false);
+        Component restoreLabel = SFGameText.colored("sfgame.ui.muted",
+                Component.translatable("sfgame.admin.status.restore"));
+        graphics.drawString(font, restoreLabel, x + 10, y + 8, SFGameText.colorOf(restoreLabel), false);
         String state = snapshot.restoringMap()
                 ? Component.translatable("sfgame.admin.restore.running").getString()
                 : Component.translatable("sfgame.admin.restore.idle").getString();
         String partitions = snapshot.totalPartitions() > 0
                 ? "  " + snapshot.restoredPartitions() + "/" + snapshot.totalPartitions() : "";
-        graphics.drawString(font, state + partitions + "  " + snapshot.restoreElapsedMillis() + " ms",
-                x + 10, y + 23, TEXT, false);
+        Component restoreValue = SFGameText.colored("sfgame.ui.text",
+                state + partitions + "  " + snapshot.restoreElapsedMillis() + " ms");
+        graphics.drawString(font, restoreValue, x + 10, y + 23, SFGameText.colorOf(restoreValue), false);
         int barX = x + 10;
         int barY = y + 41;
         int barWidth = width - 20;
@@ -384,12 +385,14 @@ public final class SFGameAdminScreen extends Screen {
     private void renderRules(GuiGraphics graphics, AdminSnapshot snapshot) {
         int hotY = contentTop + 6 - ruleScroll;
         graphics.enableScissor(panelLeft, contentTop, panelRight, contentBottom);
-        graphics.drawString(font, Component.translatable("sfgame.admin.rules.hot"),
-                panelLeft + 10, hotY, HOT, false);
+        Component hotLabel = SFGameText.colored("sfgame.ui.hot",
+                Component.translatable("sfgame.admin.rules.hot"));
+        graphics.drawString(font, hotLabel, panelLeft + 10, hotY, SFGameText.colorOf(hotLabel), false);
         int hotCount = (int) snapshot.rules().stream().filter(AdminSnapshot.RuleView::hotReload).count();
         int coldY = hotY + 24 + hotCount * RULE_ROW_HEIGHT;
-        graphics.drawString(font, Component.translatable("sfgame.admin.rules.cold"),
-                panelLeft + 10, coldY, COLD, false);
+        Component coldLabel = SFGameText.colored("sfgame.ui.cold",
+                Component.translatable("sfgame.admin.rules.cold"));
+        graphics.drawString(font, coldLabel, panelLeft + 10, coldY, SFGameText.colorOf(coldLabel), false);
         for (RuleControl control : ruleControls) renderRuleLabel(graphics, control);
         graphics.disableScissor();
         if (maxRuleScroll > 0) {
@@ -414,7 +417,8 @@ public final class SFGameAdminScreen extends Screen {
         String translationKey = "sfgame.admin.rule." + control.rule.key();
         Component translated = Component.translatable(translationKey);
         String label = translated.getString().equals(translationKey) ? control.rule.key() : translated.getString();
-        graphics.drawString(font, label, panelLeft + 16, y + 8, TEXT, false);
+        Component labelText = SFGameText.colored("sfgame.ui.text", label);
+        graphics.drawString(font, labelText, panelLeft + 16, y + 8, SFGameText.colorOf(labelText), false);
         String range = switch (control.rule.type()) {
             case BOOLEAN -> control.rule.key();
             case ENUM -> control.rule.key() + "  ["
@@ -422,11 +426,13 @@ public final class SFGameAdminScreen extends Screen {
             case INTEGER, DECIMAL -> control.rule.key() + "  ["
                     + numericRangeText(control.rule.key(), control.rule.minimum(), control.rule.maximum()) + "]";
         };
-        graphics.drawString(font, range, panelLeft + 16, y + 21, MUTED, false);
+        Component rangeText = SFGameText.colored("sfgame.ui.muted", range);
+        graphics.drawString(font, rangeText, panelLeft + 16, y + 21, SFGameText.colorOf(rangeText), false);
         Component badge = Component.translatable(control.rule.hotReload()
                 ? "sfgame.admin.badge.hot" : "sfgame.admin.badge.cold");
+        Component badgeText = SFGameText.colored(control.rule.hotReload() ? "sfgame.ui.hot" : "sfgame.ui.cold", badge);
         int badgeX = panelRight - 266;
-        graphics.drawString(font, badge, badgeX, y + 14, control.rule.hotReload() ? HOT : COLD, false);
+        graphics.drawString(font, badgeText, badgeX, y + 14, SFGameText.colorOf(badgeText), false);
     }
 
     private static Component enumLabel(String key, String value) {
@@ -439,16 +445,24 @@ public final class SFGameAdminScreen extends Screen {
 
     private void renderMapScrollHints(GuiGraphics graphics) {
         if (totalMapCount <= visibleMapCount) return;
-        if (mapScroll > 0) graphics.drawString(font, "‹", panelLeft - 10, 58, TEXT, false);
-        if (mapScroll + visibleMapCount < totalMapCount) graphics.drawString(font, "›", panelRight + 4, 58, TEXT, false);
+        if (mapScroll > 0) {
+            Component arrow = SFGameText.colored("sfgame.ui.text", "‹");
+            graphics.drawString(font, arrow, panelLeft - 10, 58, SFGameText.colorOf(arrow), false);
+        }
+        if (mapScroll + visibleMapCount < totalMapCount) {
+            Component arrow = SFGameText.colored("sfgame.ui.text", "›");
+            graphics.drawString(font, arrow, panelRight + 4, 58, SFGameText.colorOf(arrow), false);
+        }
     }
 
     private void drawCard(GuiGraphics graphics, int x, int y, int width, int height, StatusCard card) {
         graphics.fill(x, y, x + width, y + height, SURFACE_ALT);
         outline(graphics, x, y, x + width, y + height, BORDER);
-        graphics.drawString(font, Component.translatable(card.titleKey), x + 9, y + 9, MUTED, false);
+        Component cardTitle = SFGameText.colored("sfgame.ui.muted", Component.translatable(card.titleKey));
+        graphics.drawString(font, cardTitle, x + 9, y + 9, SFGameText.colorOf(cardTitle), false);
         String value = font.plainSubstrByWidth(card.value, width - 18);
-        graphics.drawString(font, value, x + 9, y + 29, card.color, false);
+        Component cardValue = SFGameText.colored(card.colorKey, value);
+        graphics.drawString(font, cardValue, x + 9, y + 29, SFGameText.colorOf(cardValue), false);
     }
 
     private static void outline(GuiGraphics graphics, int left, int top, int right, int bottom, int color) {
@@ -504,7 +518,7 @@ public final class SFGameAdminScreen extends Screen {
         return false;
     }
 
-    private record StatusCard(String titleKey, String value, int color) { }
+    private record StatusCard(String titleKey, String value, String colorKey) { }
 
     private record RuleControl(AdminSnapshot.RuleView rule, int y, RuleValueBox editor,
                                Button action, AdminSnapshot snapshot) { }
@@ -552,8 +566,9 @@ public final class SFGameAdminScreen extends Screen {
             int border = selected ? ACCENT : hovered && active ? 0xFFFFFFFF : BORDER;
             graphics.fill(getX(), getY(), getX() + width, getY() + height, background);
             outline(graphics, getX(), getY(), getX() + width, getY() + height, border);
-            graphics.drawCenteredString(Minecraft.getInstance().font, getMessage(),
-                    getX() + width / 2, getY() + (height - 8) / 2, active ? TEXT : MUTED);
+            Component buttonText = SFGameText.colored(active ? "sfgame.ui.text" : "sfgame.ui.muted", getMessage());
+            graphics.drawCenteredString(Minecraft.getInstance().font, buttonText,
+                    getX() + width / 2, getY() + (height - 8) / 2, SFGameText.colorOf(buttonText));
             if (clipped) graphics.disableScissor();
         }
 
@@ -591,8 +606,8 @@ public final class SFGameAdminScreen extends Screen {
             this.frameHeight = height;
             setBordered(false);
             setMaxLength(32);
-            setTextColor(TEXT);
-            setTextColorUneditable(MUTED);
+            setTextColor(SFGameText.colorOf("sfgame.ui.text"));
+            setTextColorUneditable(SFGameText.colorOf("sfgame.ui.muted"));
             if (rule.type() == AdminRuleCatalog.ValueType.INTEGER) {
                 setFilter(value -> value.matches(rule.key().equals("maxPlayers")
                         ? "(?:[0-9]*|-1?)"

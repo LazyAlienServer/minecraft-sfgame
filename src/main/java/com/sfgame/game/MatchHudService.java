@@ -2,7 +2,6 @@ package com.sfgame.game;
 
 import com.sfgame.data.MatchRules;
 import com.sfgame.data.SFGameSavedData;
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -45,7 +44,7 @@ public final class MatchHudService {
             scoreboard.setDisplayObjective(Scoreboard.DISPLAY_SLOT_SIDEBAR, null);
         }
         for (TeamSide side : TeamSide.PLAYABLE) {
-            String line = side.color() + side.id().toUpperCase();
+            String line = side.id().toUpperCase();
             if (!GameModeRegistry.BREAKTHROUGH.equals(data.selectedMode()) && data.enabledTeams().contains(side)) {
                 scoreboard.getOrCreatePlayerScore(line, objective).setScore(manager.score(side));
             } else {
@@ -83,6 +82,7 @@ public final class MatchHudService {
         }
         if (manager.economyEnabled()
                 && manager.phase() == MatchPhase.RUNNING
+                && !manager.modeBlocksCombat()
                 && !manager.shop().items(data.selectedMode()).isEmpty()) {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (manager.state(player).respawning()) continue;

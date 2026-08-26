@@ -10,7 +10,6 @@ import com.sfgame.data.CapturePointDefinition;
 import com.sfgame.data.MatchRules;
 import com.sfgame.network.SFGameNetwork;
 import com.sfgame.network.MatchSnapshot;
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
@@ -158,7 +157,9 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         configureRoles(rules);
         leg = 1; sectorIndex = 0; sectorElapsedTicks = 0; timeAdjustmentTicks = 0L;
         unlimitedTimeOverride = false; timeOverrideActive = false; totalAttackTicks = 0;
-        transitionTicks = 0; tickets = rules.attackerTickets();
+        transitionTicks = 0;
+        runtimeState = RuntimeState.ACTIVE;
+        tickets = rules.attackerTickets();
         attackRoundsRemaining = rules.breakthroughAttackRounds();
         firstLeg = null;
         resetCurrentSector(map);
@@ -402,7 +403,11 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         sectorIndex = 0; sectorElapsedTicks = 0; timeAdjustmentTicks = 0L;
         unlimitedTimeOverride = false;
         timeOverrideActive = false;
-        totalAttackTicks = 0; tickets = 0; attackRoundsRemaining = 0; electionTicks = 0;
+        totalAttackTicks = 0;
+        runtimeState = RuntimeState.ACTIVE;
+        tickets = 0;
+        attackRoundsRemaining = 0;
+        electionTicks = 0;
         runtimeServer = null;
     }
 
@@ -474,6 +479,10 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
             if (electionTicks == 0) resolveElection(server, manager);
         }
         if (transitionTicks > 0) transitionTicks--;
+        if (changingLeg && transitionTicks > 0 && transitionTicks % 20 == 0) {
+            manager.announceActionbar(Component.translatable(
+                    "sfgame.breakthrough.leg.preparation.countdown.colored", transitionTicks / 20));
+        }
         if (transitionTicks > 0 || electionTicks > 0) return ModeTickResult.CONTINUE;
 
         if (changingAttackRound) tickets = rules.attackerTickets();
@@ -482,6 +491,7 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         unlimitedTimeOverride = false;
         timeOverrideActive = false;
         runtimeState = RuntimeState.ACTIVE;
+        if (changingLeg) manager.announceActionbar(Component.empty());
         resetCurrentSector(map);
         if (changingAttackRound) {
             manager.modeRedeployAll(rules.respawnProtectionSeconds() * 20);
@@ -824,70 +834,92 @@ public final class BreakthroughRuntime implements MatchModeRuntime {
         resetCurrentSector(map);
         manager.modeRedeployAll(transitionTicks + 20);
         announceLegPreparation(manager);
+        manager.announceActionbar(Component.translatable(
+                "sfgame.breakthrough.leg.preparation.countdown.colored", LEG_PREPARATION_SECONDS));
     }
     private void announceObjective(MinecraftServer server, MatchManager manager, ArenaMap map) {
         String sector = currentSector(map).id();
         manager.announceTitleAndChat(
-                Component.translatable("sfgame.breakthrough.objective.title", sector).withStyle(ChatFormatting.GOLD),
-                Component.translatable("sfgame.breakthrough.objective.subtitle").withStyle(ChatFormatting.AQUA),
-                Component.translatable("sfgame.breakthrough.objective", sector).withStyle(ChatFormatting.YELLOW),
+                Component.translatable("sfgame.breakthrough.objective.title.colored", sector),
+                Component.translatable("sfgame.breakthrough.objective.subtitle.colored"),
+                Component.translatable("sfgame.breakthrough.objective.colored", sector),
                 80);
     }
     private void announceNextAttackRound(MatchManager manager) {
-        Component title = Component.translatable(
-                "sfgame.breakthrough.attack_round.next_title", attackRoundsRemaining + 1)
-                .withStyle(ChatFormatting.GOLD);
-        Component subtitle = Component.translatable(
-                "sfgame.breakthrough.attack_round.next_subtitle")
-                .withStyle(ChatFormatting.YELLOW);
-        Component chat = Component.translatable(
-                "sfgame.breakthrough.attack_round.next_chat", attackRoundsRemaining + 1)
-                .withStyle(ChatFormatting.AQUA);
-        manager.announceTitleAndChat(title, subtitle, chat, 80);
+        int remaining = attackRoundsRemaining + 1;
+        manager.announceTitleAndChat(attacker,
+                MatchManager.teamColored(attacker,
+                        "sfgame.breakthrough.attack_round.next.attacker.title"),
+                MatchManager.teamColored(attacker,
+                        "sfgame.breakthrough.attack_round.next.attacker.subtitle"),
+                MatchManager.teamColored(attacker,
+                        "sfgame.breakthrough.attack_round.next.attacker.chat", remaining),
+                80);
+        manager.announceTitleAndChat(defender,
+                MatchManager.teamColored(defender,
+                        "sfgame.breakthrough.attack_round.next.defender.title"),
+                MatchManager.teamColored(defender,
+                        "sfgame.breakthrough.attack_round.next.defender.subtitle"),
+                MatchManager.teamColored(defender,
+                        "sfgame.breakthrough.attack_round.next.defender.chat", remaining),
+                80);
     }
     private void announceSectorTransition(MatchManager manager, String completed, String next, int transitionTicks) {
         manager.announceTitleAndChat(
-                Component.translatable("sfgame.breakthrough.sector.transition.title", completed).withStyle(ChatFormatting.GOLD),
-                Component.translatable("sfgame.breakthrough.sector.transition.subtitle", next).withStyle(ChatFormatting.AQUA),
-                Component.translatable("sfgame.breakthrough.sector.transition.chat", completed, next)
-                        .withStyle(ChatFormatting.YELLOW),
+                Component.translatable("sfgame.breakthrough.sector.transition.title.colored", completed),
+                Component.translatable("sfgame.breakthrough.sector.transition.subtitle.colored", next),
+                Component.translatable("sfgame.breakthrough.sector.transition.chat.colored", completed, next),
                 Math.max(80, transitionTicks));
     }
     private void announceAttackRoundRest(MatchManager manager) {
-        TeamSide winner = defender;
-        Component role = roleName(winner);
-        manager.announceTitleAndChat(
-                Component.translatable("sfgame.breakthrough.attack_round.rest_title", role)
-                        .withStyle(winner.color()),
-                Component.translatable("sfgame.breakthrough.attack_round.rest_subtitle",
-                        ATTACK_ROUND_REST_SECONDS, attackRoundsRemaining + 1).withStyle(ChatFormatting.YELLOW),
-                Component.translatable("sfgame.breakthrough.attack_round.rest_chat", role,
-                        ATTACK_ROUND_REST_SECONDS, attackRoundsRemaining + 1).withStyle(winner.color()),
+        int remaining = attackRoundsRemaining + 1;
+        manager.announceTitleAndChat(attacker,
+                MatchManager.teamColored(attacker,
+                        "sfgame.breakthrough.attack_round.rest.attacker.title"),
+                MatchManager.teamColored(attacker,
+                        "sfgame.breakthrough.attack_round.rest.attacker.subtitle",
+                        ATTACK_ROUND_REST_SECONDS, remaining),
+                MatchManager.teamColored(attacker,
+                        "sfgame.breakthrough.attack_round.rest.attacker.chat",
+                        ATTACK_ROUND_REST_SECONDS, remaining),
+                ATTACK_ROUND_REST_SECONDS * 20);
+        manager.announceTitleAndChat(defender,
+                MatchManager.teamColored(defender,
+                        "sfgame.breakthrough.attack_round.rest.defender.title"),
+                MatchManager.teamColored(defender,
+                        "sfgame.breakthrough.attack_round.rest.defender.subtitle",
+                        ATTACK_ROUND_REST_SECONDS, remaining),
+                MatchManager.teamColored(defender,
+                        "sfgame.breakthrough.attack_round.rest.defender.chat",
+                        ATTACK_ROUND_REST_SECONDS, remaining),
                 ATTACK_ROUND_REST_SECONDS * 20);
     }
     private void announceLegRotation(MatchManager manager, TeamSide winner) {
         Component role = roleName(winner);
         manager.announceTitleAndChat(
-                Component.translatable("sfgame.breakthrough.leg.rotation.title", role).withStyle(winner.color()),
-                Component.translatable("sfgame.breakthrough.leg.rotation.subtitle",
-                        LEG_ROTATION_NOTICE_SECONDS).withStyle(ChatFormatting.YELLOW),
-                Component.translatable("sfgame.breakthrough.leg.rotation.chat", role,
-                        LEG_ROTATION_NOTICE_SECONDS).withStyle(winner.color()),
+                MatchManager.teamColored(winner,
+                        "sfgame.breakthrough.leg.rotation.title", role),
+                MatchManager.teamColored(winner,
+                        "sfgame.breakthrough.leg.rotation.subtitle",
+                        LEG_ROTATION_NOTICE_SECONDS),
+                MatchManager.teamColored(winner,
+                        "sfgame.breakthrough.leg.rotation.chat", role,
+                        LEG_ROTATION_NOTICE_SECONDS),
                 LEG_ROTATION_NOTICE_SECONDS * 20);
     }
     private void announceLegPreparation(MatchManager manager) {
         manager.announceTitleAndChat(
-                Component.translatable("sfgame.breakthrough.leg.preparation.title").withStyle(ChatFormatting.GOLD),
-                Component.translatable("sfgame.breakthrough.leg.preparation.subtitle",
-                        LEG_PREPARATION_SECONDS).withStyle(ChatFormatting.AQUA),
-                Component.translatable("sfgame.breakthrough.leg.preparation.chat",
-                        LEG_PREPARATION_SECONDS).withStyle(ChatFormatting.YELLOW),
-                LEG_PREPARATION_SECONDS * 20);
+                Component.translatable("sfgame.breakthrough.leg.preparation.title.colored"),
+                Component.translatable("sfgame.breakthrough.leg.preparation.subtitle.colored",
+                        LEG_PREPARATION_SECONDS),
+                Component.translatable("sfgame.breakthrough.leg.preparation.chat.colored",
+                        LEG_PREPARATION_SECONDS),
+                5, 60, 20);
     }
     private Component roleName(TeamSide side) {
         String key = side == attacker ? "sfgame.breakthrough.role.attacker"
                 : side == defender ? "sfgame.breakthrough.role.defender" : "sfgame.result.draw";
-        return Component.translatable(key).withStyle(side == TeamSide.NONE ? ChatFormatting.GOLD : side.color());
+        return Component.translatable(key);
     }
     private static Component teamName(TeamSide side) { return Component.translatable("sfgame.team." + side.id()); }
     private static String displayId(String id) { return id.toUpperCase(Locale.ROOT); }

@@ -12,7 +12,6 @@ import com.sfgame.game.TeamSide;
 import com.sfgame.network.ClientActionPacket;
 import com.sfgame.network.MatchSnapshot;
 import com.sfgame.network.SFGameNetwork;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -484,15 +483,17 @@ public final class SFGameScreen extends Screen {
         graphics.fill(scrollbar.thumbX(), scrollbar.thumbTop(), scrollbar.thumbX() + 4,
                 scrollbar.thumbBottom(), 0xFFBBBBBB);
         String progress = scrollbar.percent() + "%";
-        graphics.drawString(font, progress,
-                Math.max(0, scrollbar.thumbX() - font.width(progress) - 4),
-                scrollbar.top(), 0xFFBBBBBB, false);
+        Component progressText = SFGameText.colored("sfgame.ui.muted", progress);
+        graphics.drawString(font, progressText,
+                Math.max(0, scrollbar.thumbX() - font.width(progressText) - 4),
+                scrollbar.top(), SFGameText.colorOf(progressText), false);
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics);
-        graphics.drawCenteredString(font, title, width / 2, 20, 0xFFFFFF);
+        Component screenTitle = SFGameText.colored("sfgame.ui.text", title);
+        graphics.drawCenteredString(font, screenTitle, width / 2, 20, SFGameText.colorOf(screenTitle));
         MatchSnapshot snapshot = ClientMatchState.snapshot();
         if (snapshot != null) {
             boolean breakthrough = "breakthrough".equals(snapshot.modeId());
@@ -509,52 +510,59 @@ public final class SFGameScreen extends Screen {
                     : TeamSide.PLAYABLE.stream().filter(team -> snapshot.players(team) > 0)
                     .map(team -> team.id().toUpperCase(Locale.ROOT) + " " + snapshot.score(team))
                     .collect(java.util.stream.Collectors.joining("  ·  "));
-            graphics.drawCenteredString(font, Component.literal(scores).withStyle(ChatFormatting.BOLD),
-                    width / 2, 36, 0xFFFFFF);
+            Component scoreText = Component.translatable("sfgame.menu.scores", scores);
+            graphics.drawCenteredString(font, scoreText, width / 2, 36, SFGameText.colorOf(scoreText));
             if (snapshot.economyEnabled()) {
-                graphics.drawCenteredString(font,
-                        Component.translatable("sfgame.menu.currency", snapshot.currency()).withStyle(ChatFormatting.GOLD),
-                        width / 2, 52, 0xFFFFFF);
+                Component currencyText = Component.translatable("sfgame.menu.currency.colored", snapshot.currency());
+                graphics.drawCenteredString(font, currencyText, width / 2, 52, SFGameText.colorOf(currencyText));
             }
         }
         if (respawnHeadingY >= 0) {
-            graphics.drawString(font, Component.translatable("sfgame.respawn.choose"),
-                    respawnHeadingX, respawnHeadingY, 0xFFFFFF, true);
+            Component respawnText = Component.translatable("sfgame.respawn.choose.colored");
+            graphics.drawString(font, respawnText, respawnHeadingX, respawnHeadingY,
+                    SFGameText.colorOf(respawnText), true);
         }
         if (captainVoteHeadingY >= 0) {
-            graphics.drawString(font, Component.translatable("sfgame.menu.captain.vote_title"),
-                    captainVoteHeadingX, captainVoteHeadingY, 0xFFFFFF, true);
+            Component captainText = Component.translatable("sfgame.menu.captain.vote_title.colored");
+            graphics.drawString(font, captainText, captainVoteHeadingX, captainVoteHeadingY,
+                    SFGameText.colorOf(captainText), true);
         }
         if (classHeadingY >= 0) {
-            graphics.drawString(font, Component.translatable("sfgame.menu.class_select"),
-                    classHeadingX, classHeadingY, 0xFFFFFF, true);
+            Component classText = Component.translatable("sfgame.menu.class_select.colored");
+            graphics.drawString(font, classText, classHeadingX, classHeadingY,
+                    SFGameText.colorOf(classText), true);
         }
         if (classStripY >= 0 && totalClassCount > visibleClassCount) {
             if (classScrollOffset > 0) {
-                graphics.drawCenteredString(font, "‹", classStripLeft - 10,
-                        classStripY + CLASS_CARD_SIZE / 2 - 4, 0xFFFFFF);
+                Component arrow = Component.translatable("sfgame.menu.arrow", "‹");
+                graphics.drawCenteredString(font, arrow, classStripLeft - 10,
+                        classStripY + CLASS_CARD_SIZE / 2 - 4, SFGameText.colorOf(arrow));
             }
             if (classScrollOffset + visibleClassCount < totalClassCount) {
-                graphics.drawCenteredString(font, "›", classStripRight + 10,
-                        classStripY + CLASS_CARD_SIZE / 2 - 4, 0xFFFFFF);
+                Component arrow = Component.translatable("sfgame.menu.arrow", "›");
+                graphics.drawCenteredString(font, arrow, classStripRight + 10,
+                        classStripY + CLASS_CARD_SIZE / 2 - 4, SFGameText.colorOf(arrow));
             }
         }
         if (supplyHeadingY >= 0) {
-            graphics.drawString(font, Component.translatable("sfgame.menu.supply"),
-                    supplyHeadingX, supplyHeadingY, 0xFFFFFF, true);
+            Component supplyText = Component.translatable("sfgame.menu.supply.colored");
+            graphics.drawString(font, supplyText, supplyHeadingX, supplyHeadingY,
+                    SFGameText.colorOf(supplyText), true);
         }
         if (supplyEmptyY >= 0) {
             graphics.enableScissor(0, CONTENT_TOP, width, height - CONTENT_BOTTOM_MARGIN);
             try {
-                graphics.drawCenteredString(font, Component.translatable("sfgame.supply.empty"),
-                        supplyEmptyX, supplyEmptyY, 0xFFAAAAAA);
+                Component emptyText = Component.translatable("sfgame.supply.empty.colored");
+                graphics.drawCenteredString(font, emptyText, supplyEmptyX, supplyEmptyY,
+                        SFGameText.colorOf(emptyText));
             } finally {
                 graphics.disableScissor();
             }
         }
         if (shopHeadingY >= 0) {
-            graphics.drawString(font, Component.translatable("sfgame.menu.shop"),
-                    shopHeadingX, shopHeadingY, 0xFFFFFF, true);
+            Component shopText = Component.translatable("sfgame.menu.shop.colored");
+            graphics.drawString(font, shopText, shopHeadingX, shopHeadingY,
+                    SFGameText.colorOf(shopText), true);
         }
         super.render(graphics, mouseX, mouseY, partialTick);
         renderContentScrollBar(graphics);
@@ -663,22 +671,22 @@ public final class SFGameScreen extends Screen {
 
     private static List<Component> classTooltip(MatchSnapshot.ClassView view) {
         List<Component> lines = new ArrayList<>();
-        lines.add(Component.literal(view.name()).withStyle(ChatFormatting.YELLOW));
+        lines.add(Component.translatable("sfgame.tooltip.name", view.name()));
         if (!view.description().isBlank()) lines.add(Component.literal(view.description()));
-        if (!view.gunId().isBlank()) lines.add(Component.literal(view.gunId()).withStyle(ChatFormatting.GRAY));
+        if (!view.gunId().isBlank()) lines.add(Component.translatable("sfgame.tooltip.id", view.gunId()));
         return List.copyOf(lines);
     }
 
     private static List<Component> shopTooltip(MatchSnapshot.ShopView view) {
-        return List.of(Component.literal(view.name()).withStyle(ChatFormatting.YELLOW),
-                Component.translatable("sfgame.shop.price", view.price()).withStyle(ChatFormatting.GOLD),
-                Component.translatable("sfgame.shop.buy").withStyle(ChatFormatting.GRAY));
+        return List.of(Component.translatable("sfgame.tooltip.name", view.name()),
+                Component.translatable("sfgame.shop.price.colored", view.price()),
+                Component.translatable("sfgame.shop.buy.colored"));
     }
 
     private static List<Component> supplyTooltip(MatchSnapshot.SupplyView view) {
-        return List.of(Component.literal(view.name()).withStyle(ChatFormatting.YELLOW),
-                Component.translatable("sfgame.supply.quantity", view.quantity()).withStyle(ChatFormatting.AQUA),
-                Component.translatable("sfgame.supply.claim").withStyle(ChatFormatting.GRAY));
+        return List.of(Component.translatable("sfgame.tooltip.name", view.name()),
+                Component.translatable("sfgame.supply.quantity.colored", view.quantity()),
+                Component.translatable("sfgame.supply.claim.colored"));
     }
 
     private static class DarkButton extends Button {
@@ -698,9 +706,9 @@ public final class SFGameScreen extends Screen {
             graphics.fill(getX(), getY() + height - 1, getX() + width, getY() + height, border);
             graphics.fill(getX(), getY(), getX() + 1, getY() + height, border);
             graphics.fill(getX() + width - 1, getY(), getX() + width, getY() + height, border);
-            int textColor = active ? 0xFFFFFFFF : 0xFF8A8A8A;
-            graphics.drawCenteredString(Minecraft.getInstance().font, getMessage(),
-                    getX() + width / 2, getY() + (height - 8) / 2, textColor);
+            Component buttonText = SFGameText.colored(active ? "sfgame.ui.text" : "sfgame.ui.muted", getMessage());
+            graphics.drawCenteredString(Minecraft.getInstance().font, buttonText,
+                    getX() + width / 2, getY() + (height - 8) / 2, SFGameText.colorOf(buttonText));
         }
     }
 
@@ -740,7 +748,6 @@ public final class SFGameScreen extends Screen {
         private final ItemStack icon;
         private final String name;
         private final Component detail;
-        private final int detailColor;
         private final List<Component> tooltipLines;
         private boolean clipped;
         private int clipLeft;
@@ -749,12 +756,11 @@ public final class SFGameScreen extends Screen {
         private int clipBottom;
 
         private TallCardButton(int x, int y, String icon, String name, Component detail,
-                               int detailColor, List<Component> tooltipLines, OnPress onPress) {
+                               List<Component> tooltipLines, OnPress onPress) {
             super(x, y, TALL_CARD_WIDTH, TALL_CARD_HEIGHT, Component.empty(), onPress);
             this.icon = iconStack(icon);
             this.name = name;
             this.detail = detail;
-            this.detailColor = detailColor;
             this.tooltipLines = tooltipLines;
         }
         TallCardButton clipTo(int left, int top, int right, int bottom) {
@@ -768,14 +774,14 @@ public final class SFGameScreen extends Screen {
 
         static TallCardButton shop(int x, int y, MatchSnapshot.ShopView view, OnPress onPress) {
             return new TallCardButton(x, y, view.icon(), view.name(),
-                    Component.translatable("sfgame.shop.price", view.price()).withStyle(ChatFormatting.GOLD),
-                    0xFFFFD54F, shopTooltip(view), onPress);
+                    Component.translatable("sfgame.shop.price.colored", view.price()),
+                    shopTooltip(view), onPress);
         }
 
         static TallCardButton supply(int x, int y, MatchSnapshot.SupplyView view, OnPress onPress) {
             return new TallCardButton(x, y, view.icon(), view.name(),
-                    Component.translatable("sfgame.supply.quantity", view.quantity()).withStyle(ChatFormatting.AQUA),
-                    0xFF55FFFF, supplyTooltip(view), onPress);
+                    Component.translatable("sfgame.supply.quantity.colored", view.quantity()),
+                    supplyTooltip(view), onPress);
         }
 
         @Override
@@ -785,10 +791,11 @@ public final class SFGameScreen extends Screen {
                 super.renderWidget(graphics, mouseX, mouseY, partialTick);
                 renderIcon(graphics, icon, null, getX() + 20, getY() + 6, 32);
                 String displayName = Minecraft.getInstance().font.plainSubstrByWidth(name, TALL_CARD_WIDTH - 6);
-                graphics.drawCenteredString(Minecraft.getInstance().font, Component.literal(displayName),
-                        getX() + width / 2, getY() + 52, 0xFFFFFFFF);
+                Component nameText = Component.translatable("sfgame.tooltip.name", displayName);
+                graphics.drawCenteredString(Minecraft.getInstance().font, nameText,
+                        getX() + width / 2, getY() + 52, SFGameText.colorOf(nameText));
                 graphics.drawCenteredString(Minecraft.getInstance().font, detail,
-                        getX() + width / 2, getY() + 68, detailColor);
+                        getX() + width / 2, getY() + 68, SFGameText.colorOf(detail));
             } finally {
                 if (clipped) graphics.disableScissor();
             }

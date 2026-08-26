@@ -4,7 +4,6 @@ import com.sfgame.game.GameModeRegistry;
 import com.sfgame.game.MatchPhase;
 import com.sfgame.game.TeamSide;
 import com.sfgame.network.MatchSnapshot;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -17,8 +16,6 @@ import java.util.Locale;
 
 final class SFGameScoreboardOverlay {
     private static final int BACKGROUND = 0x900B0D10;
-    private static final int TEXT = 0xFFFFFFFF;
-    private static final int TITLE = 0xFFFFD65C;
     private static final int LINE_HEIGHT = 10;
     private static final int HORIZONTAL_PADDING = 4;
     private static final int VERTICAL_PADDING = 3;
@@ -30,32 +27,40 @@ final class SFGameScoreboardOverlay {
         if (snapshot == null || snapshot.phase() == MatchPhase.LOBBY
                 || snapshot.phase() == MatchPhase.UNCONFIGURED) return;
 
-        List<Component> lines = new ArrayList<>();
-        lines.add(title(snapshot));
-        addTime(lines, snapshot);
+        List<ScoreboardRow> rows = new ArrayList<>();
+        Component scoreboardTitle = title(snapshot);
+        addTime(rows, snapshot);
         if (GameModeRegistry.BREAKTHROUGH.equals(snapshot.modeId())) {
-            addTickets(lines, snapshot);
-            addValue(lines, "sfgame.scoreboard.leg", snapshot.leg(), ChatFormatting.AQUA);
-            addValue(lines, "sfgame.scoreboard.round", snapshot.attackRoundsRemaining(), ChatFormatting.LIGHT_PURPLE);
-            if (snapshot.devMode()) addValue(lines, "sfgame.scoreboard.sector", snapshot.sector(), ChatFormatting.YELLOW);
+            addTickets(rows, snapshot);
+            addValue(rows, "sfgame.scoreboard.label.leg", snapshot.leg());
+            addValue(rows, "sfgame.scoreboard.label.round", snapshot.attackRoundsRemaining());
+            if (snapshot.devMode()) addValue(rows, "sfgame.scoreboard.label.sector", snapshot.sector());
         } else if (GameModeRegistry.CAPTURE_THE_FLAG.equals(snapshot.modeId())
                 && "assault".equals(snapshot.ctfVariant())) {
-            addTickets(lines, snapshot);
-            addTeamScores(lines, snapshot);
+            addTickets(rows, snapshot);
+            addTeamScores(rows, snapshot);
         } else {
-            addTeamScores(lines, snapshot);
+            addTeamScores(rows, snapshot);
         }
 
         Font font = Minecraft.getInstance().font;
-        int maxWidth = lines.stream().mapToInt(font::width).max().orElse(0);
+        int maxWidth = font.width(scoreboardTitle);
+        for (ScoreboardRow row : rows) maxWidth = Math.max(maxWidth, row.width(font));
         int right = screenWidth - 3;
         int left = Math.max(0, right - maxWidth - HORIZONTAL_PADDING * 2);
-        int top = topFor(screenHeight, lines.size());
-        int bottom = top + lines.size() * LINE_HEIGHT + VERTICAL_PADDING * 2;
+        int lineCount = rows.size() + 1;
+        int top = topFor(screenHeight, lineCount);
+        int bottom = top + lineCount * LINE_HEIGHT + VERTICAL_PADDING * 2;
         graphics.fill(left, top, screenWidth, bottom, BACKGROUND);
+        int titleX = centeredX(left, screenWidth, font.width(scoreboardTitle));
         int y = top + VERTICAL_PADDING;
-        for (Component line : lines) {
-            graphics.drawString(font, line, right - font.width(line), y, TEXT, true);
+        graphics.drawString(font, scoreboardTitle, titleX, y, SFGameText.colorOf(scoreboardTitle), true);
+        y += LINE_HEIGHT;
+        for (ScoreboardRow row : rows) {
+            graphics.drawString(font, row.label(), left + HORIZONTAL_PADDING, y,
+                    SFGameText.colorOf(row.label()), true);
+            graphics.drawString(font, row.value(), right - font.width(row.value()), y,
+                    SFGameText.colorOf(row.value()), true);
             y += LINE_HEIGHT;
         }
     }
@@ -63,47 +68,62 @@ final class SFGameScoreboardOverlay {
         int contentHeight = Math.max(0, lineCount) * LINE_HEIGHT + VERTICAL_PADDING * 2;
         return Math.max(0, (screenHeight - contentHeight) / 2);
     }
-
-    private static Component title(MatchSnapshot snapshot) {
-        String key = "sfgame.mode." + snapshot.modeId();
-        MutableComponent mode = Component.translatable(key);
-        if (mode.getString().equals(key)) mode = Component.literal(snapshot.modeId());
-        return Component.empty().append(mode.withStyle(ChatFormatting.GOLD))
-                .append("/").append(Component.literal(snapshot.mapName()).withStyle(ChatFormatting.WHITE));
+    static int centeredX(int left, int right, int textWidth) {
+        return left + Math.max(0, (right - left - textWidth) / 2);
     }
-
-    private static void addTime(List<Component> lines, MatchSnapshot snapshot) {
+    private static void addTime(List<ScoreboardRow> rows, MatchSnapshot snapshot) {
         if (snapshot.remainingSeconds() == -1 && !snapshot.showUnlimitedTime()) return;
         Component value = snapshot.remainingSeconds() == -1
-                ? Component.translatable("sfgame.scoreboard.unlimited")
+                ? Component.translatable("sfgame.scoreboard.label.unlimited")
                 : Component.literal(formatRemainingTime(snapshot.remainingSeconds()));
-        lines.add(line("sfgame.scoreboard.time", ChatFormatting.GOLD, value));
+        rows.add(line("sfgame.scoreboard.label.time", scoreValue(value)));
     }
 
-    private static void addTickets(List<Component> lines, MatchSnapshot snapshot) {
+    private static void addTickets(List<ScoreboardRow> rows, MatchSnapshot snapshot) {
         if (snapshot.attackerTickets() == -1 && !snapshot.showUnlimitedTickets()) return;
         Component value = snapshot.attackerTickets() == -1
-                ? Component.translatable("sfgame.scoreboard.unlimited")
+                ? Component.translatable("sfgame.scoreboard.label.unlimited")
                 : Component.literal(Integer.toString(snapshot.attackerTickets()));
-        lines.add(line("sfgame.scoreboard.tickets", ChatFormatting.RED, value));
+        rows.add(line("sfgame.scoreboard.label.tickets", scoreValue(value)));
     }
 
-    private static void addTeamScores(List<Component> lines, MatchSnapshot snapshot) {
+    private static void addTeamScores(List<ScoreboardRow> rows, MatchSnapshot snapshot) {
         for (TeamSide side : TeamSide.PLAYABLE) {
             if (snapshot.players(side) <= 0 && snapshot.score(side) == 0) continue;
-            Component label = Component.translatable("sfgame.team." + side.id()).withStyle(side.color());
-            lines.add(Component.empty().append(label).append(" ")
-                    .append(Integer.toString(snapshot.score(side))));
+            Component label = Component.translatable("sfgame.scoreboard.team." + side.id());
+            rows.add(new ScoreboardRow(label, scoreValue(Integer.toString(snapshot.score(side)))));
         }
     }
 
-    private static void addValue(List<Component> lines, String key, int value, ChatFormatting color) {
-        lines.add(line(key, color, Component.literal(Integer.toString(value))));
+    private static void addValue(List<ScoreboardRow> rows, String key, int value) {
+        rows.add(line(key, scoreValue(Integer.toString(value))));
     }
 
-    private static Component line(String key, ChatFormatting color, Component value) {
-        return Component.empty().append(Component.translatable(key).withStyle(color)).append(" ").append(value);
+    private static ScoreboardRow line(String key, Component value) {
+        return new ScoreboardRow(Component.translatable(key), value);
     }
+
+    private static Component scoreValue(Object value) {
+        return Component.translatable("sfgame.scoreboard.value", value);
+    }
+
+    private record ScoreboardRow(Component label, Component value) {
+        int width(Font font) {
+            return font.width(label) + font.width(" ") + font.width(value);
+        }
+    }
+
+    private static Component title(MatchSnapshot snapshot) {
+        String key = "sfgame.scoreboard.mode." + snapshot.modeId();
+        MutableComponent mode = Component.translatable(key);
+        if (mode.getString().equals(key)) {
+            mode = Component.translatable("sfgame.scoreboard.mode.fallback", snapshot.modeId());
+        }
+        return Component.empty().append(mode)
+                .append(Component.translatable("sfgame.scoreboard.separator"))
+                .append(Component.translatable("sfgame.scoreboard.map", snapshot.mapName()));
+    }
+
 
     private static String formatRemainingTime(int seconds) {
         long safeSeconds = Math.max(0L, seconds);

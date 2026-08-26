@@ -106,6 +106,14 @@ final class BreakthroughRuntimeTest {
         assertEquals(5, BreakthroughRuntime.LEG_ROTATION_NOTICE_SECONDS);
         assertEquals(30, BreakthroughRuntime.LEG_PREPARATION_SECONDS);
     }
+    @Test
+    void stopResetsLifecycleStateForTheNextMatch() {
+        BreakthroughRuntime runtime = new BreakthroughRuntime();
+
+        runtime.stop();
+
+        assertEquals("active", runtime.subState());
+    }
 
     @Test
     void startValidationUsesSectorSpawnsWithoutGlobalTeamSpawns() {

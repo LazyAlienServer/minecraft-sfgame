@@ -3,7 +3,6 @@ package com.sfgame.network;
 import com.sfgame.data.SFGameSavedData;
 import com.sfgame.game.AdminRuleCatalog;
 import com.sfgame.game.MatchManager;
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -63,8 +62,7 @@ public record AdminActionPacket(Action action, String modeId, String mapId, Stri
                         }
                         manager.arenaSelectionChanged();
                         manager.refreshCommandTree();
-                        feedback = Component.translatable("sfgame.admin.feedback.mode", packet.modeId)
-                                .withStyle(ChatFormatting.GREEN);
+                        feedback = Component.translatable("sfgame.admin.feedback.mode.colored", packet.modeId);
                     }
                     case SELECT_MAP -> {
                         requireArenaEditable(manager);
@@ -75,17 +73,15 @@ public record AdminActionPacket(Action action, String modeId, String mapId, Stri
                             throw new IllegalArgumentException("Unknown map: " + packet.mapId);
                         }
                         manager.arenaSelectionChanged();
-                        feedback = Component.translatable("sfgame.admin.feedback.map", packet.mapId)
-                                .withStyle(ChatFormatting.GREEN);
+                        feedback = Component.translatable("sfgame.admin.feedback.map.colored", packet.mapId);
                     }
                     case SET_RULE -> {
                         applyRule(manager, data, packet);
-                        feedback = Component.translatable("sfgame.admin.feedback.rule", packet.key, packet.value)
-                                .withStyle(ChatFormatting.GREEN);
+                        feedback = Component.translatable("sfgame.admin.feedback.rule.colored", packet.key, packet.value);
                     }
                 }
             } catch (IllegalArgumentException | IllegalStateException exception) {
-                Component error = Component.literal(exception.getMessage()).withStyle(ChatFormatting.RED);
+                Component error = Component.translatable("sfgame.admin.error", exception.getMessage());
                 player.sendSystemMessage(error);
                 player.displayClientMessage(error, true);
             }

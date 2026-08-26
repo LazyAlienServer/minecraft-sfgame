@@ -14,7 +14,6 @@ import com.sfgame.data.MapSnapshotMode;
 import com.sfgame.data.SFGameSavedData;
 import com.sfgame.network.MatchSnapshot;
 import com.sfgame.network.SFGameNetwork;
-import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
 import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
@@ -311,8 +310,7 @@ public final class MatchManager {
                 && player.getInventory().getSlotWithRemainingSpace(stack) < 0) return false;
         if (!player.getInventory().add(stack)) return false;
         playerState.currency(modeId, balance - item.price());
-        player.sendSystemMessage(Component.translatable("sfgame.shop.bought", item.name())
-                .withStyle(ChatFormatting.GREEN), true);
+        player.sendSystemMessage(Component.translatable("sfgame.shop.bought.colored", item.name()), true);
         sync(player);
         return true;
     }
@@ -554,8 +552,8 @@ public final class MatchManager {
                 pendingRestore = MapBuildSnapshotService.beginRestore(server, data().selectedMode(), data().activeMap(),
                         rules().mapSnapshotMode(), rules().mapBlockAllowlist());
             } catch (Exception exception) {
-                server.getPlayerList().broadcastSystemMessage(Component.literal(
-                        "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
+                server.getPlayerList().broadcastSystemMessage(Component.translatable(
+                        "sfgame.map_restore.failed", exception.getMessage()), false);
                 return false;
             }
         }
@@ -665,7 +663,7 @@ public final class MatchManager {
                 && teams.sideOf(player, data()) == breakthroughRuntime.attacker();
         if (state.participating() || attackerElectionLocked) {
             player.sendSystemMessage(Component.translatable(attackerElectionLocked
-                    ? "sfgame.menu.locked.election" : "sfgame.menu.locked.participating").withStyle(ChatFormatting.RED));
+                    ? "sfgame.menu.locked.election.error" : "sfgame.menu.locked.participating.error"));
             sync(player);
             return false;
         }
@@ -674,7 +672,7 @@ public final class MatchManager {
 
     public boolean leaveFromMenu(ServerPlayer player) {
         if (isActiveMatchPhase()) {
-            player.sendSystemMessage(Component.translatable("sfgame.menu.locked.command_leave").withStyle(ChatFormatting.RED));
+            player.sendSystemMessage(Component.translatable("sfgame.menu.locked.command_leave.error"));
             sync(player);
             return false;
         }
@@ -757,7 +755,7 @@ public final class MatchManager {
                 || data().activeMap() == null) return false;
         ArenaPosition position = breakthroughRuntime.respawnPosition(player, optionId, this, data().activeMap());
         if (position == null) {
-            player.sendSystemMessage(Component.translatable("sfgame.respawn.option_unavailable").withStyle(ChatFormatting.RED));
+            player.sendSystemMessage(Component.translatable("sfgame.respawn.option_unavailable.error"));
             SFGameNetwork.openMenu(player);
             return false;
         }
@@ -838,7 +836,7 @@ public final class MatchManager {
             if (player.getInventory().getFreeSlot() < 0
                     && player.getInventory().getSlotWithRemainingSpace(stack) < 0) return false;
             if (!player.getInventory().add(stack)) return false;
-            granted = Component.translatable("sfgame.supply.item_granted", stack.getHoverName());
+            granted = Component.translatable("sfgame.supply.item_granted.colored", stack.getHoverName());
         } else if (com.sfgame.data.SupplyOfferDefinition.ELITE_CLASS.equals(supply.type())) {
             ClassDefinition definition = classRegistry.getEliteForTeam(
                     data().selectedMode(), data().selectedMap(), side, supply.classId()).orElse(null);
@@ -849,12 +847,12 @@ public final class MatchManager {
             state.grantedEliteClass(data().selectedMode(), side, definition.id());
             state.currentClass(data().selectedMode(), side, definition.id());
             state.pendingClass(data().selectedMode(), side, definition.id());
-            granted = Component.translatable("sfgame.supply.elite_granted", definition.displayName());
+            granted = Component.translatable("sfgame.supply.elite_granted.colored", definition.displayName());
         } else {
             return false;
         }
         if (!supplyService.consume(side, offerId)) return false;
-        player.sendSystemMessage(granted.copy().withStyle(ChatFormatting.GREEN), true);
+        player.sendSystemMessage(granted, true);
         syncAll();
         return true;
     }
@@ -1186,8 +1184,7 @@ public final class MatchManager {
             name = classRegistry.getEliteForTeam(data().selectedMode(), data().selectedMap(), side, supply.classId())
                     .map(ClassDefinition::displayName).orElse(supply.classId());
         }
-        Component message = Component.translatable("sfgame.supply.available", name)
-                .withStyle(ChatFormatting.AQUA);
+        Component message = Component.translatable("sfgame.supply.available.colored", name);
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!eligibleForSupplyNotification(player, side)) continue;
             player.sendSystemMessage(message);
@@ -1219,9 +1216,9 @@ public final class MatchManager {
     private void tickCountdown() {
         if (phaseTicks > 0) phaseTicks--;
         if (phaseTicks % 20 == 0 && phaseTicks > 0) {
-            Component title = Component.literal(Integer.toString(phaseTicks / 20)).withStyle(ChatFormatting.GOLD);
+            Component title = Component.translatable("sfgame.match.countdown", phaseTicks / 20);
             forParticipants(player -> {
-                sendTitle(player, title, Component.translatable("sfgame.match.starting"), 24);
+                sendTitle(player, title, Component.translatable("sfgame.match.starting.colored"), 24);
                 playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), countdownPitch(phaseTicks / 20));
             });
         }
@@ -1276,8 +1273,8 @@ public final class MatchManager {
             }
         } catch (Exception exception) {
             SFGame.LOGGER.error("Map snapshot restore failed", exception);
-            server.getPlayerList().broadcastSystemMessage(Component.literal(
-                    "Map snapshot restore failed: " + exception.getMessage()).withStyle(ChatFormatting.RED), false);
+            server.getPlayerList().broadcastSystemMessage(Component.translatable(
+                    "sfgame.map_restore.failed", exception.getMessage()), false);
             stop(false, Component.literal("Map snapshot restore failed"));
             return;
         }
@@ -1288,7 +1285,7 @@ public final class MatchManager {
 
         long elapsedMillis = mapRestoreSession.elapsedMillis();
         String seconds = String.format(Locale.ROOT, "%.2f", elapsedMillis / 1000.0);
-        Component complete = Component.translatable("sfgame.map_restore.complete", seconds).withStyle(ChatFormatting.GREEN);
+        Component complete = Component.translatable("sfgame.map_restore.complete.colored", seconds);
         forParticipants(player -> {
             player.sendSystemMessage(complete, true);
             playSound(player, SoundEvents.PLAYER_LEVELUP, 1.15F);
@@ -1335,9 +1332,9 @@ public final class MatchManager {
         phase = MatchPhase.COUNTDOWN;
         phaseTicks = rules().startCountdownSeconds() * 20;
         if (phaseTicks == 0) { beginRunning(); return; }
-        Component title = Component.literal(Integer.toString(rules().startCountdownSeconds())).withStyle(ChatFormatting.GOLD);
+        Component title = Component.translatable("sfgame.match.countdown", rules().startCountdownSeconds());
         forParticipants(player -> {
-            sendTitle(player, title, Component.translatable("sfgame.match.starting"), 24);
+            sendTitle(player, title, Component.translatable("sfgame.match.starting.colored"), 24);
             playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.0F);
         });
     }
@@ -1361,11 +1358,11 @@ public final class MatchManager {
         supplyService.beginRunning(data().activeMap(), data().selectedMode(), supplyAttacker, supplyDefender);
         forParticipants(player -> deploy(player, state(player), false));
         forParticipants(player -> {
-            sendTitle(player, Component.translatable("sfgame.match.start").withStyle(ChatFormatting.GREEN),
+            sendTitle(player, Component.translatable("sfgame.match.start.colored"),
                     Component.empty(), 30);
             playSound(player, SoundEvents.PLAYER_LEVELUP, 1.0F);
         });
-        server.getPlayerList().broadcastSystemMessage(Component.literal("SFGame match started").withStyle(ChatFormatting.GREEN), false);
+        server.getPlayerList().broadcastSystemMessage(Component.translatable("sfgame.match.started"), false);
         syncAll();
     }
 
@@ -1387,7 +1384,7 @@ public final class MatchManager {
     private void tickResult() {
         if (phaseTicks > 0 && phaseTicks % 20 == 0) {
             int seconds = Math.max(1, phaseTicks / 20);
-            Component returning = Component.translatable("sfgame.result.returning", seconds).withStyle(ChatFormatting.YELLOW);
+            Component returning = Component.translatable("sfgame.result.returning.colored", seconds);
             server.getPlayerList().getPlayers().forEach(player -> player.sendSystemMessage(returning, true));
         }
         if (--phaseTicks <= 0) finishToLobby();
@@ -1411,7 +1408,7 @@ public final class MatchManager {
                 } else if (GameModeRegistry.BREAKTHROUGH.equals(data().selectedMode())) {
                     if (!state.awaitingRespawnSelection()) {
                         state.awaitingRespawnSelection(true);
-                        player.sendSystemMessage(Component.translatable("sfgame.respawn.choose").withStyle(ChatFormatting.YELLOW), true);
+                        player.sendSystemMessage(Component.translatable("sfgame.respawn.choose.colored"), true);
                         playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.2F);
                         SFGameNetwork.openMenu(player);
                     }
@@ -1500,7 +1497,7 @@ public final class MatchManager {
         if (!loadoutService.apply(player, definition.get())) {
             state.participating(false);
             player.setGameMode(GameType.SPECTATOR);
-            player.sendSystemMessage(Component.literal("Could not build TACZ loadout for " + definition.get().id()).withStyle(ChatFormatting.RED));
+            player.sendSystemMessage(Component.translatable("sfgame.loadout.tacz_failed", definition.get().id()));
         }
         player.getFoodData().setFoodLevel(20);
         player.getFoodData().setSaturation(20.0F);
@@ -1548,10 +1545,9 @@ public final class MatchManager {
 
     private void announceResult() {
         Component title = resultTitle();
-        Component subtitle = Component.translatable("sfgame.result.finished").withStyle(ChatFormatting.YELLOW);
+        Component subtitle = Component.translatable("sfgame.result.finished.colored");
         server.getPlayerList().broadcastSystemMessage(title, false);
-        Component returning = Component.translatable("sfgame.result.returning", rules().resultSeconds())
-                .withStyle(ChatFormatting.YELLOW);
+        Component returning = Component.translatable("sfgame.result.returning.colored", rules().resultSeconds());
         server.getPlayerList().getPlayers().forEach(player -> {
             sendTitle(player, title, subtitle, rules().resultSeconds() * 20);
             player.sendSystemMessage(returning, true);
@@ -1559,7 +1555,7 @@ public final class MatchManager {
         });
     }
     private Component resultTitle() {
-        if (result == TeamSide.NONE) return Component.translatable("sfgame.result.draw").withStyle(ChatFormatting.GOLD);
+        if (result == TeamSide.NONE) return Component.translatable("sfgame.result.draw.colored");
         String mode = data().selectedMode();
         MatchRules currentRules = rules();
         if (GameModeRegistry.BREAKTHROUGH.equals(mode)) {
@@ -1568,16 +1564,24 @@ public final class MatchManager {
         if (GameModeRegistry.CAPTURE_THE_FLAG.equals(mode) && currentRules.ctfVariant() == CtfVariant.ASSAULT) {
             return roleResult(result, currentRules.ctfAttacker(), currentRules.ctfDefender());
         }
-        return Component.translatable("sfgame.result." + result.id()).withStyle(result.color());
+        return Component.translatable("sfgame.result." + result.id() + ".colored");
     }
     private static Component roleResult(TeamSide winner, TeamSide attacker, TeamSide defender) {
-        if (winner == attacker) return Component.translatable("sfgame.result.attacker").withStyle(attacker.color());
-        if (winner == defender) return Component.translatable("sfgame.result.defender").withStyle(defender.color());
-        return Component.translatable("sfgame.result." + winner.id()).withStyle(winner.color());
+        if (winner == attacker) return Component.translatable("sfgame.result.attacker." + attacker.id());
+        if (winner == defender) return Component.translatable("sfgame.result.defender." + defender.id());
+        return Component.translatable("sfgame.result." + winner.id() + ".colored");
+    }
+    static Component teamColored(TeamSide side, String key, Object... args) {
+        return Component.translatable("sfgame.team_color." + side.id(), Component.translatable(key, args));
     }
 
     private static void sendTitle(ServerPlayer player, Component title, Component subtitle, int stayTicks) {
-        player.connection.send(new ClientboundSetTitlesAnimationPacket(0, Math.max(2, stayTicks), 2));
+        sendTitle(player, title, subtitle, 0, stayTicks, 2);
+    }
+    private static void sendTitle(ServerPlayer player, Component title, Component subtitle,
+                                  int fadeInTicks, int stayTicks, int fadeOutTicks) {
+        player.connection.send(new ClientboundSetTitlesAnimationPacket(
+                Math.max(0, fadeInTicks), Math.max(2, stayTicks), Math.max(0, fadeOutTicks)));
         player.connection.send(new ClientboundSetSubtitleTextPacket(subtitle));
         player.connection.send(new ClientboundSetTitleTextPacket(title));
     }
@@ -1736,11 +1740,30 @@ public final class MatchManager {
         }
     }
     void announceTitleAndChat(Component title, Component subtitle, Component chat, int stayTicks) {
+        announceTitleAndChatForSide(null, title, subtitle, chat, 0, stayTicks, 2);
+    }
+    void announceTitleAndChat(Component title, Component subtitle, Component chat,
+                              int fadeInTicks, int stayTicks, int fadeOutTicks) {
+        announceTitleAndChatForSide(null, title, subtitle, chat, fadeInTicks, stayTicks, fadeOutTicks);
+    }
+    void announceTitleAndChat(TeamSide side, Component title, Component subtitle, Component chat, int stayTicks) {
+        announceTitleAndChatForSide(side, title, subtitle, chat, 0, stayTicks, 2);
+    }
+    void announceTitleAndChat(TeamSide side, Component title, Component subtitle, Component chat,
+                              int fadeInTicks, int stayTicks, int fadeOutTicks) {
+        announceTitleAndChatForSide(side, title, subtitle, chat, fadeInTicks, stayTicks, fadeOutTicks);
+    }
+    private void announceTitleAndChatForSide(@Nullable TeamSide target, Component title, Component subtitle,
+                                             Component chat, int fadeInTicks, int stayTicks, int fadeOutTicks) {
         for (ServerPlayer player : onlineMatchViewers()) {
-            sendTitle(player, title, subtitle, stayTicks);
+            if (target != null && teams.sideOf(player, data()) != target) continue;
+            sendTitle(player, title, subtitle, fadeInTicks, stayTicks, fadeOutTicks);
             player.sendSystemMessage(chat, false);
             playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.2F);
         }
+    }
+    void announceActionbar(Component message) {
+        for (ServerPlayer player : onlineMatchViewers()) player.sendSystemMessage(message, true);
     }
 
     private SFGameSavedData data() {

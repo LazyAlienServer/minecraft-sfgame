@@ -2,7 +2,6 @@ package com.sfgame.game;
 
 import com.sfgame.data.CapturePointDefinition;
 import com.sfgame.data.CaptureRegion;
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
@@ -109,7 +108,7 @@ final class CapturePointMarkerService {
         CompoundTag tag = new CompoundTag();
         marker.saveWithoutId(tag);
         String displayId = pointId.toUpperCase(Locale.ROOT);
-        Component text = Component.literal(displayId).withStyle(visual.formatting());
+        Component text = Component.translatable(visual.translationKey(), displayId);
         tag.putString("text", Component.Serializer.toJson(text));
         tag.putInt("line_width", 1000);
         tag.putInt("background", 0xD0555555);
@@ -181,15 +180,8 @@ final class CapturePointMarkerService {
             return new MarkerVisual(side, state.contested());
         }
 
-        private ChatFormatting formatting() {
-            if (contested) return ChatFormatting.GOLD;
-            return switch (side) {
-                case RED -> ChatFormatting.RED;
-                case BLUE -> ChatFormatting.BLUE;
-                case YELLOW -> ChatFormatting.YELLOW;
-                case GREEN -> ChatFormatting.GREEN;
-                case NONE -> ChatFormatting.WHITE;
-            };
+        private String translationKey() {
+            return contested ? "sfgame.point.marker.contested" : "sfgame.point.marker." + side.id();
         }
     }
 }

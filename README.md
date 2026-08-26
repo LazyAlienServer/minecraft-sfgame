@@ -533,13 +533,13 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 `breakthroughLegs` 表示当前比赛还要进行几次攻防轮换，不是 sector 数量：
 
 - `breakthroughLegs=0`：只进行一次攻防。`breakthroughAttacker` 指定的进攻方依次进攻全部 sector；攻陷最后一个 sector 时进攻方获胜。当前 sector 的最后一个进攻回合中，只有 tickets 归零才判定防守方获胜。
-- `breakthroughLegs=1`：进行一次轮换，共两次攻防。第一轮结束后先按实际完成这一轮的进攻方或防守方显示胜利提示，等待 5 秒后再交换进攻与防守阵营中的玩家名单；随后显示固定 30 秒的准备与复盘时间，再从第一个 sector 重新开始。阵营本身的攻守角色不变；第二轮结束后比较双方玩家名单推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
+- `breakthroughLegs=1`：进行一次轮换，共两次攻防。第一轮结束后先按实际完成这一轮的进攻方或防守方显示胜利提示，等待 5 秒后再交换进攻与防守阵营中的玩家名单；随后显示固定 30 秒的准备与复盘时间，主标题渐隐，动作栏每秒显示倒计时，再从第一个 sector 重新开始。阵营本身的攻守角色不变；第二轮结束后比较双方玩家名单推进的 sector 数、当前 sector 已占点数、达到该进度的用时和剩余票数，完全相同则平局。
 
 计分板的 LEG 显示剩余轮换：初始为 `0` 或 `1`，第一次轮换完成后变为 `0`。ROUND 显示剩余进攻回合储备：默认初始为 `1`，表示当前正在第一回合且还储备一回合；储备为 `0` 时，时间耗尽不会单独判负，只有 tickets 归零才判定进攻失败。
 
 例如 `breakthroughAttacker=red`、`breakthroughDefender=blue` 且 `breakthroughLegs=1` 时，红队始终使用进攻方逻辑和出生点，蓝队始终使用防守方逻辑和出生点；第一轮结束后原红队玩家加入蓝队、原蓝队玩家加入红队，因此双方玩家都会完成一次进攻。
 
-`breakthroughAttackRounds=1` 时，一个 sector 最多有两回合：第一回合失败或超时会消耗储备并进入下一回合；第二回合只有 tickets 归零才结束进攻。设为 `0` 则不提供备用回合。
+- `breakthroughAttackRounds=1` 时，一个 sector 最多有两回合：第一回合失败或超时会消耗储备并进入下一回合；休息阶段进攻方看到“进攻失败”，防守方看到“防守成功”；下一回合开始时两队分别看到“继续进攻”和“继续防守”。第二回合只有 tickets 归零才结束进攻。设为 `0` 则不提供备用回合。
 
 攻守规则可使用 `red`、`blue`、`yellow` 或 `green`，代表对应的 SFGame 阵营及其绑定的原版队伍。双方必须不同。sector 的数量由 `/sfgame sector add` 决定，与 `breakthroughLegs` 无关。
 
@@ -618,7 +618,7 @@ maps/domination/default/classes.json # {"parent":"domination/base"}
 
 ### 计分板显示
 
-比赛侧边栏使用本地化文本，并按原版 Minecraft 侧边栏的布局显示在屏幕右侧中央：TIME 为剩余时间，格式为 `HH:MM:SS`；TICKETS 为剩余兵力；LEG 为剩余轮换；ROUND 为剩余回合储备。`timeLimitSeconds=-1` 时默认隐藏 TIME，`showUnlimitedTime=true` 后显示“无限”；`attackerTickets=-1` 时默认隐藏 TICKETS，`showUnlimitedTickets=true` 后显示“无限”。sector 是开发辅助信息，仅在 `/sfgame dev` 开启时显示。
+比赛侧边栏使用本地化文本，并按原版 Minecraft 侧边栏的布局显示在屏幕右侧中央：标题居中，积分项名称左对齐，数值右对齐；TIME 为剩余时间，格式为 `HH:MM:SS`；TICKETS 为剩余兵力；LEG 为剩余轮换；ROUND 为剩余回合储备。文本颜色由语言文件中的 `§` 格式码定义。`timeLimitSeconds=-1` 时默认隐藏 TIME，`showUnlimitedTime=true` 后显示“无限”；`attackerTickets=-1` 时默认隐藏 TICKETS，`showUnlimitedTickets=true` 后显示“无限”。sector 是开发辅助信息，仅在 `/sfgame dev` 开启时显示。
 
 ### 票数、时间与胜负
 

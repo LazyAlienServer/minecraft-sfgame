@@ -32,7 +32,6 @@ import com.sfgame.game.MatchPhase;
 import com.sfgame.game.AdminRuleCatalog;
 import com.sfgame.game.TeamSide;
 import com.sfgame.network.SFGameNetwork;
-import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.CommandBuildContext;
 import net.minecraft.commands.Commands;
@@ -1381,7 +1380,7 @@ public final class SFGameCommands {
         int order = data.activeMap().domination().points().stream().mapToInt(CapturePointDefinition::order).max().orElse(0) + 1;
         data.activeMap().domination().add(new CapturePointDefinition(id, region, order));
         dirty(context); MatchManager.get().arenaSelectionChanged();
-        context.getSource().sendSuccess(() -> Component.literal("Added capture point " + id).withStyle(ChatFormatting.GREEN), true);
+        context.getSource().sendSuccess(() -> Component.translatable("sfgame.command.capture_point.added", id), true);
     }
 
     private static int pointSetBox(CommandContext<CommandSourceStack> context)
@@ -2371,7 +2370,7 @@ public final class SFGameCommands {
     }
 
     private static int success(CommandContext<CommandSourceStack> context, String message) {
-        context.getSource().sendSuccess(() -> Component.literal(message).withStyle(ChatFormatting.GREEN), true);
+        context.getSource().sendSuccess(() -> Component.translatable("sfgame.command.success", message), true);
         return 1;
     }
 
