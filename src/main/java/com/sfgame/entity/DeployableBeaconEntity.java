@@ -25,6 +25,10 @@ public final class DeployableBeaconEntity extends Display.BlockDisplay {
     public static final String OWNER_TAG = "OwnerUUID";
     private static final String HEALTH_TAG = "Health";
     private static final String MAX_HEALTH_TAG = "MaxHealth";
+    public static final float DISPLAY_SCALE = 0.5F;
+    public static final float HITBOX_WIDTH = DISPLAY_SCALE;
+    public static final float HITBOX_HEIGHT = DISPLAY_SCALE;
+    private static final float DISPLAY_HORIZONTAL_OFFSET = -DISPLAY_SCALE / 2.0F;
     private static final EntityDataAccessor<Float> HEALTH = SynchedEntityData.defineId(
             DeployableBeaconEntity.class, EntityDataSerializers.FLOAT);
     private static final EntityDataAccessor<Float> MAX_HEALTH = SynchedEntityData.defineId(
@@ -129,8 +133,8 @@ public final class DeployableBeaconEntity extends Display.BlockDisplay {
         saveWithoutId(tag);
         tag.put(Display.BlockDisplay.TAG_BLOCK_STATE, NbtUtils.writeBlockState(Blocks.BEACON.defaultBlockState()));
         CompoundTag transformation = new CompoundTag();
-        transformation.put("translation", floatList(0.0F, 0.0F, 0.0F));
-        transformation.put("scale", floatList(0.5F, 0.5F, 0.5F));
+        transformation.put("translation", floatList(DISPLAY_HORIZONTAL_OFFSET, 0.0F, DISPLAY_HORIZONTAL_OFFSET));
+        transformation.put("scale", floatList(DISPLAY_SCALE, DISPLAY_SCALE, DISPLAY_SCALE));
         transformation.put("left_rotation", floatList(0.0F, 0.0F, 0.0F, 1.0F));
         transformation.put("right_rotation", floatList(0.0F, 0.0F, 0.0F, 1.0F));
         tag.put(Display.TAG_TRANSFORMATION, transformation);

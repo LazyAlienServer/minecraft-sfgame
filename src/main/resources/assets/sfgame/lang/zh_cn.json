@@ -354,7 +354,7 @@
   "sfgame.anchor_captain.reelected": "%s 成为 %s 阵营重生队长。",
   "sfgame.respawn.squad": "小队：%s",
   "sfgame.respawn.captain": "队长：%s",
-  "sfgame.respawn.beacon": "信标：%s",
+  "sfgame.respawn.beacon_numbered": "重生信标 %s",
   "sfgame.respawn.beacon_unavailable": "当前无法部署重生信标。",
   "sfgame.respawn.beacon_already_present": "你的阵营已经有重生信标。",
   "sfgame.respawn.beacon_invalid_placement": "该方块无法放置重生信标。",

@@ -42,6 +42,17 @@ final class MatchManagerGameModeTest {
     }
 
     @Test
+    void respawnDeadlineUsesWallClockSeconds() {
+        long start = 5_000_000_000L;
+        long deadline = MatchManager.respawnDeadlineNanos(start, 10);
+        assertEquals(start + 10_000_000_000L, deadline);
+        assertEquals(10, MatchManager.remainingRespawnSeconds(deadline, start));
+        assertEquals(9, MatchManager.remainingRespawnSeconds(deadline, start + 1_000_000_001L));
+        assertEquals(1, MatchManager.remainingRespawnSeconds(deadline, deadline - 1L));
+        assertEquals(0, MatchManager.remainingRespawnSeconds(deadline, deadline));
+    }
+
+    @Test
     void commonClockCanBeExtendedOrExpired() {
         MatchManager manager = new MatchManager();
         com.sfgame.data.MatchRules rules = new com.sfgame.data.MatchRules();

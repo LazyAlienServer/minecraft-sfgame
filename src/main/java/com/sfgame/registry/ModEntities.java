@@ -15,7 +15,7 @@ public final class ModEntities {
     public static final RegistryObject<EntityType<DeployableBeaconEntity>> RESPAWN_BEACON =
             ENTITY_TYPES.register("respawn_beacon", () -> EntityType.Builder
                     .of(DeployableBeaconEntity::new, MobCategory.MISC)
-                    .sized(0.45F, 0.65F)
+                    .sized(DeployableBeaconEntity.HITBOX_WIDTH, DeployableBeaconEntity.HITBOX_HEIGHT)
                     .clientTrackingRange(64)
                     .updateInterval(1)
                     .build(SFGame.MOD_ID + ":respawn_beacon"));

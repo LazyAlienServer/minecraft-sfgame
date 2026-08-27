@@ -26,7 +26,7 @@ final class SFGameScreenTest {
         assertTrue(twentiethY + 96 <= bottom);
     }
     @Test
-    void respawnLabelsUseSourceTypeAndTargetName() {
+    void respawnLabelsUseSourceTypeAndDirectBeaconName() {
         var squad = SFGameScreen.respawnLabel(new com.sfgame.network.MatchSnapshot.RespawnOption(
                 "squad:id", "squad", "Alpha")).getContents();
         var beacon = SFGameScreen.respawnLabel(new com.sfgame.network.MatchSnapshot.RespawnOption(
@@ -35,8 +35,22 @@ final class SFGameScreenTest {
         assertTrue(beacon instanceof net.minecraft.network.chat.contents.TranslatableContents);
         assertEquals("sfgame.respawn.squad",
                 ((net.minecraft.network.chat.contents.TranslatableContents) squad).getKey());
-        assertEquals("sfgame.respawn.beacon",
+        assertEquals("item.sfgame.respawn_beacon",
                 ((net.minecraft.network.chat.contents.TranslatableContents) beacon).getKey());
+    }
+
+    @Test
+    void multipleBeaconLabelsCarryTheirDisplayNumber() {
+        var first = (net.minecraft.network.chat.contents.TranslatableContents) SFGameScreen.respawnLabel(
+                new com.sfgame.network.MatchSnapshot.RespawnOption("beacon:1", "beacon", "red"), 1, 2)
+                .getContents();
+        var second = (net.minecraft.network.chat.contents.TranslatableContents) SFGameScreen.respawnLabel(
+                new com.sfgame.network.MatchSnapshot.RespawnOption("beacon:2", "beacon", "red"), 2, 2)
+                .getContents();
+        assertEquals("sfgame.respawn.beacon_numbered", first.getKey());
+        assertEquals("sfgame.respawn.beacon_numbered", second.getKey());
+        assertEquals(1, first.getArgs()[0]);
+        assertEquals(2, second.getArgs()[0]);
     }
     @Test
     void shopUsesHorizontalRowsWhileSupplyKeepsResponsiveColumns() {

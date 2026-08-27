@@ -161,9 +161,13 @@ public final class SFGameScreen extends Screen {
             respawnHeadingX = center - 150;
             respawnHeadingY = visibleHeadingY(contentY);
             contentY += 16;
+            int beaconCount = (int) snapshot.respawnOptions().stream()
+                    .filter(option -> "beacon".equals(option.type())).count();
+            int beaconNumber = 0;
             for (int i = 0; i < snapshot.respawnOptions().size(); i++) {
                 MatchSnapshot.RespawnOption option = snapshot.respawnOptions().get(i);
-                Component label = respawnLabel(option);
+                if ("beacon".equals(option.type())) beaconNumber++;
+                Component label = respawnLabel(option, beaconNumber, beaconCount);
                 int column = i % 2;
                 int row = i / 2;
                 addBodyWidget(new DarkButton(center - 150 + column * 152,
@@ -377,11 +381,17 @@ public final class SFGameScreen extends Screen {
     }
 
     static Component respawnLabel(MatchSnapshot.RespawnOption option) {
+        return respawnLabel(option, 1, 1);
+    }
+
+    static Component respawnLabel(MatchSnapshot.RespawnOption option, int beaconNumber, int beaconCount) {
         return switch (option.type()) {
             case "base" -> Component.translatable("sfgame.respawn.base");
             case "squad" -> Component.translatable("sfgame.respawn.squad", option.targetName());
             case "captain" -> Component.translatable("sfgame.respawn.captain", option.targetName());
-            case "beacon" -> Component.translatable("sfgame.respawn.beacon", option.targetName());
+            case "beacon" -> beaconCount > 1
+                    ? Component.translatable("sfgame.respawn.beacon_numbered", beaconNumber)
+                    : Component.translatable("item.sfgame.respawn_beacon");
             case "point" -> Component.translatable("sfgame.respawn.point",
                     option.targetName().toUpperCase(Locale.ROOT));
             default -> Component.literal(option.targetName());

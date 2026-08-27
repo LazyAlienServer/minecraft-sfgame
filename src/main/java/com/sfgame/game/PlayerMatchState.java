@@ -17,7 +17,6 @@ public final class PlayerMatchState {
     private boolean pendingImmediateJoin;
     private boolean respawning;
     private boolean awaitingRespawnSelection;
-    private int respawnTicks;
     private int protectionTicks;
     private int kills;
     private int deaths;
@@ -64,8 +63,6 @@ public final class PlayerMatchState {
     public void respawning(boolean value) { respawning = value; }
     public boolean awaitingRespawnSelection() { return awaitingRespawnSelection; }
     public void awaitingRespawnSelection(boolean value) { awaitingRespawnSelection = value; }
-    public int respawnTicks() { return respawnTicks; }
-    public void respawnTicks(int value) { respawnTicks = value; }
     public int protectionTicks() { return protectionTicks; }
     public void protectionTicks(int value) { protectionTicks = value; }
     public int kills() { return kills; }
@@ -83,7 +80,6 @@ public final class PlayerMatchState {
         deaths = 0;
         respawning = false;
         awaitingRespawnSelection = false;
-        respawnTicks = 0;
         protectionTicks = 0;
         pendingImmediateJoin = false;
         currencies.clear();

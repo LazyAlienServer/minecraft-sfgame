@@ -22,8 +22,10 @@ import java.util.UUID;
 public final class BeaconService {
     private static final AABB WORLD_SCAN = new AABB(-30_000_000, -2048, -30_000_000,
             30_000_000, 4096, 30_000_000);
+    private static final int RECONCILE_INTERVAL_TICKS = 200;
     private final MatchManager manager;
     private final EnumMap<TeamSide, BeaconRecord> records = new EnumMap<>(TeamSide.class);
+    private int reconcileTicks;
 
     public BeaconService(MatchManager manager) {
         this.manager = manager;
@@ -87,6 +89,9 @@ public final class BeaconService {
 
     public void tick(MinecraftServer server) {
         if (manager.phase() != MatchPhase.RUNNING) return;
+        for (TeamSide side : TeamSide.PLAYABLE) target(side);
+        if (++reconcileTicks < RECONCILE_INTERVAL_TICKS) return;
+        reconcileTicks = 0;
         reconcile(server, false);
     }
 
@@ -122,6 +127,7 @@ public final class BeaconService {
             }
         }
         records.clear();
+        reconcileTicks = 0;
     }
 
     /** Rebuilds UUID/level references after a server reload and removes stale duplicates. */

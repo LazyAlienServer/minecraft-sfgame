@@ -7,12 +7,14 @@ import com.sfgame.game.CaptureTheFlagRuntime;
 import com.sfgame.game.MatchHudService;
 import com.sfgame.game.MatchManager;
 import com.sfgame.entity.DeployableBeaconEntity;
+import com.sfgame.item.DeployableBeaconItem;
 import com.sfgame.game.MatchPhase;
 import com.tacz.guns.api.event.common.GunFireEvent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.context.UseOnContext;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -159,6 +161,19 @@ public final class SFGameEvents {
     @SubscribeEvent
     public static void itemToss(net.minecraftforge.event.entity.item.ItemTossEvent event) {
         if (event.getPlayer() instanceof ServerPlayer player && !MatchManager.get().mayDrop(player)) event.setCanceled(true);
+    }
+
+    /**
+     * Adventure mode blocks generic item placement unless the stack has a
+     * CanPlaceOn tag. This custom item is an entity deployment, so handle its
+     * right-click before Forge's generic placement gate.
+     */
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void deployableBeaconRightClick(PlayerInteractEvent.RightClickBlock event) {
+        if (!(event.getItemStack().getItem() instanceof DeployableBeaconItem item)) return;
+        event.setCanceled(true);
+        event.setCancellationResult(item.useOn(
+                new UseOnContext(event.getEntity(), event.getHand(), event.getHitVec())));
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)

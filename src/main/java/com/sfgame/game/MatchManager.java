@@ -46,9 +46,12 @@ public final class MatchManager {
     public static final int MAX_LIVE_TIME_SECONDS = 86_400;
     public static final int MAX_LIVE_SCORE = 1_000_000;
     public static final int MAX_LIVE_LEG = 10;
+    private static final long NANOS_PER_SECOND = 1_000_000_000L;
     private static final MatchManager INSTANCE = new MatchManager();
 
     private final Map<UUID, PlayerMatchState> players = new HashMap<>();
+    private final Map<UUID, Long> respawnDeadlinesNanos = new HashMap<>();
+    private final Map<UUID, Integer> lastRespawnCountdownSeconds = new HashMap<>();
     private final ClassRegistry classRegistry = new ClassRegistry();
     private final LoadoutService loadoutService = new LoadoutService();
     private final VanillaTeamBindingService teams = new VanillaTeamBindingService();
@@ -470,6 +473,7 @@ public final class MatchManager {
         beaconService.clear(server);
         squadService.clear();
         teamCaptainService.clear(server);
+        clearRespawnTimers();
         players.clear();
         server = null;
         phase = MatchPhase.UNCONFIGURED;
@@ -581,6 +585,7 @@ public final class MatchManager {
         elapsedTicks = 0;
         commonTimeOverrideEndTick = null;
         result = TeamSide.NONE;
+        clearRespawnTimers();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             TeamSide side = teams.sideOf(player, data());
             PlayerMatchState state = state(player);
@@ -628,6 +633,7 @@ public final class MatchManager {
         beaconService.clear(server);
         squadService.clear();
         teamCaptainService.clear(server);
+        clearRespawnTimers();
         anchorPreparationStarted = false;
         if (showResult) {
             phase = MatchPhase.RESULT;
@@ -647,7 +653,7 @@ public final class MatchManager {
             state.participating(false);
             state.respawning(false);
             state.awaitingRespawnSelection(false);
-            state.respawnTicks(0);
+            clearRespawnTimer(state.playerId());
             player.setGameMode(GameType.SPECTATOR);
             return true;
         }
@@ -664,8 +670,7 @@ public final class MatchManager {
         state.pendingImmediateJoin(false);
         state.respawning(false);
         state.awaitingRespawnSelection(false);
-        state.respawnTicks(0);
-        state.respawnTicks(0);
+        clearRespawnTimer(state.playerId());
         state.protectionTicks(0);
         state.cachedSide(currentSide);
         player.getFoodData().setFoodLevel(20);
@@ -708,6 +713,7 @@ public final class MatchManager {
         state.pendingImmediateJoin(false);
         state.respawning(false);
         state.awaitingRespawnSelection(false);
+        clearRespawnTimer(state.playerId());
         squadService.remove(player);
         teams.remove(player);
         if (phase == MatchPhase.RUNNING || phase == MatchPhase.PREPARING || phase == MatchPhase.COUNTDOWN || phase == MatchPhase.RESULT) {
@@ -728,6 +734,7 @@ public final class MatchManager {
         state.pendingImmediateJoin(true);
         state.participating(false);
         state.awaitingRespawnSelection(false);
+        clearRespawnTimer(state.playerId());
         state.resetRoundStats();
         player.setGameMode(GameType.SPECTATOR);
         TeamSide joinSide = teams.sideOf(player, data());
@@ -802,13 +809,14 @@ public final class MatchManager {
             state.participating(false);
             state.respawning(false);
             state.awaitingRespawnSelection(false);
-            state.respawnTicks(0);
+            clearRespawnTimer(state.playerId());
             player.setGameMode(GameType.SPECTATOR);
         } else {
             loadoutService.clear(player);
             state.participating(false);
             state.respawning(false);
             state.awaitingRespawnSelection(false);
+            clearRespawnTimer(state.playerId());
             player.setGameMode(GameType.ADVENTURE);
             if (data().lobby() != null) data().lobby().teleport(player);
         }
@@ -818,6 +826,7 @@ public final class MatchManager {
 
     public void playerLoggedOut(ServerPlayer player) {
         state(player).connected(false);
+        clearRespawnTimer(player.getUUID());
         squadService.remove(player);
         activeRuntime.onPlayerLoggedOut(player, this);
         if (phase == MatchPhase.RUNNING) teamCaptainService.onPlayerLoggedOut(player, this, rules());
@@ -826,7 +835,7 @@ public final class MatchManager {
     public void handleDeath(ServerPlayer victim, DamageSource source) {
         if (phase != MatchPhase.RUNNING) return;
         PlayerMatchState victimState = state(victim);
-        if (!victimState.participating()) return;
+        if (!victimState.participating() || victimState.respawning()) return;
         victimState.addDeath();
         TeamSide victimSide = teams.sideOf(victim, data());
         activeRuntime.onPlayerDeath(victim, victimSide, this);
@@ -845,7 +854,7 @@ public final class MatchManager {
         }
         victimState.respawning(true);
         victimState.awaitingRespawnSelection(false);
-        victimState.respawnTicks(rules().respawnSeconds() * 20);
+        startRespawnTimer(victimState.playerId(), rules().respawnSeconds());
         loadoutService.clear(victim);
         victim.setHealth(victim.getMaxHealth());
         victim.setGameMode(GameType.SPECTATOR);
@@ -864,10 +873,11 @@ public final class MatchManager {
         if (com.sfgame.data.SupplyOfferDefinition.ITEM.equals(supply.type())) {
             ItemStack stack = supply.stack();
             if (stack.isEmpty()) return false;
+            Component itemName = stack.getHoverName().copy();
             if (player.getInventory().getFreeSlot() < 0
                     && player.getInventory().getSlotWithRemainingSpace(stack) < 0) return false;
             if (!player.getInventory().add(stack)) return false;
-            granted = Component.translatable("sfgame.supply.item_granted.colored", stack.getHoverName());
+            granted = Component.translatable("sfgame.supply.item_granted.colored", itemName);
         } else if (com.sfgame.data.SupplyOfferDefinition.ELITE_CLASS.equals(supply.type())) {
             ClassDefinition definition = classRegistry.getEliteForTeam(
                     data().selectedMode(), data().selectedMap(), side, supply.classId()).orElse(null);
@@ -1457,29 +1467,37 @@ public final class MatchManager {
 
     private void tickPlayerTimers() {
         if (server == null) return;
+        long now = System.nanoTime();
         for (PlayerMatchState state : players.values()) {
             ServerPlayer player = server.getPlayerList().getPlayer(state.playerId());
             if (player == null) continue;
-            if (state.protectionTicks() > 0) state.protectionTicks(state.protectionTicks() - 1);
-            if (state.respawning() && phase == MatchPhase.RUNNING) {
-                int ticks = state.respawnTicks();
-                if (ticks > 0) {
-                    state.respawnTicks(ticks - 1);
-                    if (ticks % 20 == 0) {
-                        Component countdown = Component.translatable("sfgame.respawn", ticks / 20);
-                        player.sendSystemMessage(countdown, true);
-                        playSound(player, SoundEvents.NOTE_BLOCK_HAT.get(), countdownPitch(ticks / 20));
-                    }
-                } else if (usesRespawnSelectionMode(data().selectedMode())) {
-                    if (!state.awaitingRespawnSelection()) {
-                        state.awaitingRespawnSelection(true);
-                        player.sendSystemMessage(Component.translatable("sfgame.respawn.choose.colored"), true);
-                        playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.2F);
-                        SFGameNetwork.openMenu(player);
-                    }
-                } else {
-                    deploy(player, state, true);
+            if (state.protectionTicks() > 0) {
+                state.protectionTicks(state.protectionTicks() - 1);
+            }
+            if (!state.respawning() || phase != MatchPhase.RUNNING) continue;
+
+            Long deadline = respawnDeadlinesNanos.get(state.playerId());
+            int remainingSeconds = deadline == null ? 0 : remainingRespawnSeconds(deadline, now);
+            if (remainingSeconds > 0) {
+                Integer previous = lastRespawnCountdownSeconds.put(state.playerId(), remainingSeconds);
+                if (previous == null || previous != remainingSeconds) {
+                    Component countdown = Component.translatable("sfgame.respawn", remainingSeconds);
+                    player.sendSystemMessage(countdown, true);
+                    playSound(player, SoundEvents.NOTE_BLOCK_HAT.get(), countdownPitch(remainingSeconds));
                 }
+                continue;
+            }
+
+            clearRespawnTimer(state.playerId());
+            if (usesRespawnSelectionMode(data().selectedMode())) {
+                if (!state.awaitingRespawnSelection()) {
+                    state.awaitingRespawnSelection(true);
+                    player.sendSystemMessage(Component.translatable("sfgame.respawn.choose.colored"), true);
+                    playSound(player, SoundEvents.NOTE_BLOCK_PLING.get(), 1.2F);
+                    SFGameNetwork.openMenu(player);
+                }
+            } else {
+                deploy(player, state, true);
             }
         }
     }
@@ -1509,7 +1527,7 @@ public final class MatchManager {
                     state.queued(true);
                     state.respawning(false);
                     state.awaitingRespawnSelection(false);
-                    state.respawnTicks(0);
+                    clearRespawnTimer(state.playerId());
                     loadoutService.clear(player);
                     player.setGameMode(GameType.SPECTATOR);
                 }
@@ -1524,6 +1542,7 @@ public final class MatchManager {
 
     private void deploy(ServerPlayer player, PlayerMatchState state, boolean applyPendingClass,
                         @Nullable RespawnSourceResolver.RespawnTarget spawnOverride) {
+        clearRespawnTimer(state.playerId());
         String modeId = data().selectedMode();
         TeamSide side = classSide(player, state);
         boolean captain = activeRuntime.isCaptain(player.getUUID());
@@ -1544,7 +1563,7 @@ public final class MatchManager {
             state.queued(true);
             state.respawning(false);
             state.awaitingRespawnSelection(false);
-            state.respawnTicks(0);
+            clearRespawnTimer(state.playerId());
             player.setGameMode(GameType.SPECTATOR);
             return;
         }
@@ -1557,7 +1576,7 @@ public final class MatchManager {
         }
         state.respawning(false);
         state.awaitingRespawnSelection(false);
-        state.respawnTicks(0);
+        clearRespawnTimer(state.playerId());
         state.protectionTicks(rules().respawnProtectionSeconds() * 20);
         state.participating(true);
         state.queued(false);
@@ -1595,6 +1614,7 @@ public final class MatchManager {
         beaconService.clear(server);
         squadService.clear();
         teamCaptainService.clear(server);
+        clearRespawnTimers();
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             PlayerMatchState state = state(player);
             loadoutService.clear(player);
@@ -1674,6 +1694,7 @@ public final class MatchManager {
         squadService.clear();
         resetRuntimeScores();
         players.clear();
+        clearRespawnTimers();
     }
 
     private void resetRuntimeScores() {
@@ -1884,7 +1905,8 @@ public final class MatchManager {
     void modeRedeployAll(int protectionTicks) {
         forParticipants(player -> {
             PlayerMatchState state = state(player);
-            state.respawning(false); state.respawnTicks(0);
+            state.respawning(false);
+            clearRespawnTimer(state.playerId());
             state.awaitingRespawnSelection(false);
             deploy(player, state, true);
             state.protectionTicks(Math.max(state.protectionTicks(), protectionTicks));
@@ -1902,6 +1924,32 @@ public final class MatchManager {
     ArenaPosition runtimeSpawn(TeamSide side) {
         return side == TeamSide.NONE || data().activeMap() == null ? null
                 : activeRuntime.spawnFor(side, data().activeMap());
+    }
+
+    private void startRespawnTimer(UUID playerId, int seconds) {
+        respawnDeadlinesNanos.put(playerId, respawnDeadlineNanos(System.nanoTime(), seconds));
+        lastRespawnCountdownSeconds.remove(playerId);
+    }
+
+    private void clearRespawnTimer(UUID playerId) {
+        respawnDeadlinesNanos.remove(playerId);
+        lastRespawnCountdownSeconds.remove(playerId);
+    }
+
+    private void clearRespawnTimers() {
+        respawnDeadlinesNanos.clear();
+        lastRespawnCountdownSeconds.clear();
+    }
+
+    static long respawnDeadlineNanos(long startNanos, int seconds) {
+        return startNanos + Math.max(0, seconds) * NANOS_PER_SECOND;
+    }
+
+    static int remainingRespawnSeconds(long deadlineNanos, long nowNanos) {
+        if (deadlineNanos <= nowNanos) return 0;
+        long remainingNanos = deadlineNanos - nowNanos;
+        long seconds = (remainingNanos - 1L) / NANOS_PER_SECOND + 1L;
+        return (int) Math.min(Integer.MAX_VALUE, seconds);
     }
 
     private void sync(ServerPlayer player) {

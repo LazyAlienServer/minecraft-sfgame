@@ -354,7 +354,7 @@
   "sfgame.anchor_captain.reelected": "%s is now the %s faction respawn captain.",
   "sfgame.respawn.squad": "Squad: %s",
   "sfgame.respawn.captain": "Captain: %s",
-  "sfgame.respawn.beacon": "Beacon: %s",
+  "sfgame.respawn.beacon_numbered": "Respawn Beacon %s",
   "sfgame.respawn.beacon_unavailable": "You cannot deploy a respawn beacon here.",
   "sfgame.respawn.beacon_already_present": "Your faction already has a respawn beacon.",
   "sfgame.respawn.beacon_invalid_placement": "That block cannot hold a respawn beacon.",
