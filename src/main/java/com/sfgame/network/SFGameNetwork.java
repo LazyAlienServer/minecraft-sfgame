@@ -14,6 +14,12 @@ public final class SFGameNetwork {
             () -> PROTOCOL, PROTOCOL::equals, PROTOCOL::equals);
 
     private SFGameNetwork() {}
+    private static boolean canSend(ServerPlayer player) {
+        return player != null && player.connection != null
+                && player.connection.connection != null
+                && player.connection.connection.channel() != null
+                && player.connection.connection.isConnected();
+    }
 
     public static void register() {
         int id = 0;
@@ -35,13 +41,16 @@ public final class SFGameNetwork {
     }
 
     public static void sendSnapshot(ServerPlayer player, MatchSnapshot snapshot) {
+        if (!canSend(player)) return;
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SnapshotPacket(snapshot));
     }
     public static void sendSquadSnapshot(ServerPlayer player, SquadSnapshot snapshot) {
+        if (!canSend(player)) return;
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new SquadSnapshotPacket(snapshot));
     }
 
     public static void openMenu(ServerPlayer player) {
+        if (!canSend(player)) return;
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new OpenMenuPacket());
         sendSnapshot(player, com.sfgame.game.MatchManager.get().snapshot(player));
     }
@@ -58,7 +67,7 @@ public final class SFGameNetwork {
     }
 
     public static void sendAdminSnapshot(ServerPlayer player, boolean openScreen) {
-        if (!player.hasPermissions(2)) return;
+        if (!canSend(player) || !player.hasPermissions(2)) return;
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
                 new AdminSnapshotPacket(AdminSnapshot.create(player), openScreen));
     }

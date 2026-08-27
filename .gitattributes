@@ -1,4 +1,5 @@
 * text=auto
+.gitattributes text eol=lf
 
 *.java text eol=lf
 *.gradle text eol=lf
@@ -6,6 +7,7 @@
 *.toml text eol=lf
 *.json text eol=lf
 *.mcmeta text eol=lf
+*.snbt text eol=lf
 *.md text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf

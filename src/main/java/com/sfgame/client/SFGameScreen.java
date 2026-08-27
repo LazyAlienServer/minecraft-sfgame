@@ -725,8 +725,8 @@ public final class SFGameScreen extends Screen {
                 Component.translatable("sfgame.supply.claim.colored"));
     }
 
-    private static class DarkButton extends Button {
-        private DarkButton(int x, int y, int width, int height, Component message, OnPress onPress) {
+    static class DarkButton extends Button {
+        DarkButton(int x, int y, int width, int height, Component message, OnPress onPress) {
             super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
         }
 

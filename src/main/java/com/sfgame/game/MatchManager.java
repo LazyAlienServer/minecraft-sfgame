@@ -1905,6 +1905,9 @@ public final class MatchManager {
     }
 
     private void sync(ServerPlayer player) {
+        if (player.connection == null || player.connection.connection == null
+                || player.connection.connection.channel() == null
+                || !player.connection.connection.isConnected()) return;
         SFGameNetwork.sendSnapshot(player, snapshot(player));
         if (phase == MatchPhase.RUNNING) SFGameNetwork.sendSquadSnapshot(player, squadService.snapshot(player));
     }

@@ -1,13 +1,10 @@
 package com.sfgame.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.sfgame.game.MatchPhase;
 import com.sfgame.network.SquadSnapshot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.client.player.AbstractClientPlayer;
 import net.minecraft.client.resources.DefaultPlayerSkin;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.client.gui.components.PlayerFaceRenderer;
@@ -49,8 +46,8 @@ public final class SquadScreen extends Screen {
         cards.clear();
         SquadSnapshot snapshot = ClientSquadState.snapshot();
         if (snapshot == null) {
-            addRenderableWidget(Button.builder(Component.translatable("sfgame.squad.refresh"), ignored -> ClientSquadState.request())
-                    .bounds(width / 2 - 60, 80, 120, 20).build());
+            addRenderableWidget(new SFGameScreen.DarkButton(width / 2 - 60, 80, 120, 22,
+                    Component.translatable("sfgame.squad.refresh"), ignored -> ClientSquadState.request()));
             contentHeight = 0;
             rebuilding = false;
             return;
@@ -59,8 +56,8 @@ public final class SquadScreen extends Screen {
                 && ClientMatchState.snapshot().phase() == MatchPhase.RUNNING;
         int y = 0;
         if (running && snapshot.currentSquadIndex() != null) {
-            addRenderableWidget(Button.builder(Component.translatable("sfgame.squad.leave"), ignored -> ClientSquadState.leave())
-                    .bounds(width / 2 + 90, screenY(0), 100, 20).build());
+            addRenderableWidget(new SFGameScreen.DarkButton(width / 2 + 90, screenY(0), 100, 22,
+                    Component.translatable("sfgame.squad.leave"), ignored -> ClientSquadState.leave()));
         }
         y += 30;
         for (SquadSnapshot.SquadView squad : snapshot.squads()) {
@@ -70,9 +67,9 @@ public final class SquadScreen extends Screen {
             cards.add(new CardLayout(x, screenY, CARD_WIDTH, height, squad));
             if (running && squad.memberCount() < snapshot.maxMembers()
                     && !Integer.valueOf(squad.index()).equals(snapshot.currentSquadIndex())) {
-                addRenderableWidget(Button.builder(Component.translatable("sfgame.squad.join"),
-                                ignored -> ClientSquadState.join(squad.index()))
-                        .bounds(x + CARD_WIDTH - 86, screenY + 4, 78, 20).build());
+                addRenderableWidget(new SFGameScreen.DarkButton(x + CARD_WIDTH - 86, screenY + 4, 78, 22,
+                        Component.translatable("sfgame.squad.join"),
+                        ignored -> ClientSquadState.join(squad.index())));
             }
             y += height + 8;
         }

@@ -3,7 +3,6 @@ package com.sfgame.item;
 import com.sfgame.game.MatchManager;
 import com.sfgame.game.MatchPhase;
 import com.sfgame.game.TeamSide;
-import com.sfgame.registry.ModItems;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionResult;
@@ -36,18 +35,24 @@ public final class DeployableBeaconItem extends Item {
             player.sendSystemMessage(net.minecraft.network.chat.Component.translatable("sfgame.respawn.beacon_already_present"), true);
             return InteractionResult.FAIL;
         }
-        BlockPos placePos = context.getClickedPos().relative(context.getClickedFace());
-        BlockState state = context.getLevel().getBlockState(placePos);
-        if (!state.canBeReplaced() || !context.getLevel().getWorldBorder().isWithinBounds(placePos)) {
-            player.sendSystemMessage(net.minecraft.network.chat.Component.translatable("sfgame.respawn.beacon_invalid_placement"), true);
+        BlockPos clickedPos = context.getClickedPos();
+        BlockPos adjacentPos = clickedPos.relative(context.getClickedFace());
+        BlockState clickedState = context.getLevel().getBlockState(clickedPos);
+        BlockState adjacentState = context.getLevel().getBlockState(adjacentPos);
+        BlockPos placePos = BeaconPlacement.resolve(clickedPos, context.getClickedFace(),
+                clickedState.canBeReplaced(), adjacentState.canBeReplaced());
+        if (placePos == null || !context.getLevel().getWorldBorder().isWithinBounds(placePos)) {
+            player.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                    "sfgame.respawn.beacon_invalid_placement"), true);
             return InteractionResult.FAIL;
         }
         Vec3 position = Vec3.atCenterOf(placePos);
         if (!manager.beacons().deploy(player, position)) {
-            player.sendSystemMessage(net.minecraft.network.chat.Component.translatable("sfgame.respawn.beacon_deploy_failed"), true);
+            player.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                    "sfgame.respawn.beacon_deploy_failed"), true);
             return InteractionResult.FAIL;
         }
         context.getItemInHand().shrink(1);
-        return InteractionResult.CONSUME;
+        return InteractionResult.sidedSuccess(false);
     }
 }

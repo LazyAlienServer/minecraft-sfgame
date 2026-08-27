@@ -2,11 +2,10 @@ package com.sfgame.entity;
 
 import com.sfgame.game.MatchManager;
 import com.sfgame.game.TeamSide;
-import com.sfgame.registry.ModEntities;
-import com.sfgame.registry.ModItems;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.FloatTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.syncher.EntityDataAccessor;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -14,13 +13,13 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Display;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
 
 import javax.annotation.Nullable;
 import java.util.UUID;
 
-public final class DeployableBeaconEntity extends Display.ItemDisplay {
+public final class DeployableBeaconEntity extends Display.BlockDisplay {
     public static final String BEACON_TAG = "SFGameRespawnBeacon";
     public static final String TEAM_TAG = "Faction";
     public static final String OWNER_TAG = "OwnerUUID";
@@ -33,7 +32,6 @@ public final class DeployableBeaconEntity extends Display.ItemDisplay {
 
     public DeployableBeaconEntity(EntityType<? extends DeployableBeaconEntity> type, Level level) {
         super(type, level);
-        getSlot(0).set(new ItemStack(ModItems.RESPAWN_BEACON.get()));
         setNoGravity(true);
         setSilent(true);
         addTag(BEACON_TAG);
@@ -129,7 +127,7 @@ public final class DeployableBeaconEntity extends Display.ItemDisplay {
     private void applyDisplayTransform() {
         CompoundTag tag = new CompoundTag();
         saveWithoutId(tag);
-        tag.putString("item_display", "fixed");
+        tag.put(Display.BlockDisplay.TAG_BLOCK_STATE, NbtUtils.writeBlockState(Blocks.BEACON.defaultBlockState()));
         CompoundTag transformation = new CompoundTag();
         transformation.put("translation", floatList(0.0F, 0.0F, 0.0F));
         transformation.put("scale", floatList(0.5F, 0.5F, 0.5F));

@@ -104,6 +104,15 @@ tasks.matching { it.name in ['prepareRunClientCompile', 'prepareRunServerCompile
             dependsOn 'genIntellijRuns'
             dependsOn installTaczForRuns
         }
+tasks.matching { it.name == 'prepareRunGameTestServer' }
+        .configureEach {
+            doFirst {
+                copy {
+                    from layout.projectDirectory.dir('src/main/resources/gameteststructures')
+                    into layout.projectDirectory.dir('run/gameteststructures')
+                }
+            }
+        }
 
 tasks.named('test', Test).configure {
     useJUnitPlatform()
